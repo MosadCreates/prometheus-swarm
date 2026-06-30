@@ -18,3 +18,5 @@ data/*.parquet
 *.log
 .DS_Store
 node_modules/
+.pytest_cache/
+frontend/.next/

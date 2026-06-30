@@ -1,6 +1,6 @@
 """Pydantic models for all data structures that cross agent boundaries."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from pydantic import BaseModel, Field
 import uuid
@@ -42,13 +42,13 @@ class MissionBrief(BaseModel):
     data_quality: DataQuality = Field(default_factory=DataQuality)
     imbalance_strategy: str = "none"
     recommended_architecture_family: str | None = None
-    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class PatchLogEntry(BaseModel):
     patch_id: str = Field(default_factory=new_id)
     job_id: str
-    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     exception_type: str
     exception_message: str
     error_taxonomy_category: str
@@ -74,4 +74,4 @@ class EvalReport(BaseModel):
     failure_analysis: str
     decision: str
     decision_reason: str
-    created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())

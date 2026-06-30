@@ -1,0 +1,48 @@
+# Phase 4 GKE deployment — Prometheus Swarm serving endpoint
+# Not used during Phases 0-3. Phase 4 only.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-serving
+  labels:
+    app: prometheus-serving
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: prometheus-serving
+  template:
+    metadata:
+      labels:
+        app: prometheus-serving
+    spec:
+      containers:
+      - name: serving
+        image: gcr.io/nexora/prometheus-serving:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: REDIS_HOST
+          value: "redis-service"
+        - name: REDIS_PORT
+          value: "6379"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-serving-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: prometheus-serving
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080

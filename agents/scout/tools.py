@@ -6,6 +6,7 @@ All functions are pure ? no side effects except Redis writes (marked explicitly)
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -165,7 +166,7 @@ def write_mission_brief(
         },
         "imbalance_strategy": imbalance_strategy,
         "recommended_architecture_family": None,
-        "created_at": __import__("datetime").datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
     return brief

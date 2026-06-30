@@ -1,0 +1,46 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "title": "Prometheus Swarm",
+  "uid": "prometheus-swarm",
+  "panels": [
+    {
+      "title": "Training Loss Curves",
+      "type": "graph",
+      "targets": [
+        {"expr": "prometheus_furnace_train_loss", "legendFormat": "train_loss"},
+        {"expr": "prometheus_furnace_val_loss", "legendFormat": "val_loss"}
+      ]
+    },
+    {
+      "title": "Dissect Patch Success Rate",
+      "type": "stat",
+      "targets": [
+        {"expr": "rate(prometheus_dissect_patches_successful_total[1h]) / rate(prometheus_dissect_patches_attempted_total[1h])", "legendFormat": "success_rate"}
+      ]
+    },
+    {
+      "title": "Job E2E Duration",
+      "type": "heatmap",
+      "targets": [
+        {"expr": "prometheus_orchestrator_job_e2e_duration_seconds_bucket"}
+      ]
+    },
+    {
+      "title": "Prediction Latency P50/P95/P99",
+      "type": "graph",
+      "targets": [
+        {"expr": "histogram_quantile(0.50, rate(prometheus_harbor_prediction_latency_seconds_bucket[5m]))", "legendFormat": "P50"},
+        {"expr": "histogram_quantile(0.95, rate(prometheus_harbor_prediction_latency_seconds_bucket[5m]))", "legendFormat": "P95"},
+        {"expr": "histogram_quantile(0.99, rate(prometheus_harbor_prediction_latency_seconds_bucket[5m]))", "legendFormat": "P99"}
+      ]
+    },
+    {
+      "title": "PSI Drift Score",
+      "type": "graph",
+      "targets": [
+        {"expr": "prometheus_harbor_psi_score", "legendFormat": "psi"}
+      ]
+    }
+  ]
+}

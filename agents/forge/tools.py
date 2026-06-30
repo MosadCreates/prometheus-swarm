@@ -64,11 +64,19 @@ warnings.filterwarnings("ignore")
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 
 
 # --- Data loading ---
 df = pd.read_csv(r"{file_path}")
 {target_line}
+
+# Drop high-cardinality text columns (Name, Ticket, Cabin)
+for col in ["Name", "Ticket", "Cabin"]:
+    if col in df.columns:
+        df.drop(columns=[col], inplace=True)
 
 X_train, X_test, y_train, y_test = train_test_split(
     df, target, test_size=0.2, random_state=42
@@ -80,7 +88,21 @@ categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
 import lightgbm as lgb
 
-model = lgb.LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)
+# Build a pipeline with preprocessing + estimator
+preprocessor = ColumnTransformer([
+    ("num", "passthrough", numeric_cols),
+    ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), categorical_cols),
+])
+
+if {is_classification}:
+    estimator = lgb.LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)
+else:
+    estimator = lgb.LGBMRegressor(n_estimators=100, random_state=42, verbose=-1)
+
+model = Pipeline([
+    ("preprocessor", preprocessor),
+    ("estimator", estimator),
+])
 model.fit(X_train, y_train)
 
 # --- Evaluation ---
