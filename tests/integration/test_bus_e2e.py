@@ -76,4 +76,9 @@ async def test_all_event_types_are_publishable(redis):
     messages = await redis.xrange(stream)
     assert len(messages) == 11
 
+    # Verify None fields are serialized as empty string, not "None"
+    crash_msg = [m for m in messages if m[1].get("event_type") == CRASH_EVENT][0]
+    raw_last_cp = crash_msg[1].get("last_checkpoint_path", "MISSING")
+    assert raw_last_cp == "", f"Expected empty string for None field, got: {raw_last_cp!r}"
+
     await redis.delete(stream)

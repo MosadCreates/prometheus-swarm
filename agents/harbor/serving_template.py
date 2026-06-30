@@ -1,6 +1,7 @@
 """FastAPI serving app template. Harbor fills the placeholders per model.
 
-Placeholders: {model_path}, {model_format}, {model_name}
+Placeholders: {model_path}, {model_format}, {model_name},
+              {feature_names}, {numeric_cols}, {categorical_cols}
 """
 
 SERVING_TEMPLATE = '''"""Auto-generated serving app by Prometheus Swarm Harbor agent."""
@@ -42,17 +43,88 @@ _model = None
 _model_path = "{model_path}"
 _model_format = "{model_format}"
 
+# Column configuration
+FEATURE_NAMES = {feature_names}
+NUMERIC_COLS = {numeric_cols}
+CATEGORICAL_COLS = {categorical_cols}
+
+# Preprocessing config (loaded from companion JSON file for Pipeline-extracted ONNX models)
+_preprocess_config = None
+
+
+def _load_preprocess_config():
+    global _preprocess_config
+    config_path = _model_path.replace(".onnx", "_preprocess.json")
+    if os.path.exists(config_path):
+        with open(config_path) as f:
+            _preprocess_config = json.load(f)
+        logger.info(f"Preprocessing config loaded from {{config_path}}")
+
+
+def _apply_preprocessing(df: pd.DataFrame) -> np.ndarray:
+    """Apply preprocessing to match what the training Pipeline's ColumnTransformer did.
+
+    Steps:
+    1. Reorder columns to match FEATURE_NAMES
+    2. Encode categorical columns with OrdinalEncoder mappings
+    3. Combine numeric + encoded categorical into a single float array
+    """
+    if FEATURE_NAMES:
+        missing = [c for c in FEATURE_NAMES if c not in df.columns]
+        if missing:
+            raise ValueError(f"Missing columns: {{missing}}")
+        df = df[FEATURE_NAMES]
+
+    config = _preprocess_config or {{}}
+    numeric_cols = config.get("numeric_cols", NUMERIC_COLS)
+    categorical_cols = config.get("categorical_cols", CATEGORICAL_COLS)
+
+    if not numeric_cols and not categorical_cols:
+        return df.values.astype(np.float32)
+
+    parts = []
+    for col in (numeric_cols or []):
+        if col in df.columns:
+            parts.append(df[[col]].values.astype(np.float32))
+
+    cat_encoder = config.get("cat_encoder")
+    if cat_encoder and categorical_cols:
+        known_categories = cat_encoder.get("categories", [])
+        unknown_value = cat_encoder.get("unknown_value", -1)
+        for i, col in enumerate(categorical_cols):
+            if col in df.columns:
+                col_vals = df[[col]].values
+                if i < len(known_categories):
+                    cat_map = {{v: k for k, v in enumerate(known_categories[i])}}
+                    encoded = np.full(col_vals.shape, unknown_value, dtype=np.float32)
+                    for j in range(len(col_vals)):
+                        val = col_vals[j, 0]
+                        if val in cat_map:
+                            encoded[j, 0] = float(cat_map[val])
+                    parts.append(encoded)
+                else:
+                    parts.append(np.zeros(col_vals.shape, dtype=np.float32))
+    elif categorical_cols:
+        for col in categorical_cols:
+            if col in df.columns:
+                parts.append(np.zeros((len(df), 1), dtype=np.float32))
+
+    if not parts:
+        return df.values.astype(np.float32)
+
+    return np.concatenate(parts, axis=1)
+
 
 def load_model():
     global _model
     if _model_format == "onnx":
         import onnxruntime as ort
         _model = ort.InferenceSession(_model_path)
+        _load_preprocess_config()
         logger.info(f"ONNX model loaded from {{_model_path}}")
     elif _model_format == "pickle":
         import joblib
         raw = joblib.load(_model_path)
-        # Handle dict wrapper: model + encoders bundle
         if isinstance(raw, dict) and "model" in raw:
             _model = raw["model"]
         else:
@@ -77,13 +149,17 @@ async def predict(request: Request):
     start = time.time()
     try:
         body = await request.json()
-        input_data = body.get("instances", body.get("data", body))
+        raw_input = body.get("instances", body.get("data", body))
 
-        df = pd.DataFrame(input_data) if isinstance(input_data, list) else pd.DataFrame([input_data])
+        if isinstance(raw_input, list):
+            df = pd.DataFrame(raw_input)
+        else:
+            df = pd.DataFrame([raw_input])
 
         if _model_format == "onnx":
+            input_array = _apply_preprocessing(df)
             input_name = _model.get_inputs()[0].name
-            ort_inputs = {{input_name: df.values.astype(np.float32)}}
+            ort_inputs = {{input_name: input_array}}
             predictions = _model.run(None, ort_inputs)[0]
         else:
             predictions = _model.predict(df).tolist()

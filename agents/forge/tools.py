@@ -42,6 +42,8 @@ def write_training_script(mission_brief: dict, job_id: str, scripts_dir: str = "
     file_path = mission_brief["dataset"]["file_path"]
     is_classification = task_type == "classification"
 
+    data_filename = os.path.basename(file_path)
+
     target_line = f'target = df.pop("{target}")' if target else "target = df.iloc[:, -1]"
     eval_metrics = (
         'from sklearn.metrics import roc_auc_score, f1_score, accuracy_score\nprint(f"Accuracy: {accuracy_score(y_test, y_pred):.4f}")'
@@ -49,6 +51,8 @@ def write_training_script(mission_brief: dict, job_id: str, scripts_dir: str = "
         'from sklearn.metrics import mean_squared_error\nrmse = float(np.sqrt(mean_squared_error(y_test, y_pred)))\nprint(f"RMSE: {rmse:.4f}")'
     )
 
+    # Use DATA_DIR / OUTPUTS_DIR env vars so the script works both on the host
+    # (defaults: ./data, ./outputs) and inside a Docker container (/app/data, /app/outputs).
     script = f'''"""
 Training script for job {job_id}
 Architecture: {architecture}
@@ -69,8 +73,9 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 
 
-# --- Data loading ---
-df = pd.read_csv(r"{file_path}")
+# --- Data loading (DATA_DIR env var for container-relative paths) ---
+_data_dir = os.getenv("DATA_DIR", "./data")
+df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"))
 {target_line}
 
 # Drop high-cardinality text columns (Name, Ticket, Cabin)
@@ -109,8 +114,9 @@ model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 {eval_metrics}
 
-# --- Save checkpoint ---
-output_dir = r"outputs/{job_id}/checkpoints"
+# --- Save checkpoint (OUTPUTS_DIR env var for container-relative paths) ---
+_outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
+output_dir = os.path.join(_outputs_dir, "{job_id}", "checkpoints")
 os.makedirs(output_dir, exist_ok=True)
 checkpoint_path = os.path.join(output_dir, "best.ckpt")
 with open(checkpoint_path, "wb") as f:

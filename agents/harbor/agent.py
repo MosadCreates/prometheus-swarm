@@ -23,6 +23,37 @@ from bus.events import (
 from bus.publisher import publish
 
 
+def _extract_column_info(mission_brief: dict | None) -> tuple[list[str], list[str], list[str]]:
+    """Extract feature_names, numeric_cols, categorical_cols from mission_brief.
+
+    Returns: (feature_names, numeric_cols, categorical_cols)
+    """
+    feature_names: list[str] = []
+    numeric_cols: list[str] = []
+    categorical_cols: list[str] = []
+
+    if not mission_brief:
+        return feature_names, numeric_cols, categorical_cols
+
+    dataset = mission_brief.get("dataset", {})
+    col_types = dataset.get("column_types", {})
+
+    target_col = mission_brief.get("target_column")
+
+    for col, dtype in col_types.items():
+        if target_col and col == target_col:
+            continue
+        if dtype == "target":
+            continue
+        feature_names.append(col)
+        if dtype == "numeric":
+            numeric_cols.append(col)
+        elif dtype == "categorical":
+            categorical_cols.append(col)
+
+    return feature_names, numeric_cols, categorical_cols
+
+
 class HarborAgent(BaseAgent):
     @property
     def agent_name(self) -> str:
@@ -32,17 +63,22 @@ class HarborAgent(BaseAgent):
     def system_prompt(self) -> str:
         return HARBOR_SYSTEM_PROMPT
 
+    async def run(self) -> None:
+        raise NotImplementedError(
+            "HarborAgent is event-triggered. Call on_evaluation_pass(event) directly; "
+            "it does not have a standalone run() loop."
+        )
+
     async def on_evaluation_pass(self, event: dict) -> None:
         self.job_id = event["job_id"]
         self.logger.info(f"[job={self.job_id}] Harbor deploying model")
 
         checkpoint_path = None
         try:
-            raw = await self.redis.get(f"job:{self.job_id}:checkpoint")
-            if raw:
-                data = json.loads(raw) if isinstance(raw, str) else raw
-                checkpoint_path = data.get("checkpoint_path") or data
-            else:
+            data = await self.redis.get_json(f"job:{self.job_id}:checkpoint")
+            if data and isinstance(data, dict):
+                checkpoint_path = data.get("checkpoint_path")
+            if not checkpoint_path:
                 checkpoint_path = f"outputs/{self.job_id}/checkpoints/best.ckpt"
         except Exception:
             checkpoint_path = f"outputs/{self.job_id}/checkpoints/best.ckpt"
@@ -56,6 +92,14 @@ class HarborAgent(BaseAgent):
                 self.logger.error(f"[job={self.job_id}] No checkpoint found")
                 return
 
+        # Read mission_brief for column info
+        try:
+            mission_brief = await self.redis.get_json(f"job:{self.job_id}:mission_brief")
+        except Exception:
+            mission_brief = None
+
+        feature_names, numeric_cols, categorical_cols = _extract_column_info(mission_brief)
+
         output_dir = f"outputs/{self.job_id}/serving"
         os.makedirs(output_dir, exist_ok=True)
 
@@ -63,7 +107,7 @@ class HarborAgent(BaseAgent):
         onnx_success, onnx_result = serialize_to_onnx(
             checkpoint_path,
             onnx_path,
-            model_type="lightgbm",
+            feature_names=feature_names or None,
         )
 
         model_format = "onnx" if onnx_success else "pickle"
@@ -77,6 +121,9 @@ class HarborAgent(BaseAgent):
             model_path=os.path.abspath(model_path),
             output_dir=output_dir,
             model_format=model_format,
+            feature_names=feature_names or None,
+            numeric_cols=numeric_cols or None,
+            categorical_cols=categorical_cols or None,
         )
 
         safe_id = self.job_id[:8].strip("-").strip("_")
@@ -126,4 +173,7 @@ class HarborAgent(BaseAgent):
                 "container_name": container_name,
                 "image_name": image_name,
                 "drift_config": drift_config,
+                "feature_names": feature_names,
+                "numeric_cols": numeric_cols,
+                "categorical_cols": categorical_cols,
             }, f, indent=2)

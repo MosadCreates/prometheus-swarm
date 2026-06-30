@@ -32,6 +32,12 @@ class ArbiterAgent(BaseAgent):
     def system_prompt(self) -> str:
         return ARBITER_SYSTEM_PROMPT
 
+    async def run(self) -> None:
+        raise NotImplementedError(
+            "ArbiterAgent is event-triggered. Call on_training_complete(event) directly; "
+            "it does not have a standalone run() loop."
+        )
+
     async def on_training_complete(self, event: dict) -> None:
         self.job_id = event["job_id"]
         self.logger.info(f"[job={self.job_id}] Arbiter evaluating model")
@@ -86,9 +92,8 @@ class ArbiterAgent(BaseAgent):
 
     async def _get_task_type(self) -> str:
         try:
-            raw = await self.redis.get(f"job:{self.job_id}:mission_brief")
-            if raw:
-                brief = json.loads(raw) if isinstance(raw, str) else raw
+            brief = await self.redis.get_json(f"job:{self.job_id}:mission_brief")
+            if brief:
                 return brief.get("task_type", "classification")
         except Exception:
             pass

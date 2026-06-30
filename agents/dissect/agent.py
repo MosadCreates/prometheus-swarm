@@ -24,6 +24,12 @@ class DissectAgent(BaseAgent):
     def system_prompt(self) -> str:
         return DISSECT_SYSTEM_PROMPT
 
+    async def run(self) -> None:
+        raise NotImplementedError(
+            "DissectAgent is event-triggered. Call handle_crash(crash_event) directly; "
+            "it does not have a standalone run() loop."
+        )
+
     async def handle_crash(self, crash_event: dict) -> None:
         self.job_id = crash_event["job_id"]
         self.logger.info(f"[job={self.job_id}] Dissect handling crash")
@@ -32,7 +38,7 @@ class DissectAgent(BaseAgent):
         exception_type = crash_event["exception_type"]
         exception_message = crash_event["exception_message"]
         traceback_str = crash_event.get("traceback", "")
-        attempt_number = crash_event.get("crash_attempt_number", 1)
+        attempt_number = int(crash_event.get("crash_attempt_number", 1))
 
         category, confidence, match_method = classify_error(exception_type, exception_message)
         strategy = get_repair_strategy(category)
@@ -136,22 +142,38 @@ class DissectAgent(BaseAgent):
         )
 
     def _build_prompt(self, crash_event: dict, category: str, strategy: str) -> str:
+        script_content = ""
+        try:
+            with open(crash_event["script_path"]) as f:
+                script_content = f.read()
+        except Exception:
+            script_content = "[unable to read script]"
+
         return (
             f"The following training script crashed:\n\n"
-            f"Script path: {crash_event['script_path']}\n"
+            f"Script path: {crash_event['script_path']}\n\n"
+            f"--- BEGIN SCRIPT ---\n"
+            f"{script_content}\n"
+            f"--- END SCRIPT ---\n\n"
             f"Exception: {crash_event['exception_type']}: {crash_event['exception_message']}\n"
             f"Error category: {category}\n"
             f"Suggested repair strategy: {strategy}\n\n"
-            f"Read the script at {crash_event['script_path']}, "
-            f"identify the bug, and output the complete fixed script."
+            f"Fix the bug and output the COMPLETE fixed script. "
+            f"Do NOT output a diff or patch — output the entire script."
         )
 
     @staticmethod
     def _clean_code_fences(text: str) -> str:
         lines = text.split("\n")
-        cleaned = []
+        in_block = False
+        captured = []
         for line in lines:
-            if line.strip().startswith("```"):
+            stripped = line.strip()
+            if stripped.startswith("```"):
+                in_block = not in_block
                 continue
-            cleaned.append(line)
-        return "\n".join(cleaned)
+            if in_block:
+                captured.append(line)
+        if captured:
+            return "\n".join(captured)
+        return text.strip()

@@ -57,6 +57,11 @@ class ScoutAgent(BaseAgent):
         mission_key = f"job:{self.job_id}:mission_brief"
         await self.redis.set_json(mission_key, brief)
 
+        await self.redis.set_str(f"job:{self.job_id}:file_path", file_path)
+        await self.redis.set_str(
+            f"job:{self.job_id}:problem_description", problem_description
+        )
+
         await publish(
             self.redis._client,
             STREAM_SCOUT_OUTPUT,

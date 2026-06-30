@@ -1,7 +1,11 @@
-# Base training image
+# Base training image for Prometheus Swarm.
+# Scripts, data, and outputs are mounted as Docker volumes at runtime — not COPYed.
 FROM python:3.11-slim
 
-RUN pip install --no-cache-dir \
+WORKDIR /app
+
+RUN mkdir -p scripts data outputs && \
+    pip install --no-cache-dir \
     lightgbm==4.3.0 \
     xgboost==2.0.3 \
     scikit-learn==1.4.2 \
@@ -11,10 +15,5 @@ RUN pip install --no-cache-dir \
     optuna==3.6.1 \
     torch==2.3.0 \
     transformers==4.41.0
-
-WORKDIR /app
-COPY scripts/ /app/scripts/
-COPY data/ /app/data/
-COPY outputs/ /app/outputs/
 
 ENTRYPOINT ["python"]

@@ -24,8 +24,14 @@ async def publish(
         **payload,
     }
 
-    flat = {k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
-            for k, v in full_payload.items()}
+    flat = {}
+    for k, v in full_payload.items():
+        if v is None:
+            flat[k] = ""
+        elif isinstance(v, (dict, list)):
+            flat[k] = json.dumps(v)
+        else:
+            flat[k] = str(v)
 
     msg_id = await redis_client.xadd(stream_name, flat)
     logger.debug(f"Published {event_type} to {stream_name} [{msg_id}]")
