@@ -1,15 +1,15 @@
-# CLAUDE.md — Prometheus Swarm
+# CLAUDE.md â€” Prometheus Swarm
 # Foundational Operating Document for All Claude Code Sessions
 # Version: 1.0 | Project: Prometheus Swarm | Owner: Mohamed Mosad Ghonaim
-# Alamein International University — Nexora Lab — nexoraintel.com
+# Alamein International University â€” Nexora Lab â€” nexoraintel.com
 # This file is the single source of truth. Never contradict it. Never improvise against it.
 
 ---
 
-## 0. WHAT THIS PROJECT IS — READ THIS FIRST
+## 0. WHAT THIS PROJECT IS â€” READ THIS FIRST
 
 Prometheus Swarm is an autonomous multi-agent system that accepts a raw natural-language
-description of a machine-learning problem and returns — without any human intervention —
+description of a machine-learning problem and returns â€” without any human intervention â€”
 a fully trained, evaluated, and live-served model endpoint.
 
 The system coordinates six specialized AI agents. Each agent is an independent process with
@@ -28,7 +28,7 @@ The one-sentence product definition: "You describe the task. The swarm does the 
 
 ---
 
-## 1. ABSOLUTE RULES — NEVER VIOLATE THESE
+## 1. ABSOLUTE RULES â€” NEVER VIOLATE THESE
 
 1. NEVER rename any of the six agents. Their names are: Scout, Forge, Furnace, Dissect,
    Arbiter, Harbor. These names are used in system prompts, Redis event keys, log files,
@@ -55,8 +55,8 @@ The one-sentence product definition: "You describe the task. The swarm does the 
 
 7. NEVER skip writing to the patch log when Dissect attempts a patch. This log is the
    research dataset. Every attempt (success OR failure) must be recorded. Missing entries
-   invalidate the paper's experimental results. Write path: Dissect → Redis RPUSH
-   "patch_log_queue" → patch_log_writer.py → research/patch_log.jsonl. Never write
+   invalidate the paper's experimental results. Write path: Dissect â†’ Redis RPUSH
+   "patch_log_queue" â†’ patch_log_writer.py â†’ research/patch_log.jsonl. Never write
    directly to the file from agent code. See Section 7 for the full write path.
 
 8. NEVER let a module be "owned by everyone." Every file has exactly one owner listed
@@ -77,146 +77,146 @@ without explicit instruction.
 
 ```
 prometheus-swarm/
-│
-├── CLAUDE.md                          ← THIS FILE. Never move it.
-├── .env                               ← Environment variables. Never commit to git.
-├── .env.example                       ← Committed env template with no values.
-├── .gitignore
-├── requirements.txt                   ← Pinned dependencies. All versions pinned.
-├── pyproject.toml
-├── README.md
-│
-├── agents/                            ← One module per agent. No cross-imports.
-│   ├── __init__.py
-│   ├── scout/
-│   │   ├── __init__.py
-│   │   ├── agent.py                   ← Scout agent loop + LLM call
-│   │   ├── tools.py                   ← parse_problem, detect_modality, run_eda
-│   │   └── prompts.py                 ← Scout system prompt (string constant)
-│   ├── forge/
-│   │   ├── __init__.py
-│   │   ├── agent.py
-│   │   ├── tools.py                   ← select_architecture, write_training_script
-│   │   ├── decision_tree.py           ← Architecture selection heuristics
-│   │   └── prompts.py
-│   ├── furnace/
-│   │   ├── __init__.py
-│   │   ├── agent.py
-│   │   ├── tools.py                   ← launch_container, monitor_loss, publish_metrics
-│   │   └── prompts.py
-│   ├── dissect/
-│   │   ├── __init__.py
-│   │   ├── agent.py
-│   │   ├── tools.py                   ← parse_trace, classify_error, apply_patch
-│   │   ├── taxonomy.py                ← Error taxonomy: categories + repair strategies
-│   │   ├── patch_log.py               ← patch_log.jsonl writer (NEVER skip this)
-│   │   └── prompts.py
-│   ├── arbiter/
-│   │   ├── __init__.py
-│   │   ├── agent.py
-│   │   ├── tools.py                   ← compute_metrics, failure_analysis, decide
-│   │   └── prompts.py
-│   └── harbor/
-│       ├── __init__.py
-│       ├── agent.py
-│       ├── tools.py                   ← serialize_model, build_api, deploy, monitor_drift
-│       ├── serving_template.py        ← FastAPI app template Harbor fills per model
-│       └── prompts.py
-│
-├── orchestrator/                      ← Owns the runtime that launches + manages agents
-│   ├── __init__.py
-│   ├── runtime.py                     ← Main orchestration loop
-│   ├── job_queue.py                   ← Job submission + queuing
-│   ├── health_monitor.py             ← Agent crash detection + restart logic
-│   └── patch_log_writer.py           ← Single-threaded BLPOP → JSONL writer (see §7)
-│
-├── memory/                            ← All memory layer code
-│   ├── __init__.py
-│   ├── redis_client.py                ← Redis connection + Streams helpers
-│   ├── chroma_client.py               ← ChromaDB connection + collection helpers
-│   ├── collections/
-│   │   ├── patch_memory.py            ← patch_memory collection logic
-│   │   ├── architecture_memory.py     ← architecture_memory collection logic
-│   │   └── tool_memory.py             ← tool_memory collection logic
-│   └── schemas.py                     ← Pydantic models for all memory records
-│
-├── bus/                               ← Redis Streams message bus abstraction
-│   ├── __init__.py
-│   ├── publisher.py                   ← publish(stream_name, event_type, payload)
-│   ├── consumer.py                    ← consume(stream_name, consumer_group, handler)
-│   └── events.py                      ← All event type constants (single source of truth)
-│
-├── training/                          ← Training environment management
-│   ├── __init__.py
-│   ├── docker_manager.py              ← Container lifecycle: launch, monitor, kill, restart
-│   ├── checkpoint_manager.py          ← Save, restore, integrity-check checkpoints
-│   └── base_training_image/
-│       └── Dockerfile                 ← Base Docker image for all training containers
-│
-├── serving/                           ← Model serving infrastructure
-│   ├── __init__.py
-│   ├── onnx_runtime.py                ← ONNX model loading + inference
-│   ├── drift_monitor.py               ← PSI computation service
-│   └── docker/
-│       └── Dockerfile                 ← Serving container Dockerfile
-│
-├── scripts/                           ← All training scripts written by Forge live here
-│   └── .gitkeep                       ← Forge writes training_script_{job_id}.py here
-│
-├── outputs/                           ← All job outputs: models, logs, reports
-│   └── .gitkeep
-│
-├── data/                              ← Dataset uploads for local dev/testing
-│   └── .gitkeep
-│
-├── tests/                             ← All test files
-│   ├── __init__.py
-│   ├── integration/
-│   │   ├── test_titanic_e2e.py        ← Phase 1 gate test. Must stay green.
-│   │   └── test_three_kaggle_e2e.py   ← Phase 2 gate test.
-│   ├── unit/
-│   │   ├── test_scout_tools.py
-│   │   ├── test_forge_decision_tree.py
-│   │   ├── test_dissect_taxonomy.py   ← Test each error category + repair strategy
-│   │   ├── test_arbiter_metrics.py
-│   │   └── test_bus_events.py
-│   └── fixtures/
-│       ├── titanic.csv
-│       └── injected_errors/           ← 5 deliberately broken scripts for Dissect testing
-│
-├── frontend/                          ← Next.js live agent feed UI
-│   ├── package.json
-│   └── src/
-│       └── app/
-│           └── feed/                  ← Live SSE feed page
-│
-├── infra/                             ← Infrastructure config (Phase 3)
-│   ├── kubernetes/
-│   │   └── deployment.yaml
-│   ├── helm/
-│   └── monitoring/
-│       ├── prometheus.yml
-│       └── grafana_dashboard.json
-│
-├── research/                          ← Research experiment for MSR/ASE 2026 paper
-│   ├── benchmark/
-│   │   ├── problems.json              ← 50 ML problems definition
-│   │   └── results/
-│   ├── patch_log.jsonl                ← THE RESEARCH DATASET (JSONL). Never delete.
-│   ├── convert_jsonl_to_json.py       ← Post-experiment: JSONL → JSON array for paper
-│   └── paper/
-│       └── draft.md
-│
-└── docker-compose.yml                 ← Local dev: Redis + ChromaDB + serving stack
+â”‚
+â”œâ”€â”€ CLAUDE.md                          â† THIS FILE. Never move it.
+â”œâ”€â”€ .env                               â† Environment variables. Never commit to git.
+â”œâ”€â”€ .env.example                       â† Committed env template with no values.
+â”œâ”€â”€ .gitignore
+â”œâ”€â”€ requirements.txt                   â† Pinned dependencies. All versions pinned.
+â”œâ”€â”€ pyproject.toml
+â”œâ”€â”€ README.md
+â”‚
+â”œâ”€â”€ agents/                            â† One module per agent. No cross-imports.
+â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”œâ”€â”€ scout/
+â”‚   â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”‚   â”œâ”€â”€ agent.py                   â† Scout agent loop + LLM call
+â”‚   â”‚   â”œâ”€â”€ tools.py                   â† parse_problem, detect_modality, run_eda
+â”‚   â”‚   â””â”€â”€ prompts.py                 â† Scout system prompt (string constant)
+â”‚   â”œâ”€â”€ forge/
+â”‚   â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”‚   â”œâ”€â”€ agent.py
+â”‚   â”‚   â”œâ”€â”€ tools.py                   â† select_architecture, write_training_script
+â”‚   â”‚   â”œâ”€â”€ decision_tree.py           â† Architecture selection heuristics
+â”‚   â”‚   â””â”€â”€ prompts.py
+â”‚   â”œâ”€â”€ furnace/
+â”‚   â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”‚   â”œâ”€â”€ agent.py
+â”‚   â”‚   â”œâ”€â”€ tools.py                   â† launch_container, monitor_loss, publish_metrics
+â”‚   â”‚   â””â”€â”€ prompts.py
+â”‚   â”œâ”€â”€ dissect/
+â”‚   â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”‚   â”œâ”€â”€ agent.py
+â”‚   â”‚   â”œâ”€â”€ tools.py                   â† parse_trace, classify_error, apply_patch
+â”‚   â”‚   â”œâ”€â”€ taxonomy.py                â† Error taxonomy: categories + repair strategies
+â”‚   â”‚   â”œâ”€â”€ patch_log.py               â† patch_log.jsonl writer (NEVER skip this)
+â”‚   â”‚   â””â”€â”€ prompts.py
+â”‚   â”œâ”€â”€ arbiter/
+â”‚   â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”‚   â”œâ”€â”€ agent.py
+â”‚   â”‚   â”œâ”€â”€ tools.py                   â† compute_metrics, failure_analysis, decide
+â”‚   â”‚   â””â”€â”€ prompts.py
+â”‚   â””â”€â”€ harbor/
+â”‚       â”œâ”€â”€ __init__.py
+â”‚       â”œâ”€â”€ agent.py
+â”‚       â”œâ”€â”€ tools.py                   â† serialize_model, build_api, deploy, monitor_drift
+â”‚       â”œâ”€â”€ serving_template.py        â† FastAPI app template Harbor fills per model
+â”‚       â””â”€â”€ prompts.py
+â”‚
+â”œâ”€â”€ orchestrator/                      â† Owns the runtime that launches + manages agents
+â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”œâ”€â”€ runtime.py                     â† Main orchestration loop
+â”‚   â”œâ”€â”€ job_queue.py                   â† Job submission + queuing
+â”‚   â”œâ”€â”€ health_monitor.py             â† Agent crash detection + restart logic
+â”‚   â””â”€â”€ patch_log_writer.py           â† Single-threaded BLPOP â†’ JSONL writer (see Â§7)
+â”‚
+â”œâ”€â”€ memory/                            â† All memory layer code
+â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”œâ”€â”€ redis_client.py                â† Redis connection + Streams helpers
+â”‚   â”œâ”€â”€ chroma_client.py               â† ChromaDB connection + collection helpers
+â”‚   â”œâ”€â”€ collections/
+â”‚   â”‚   â”œâ”€â”€ patch_memory.py            â† patch_memory collection logic
+â”‚   â”‚   â”œâ”€â”€ architecture_memory.py     â† architecture_memory collection logic
+â”‚   â”‚   â””â”€â”€ tool_memory.py             â† tool_memory collection logic
+â”‚   â””â”€â”€ schemas.py                     â† Pydantic models for all memory records
+â”‚
+â”œâ”€â”€ bus/                               â† Redis Streams message bus abstraction
+â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”œâ”€â”€ publisher.py                   â† publish(stream_name, event_type, payload)
+â”‚   â”œâ”€â”€ consumer.py                    â† consume(stream_name, consumer_group, handler)
+â”‚   â””â”€â”€ events.py                      â† All event type constants (single source of truth)
+â”‚
+â”œâ”€â”€ training/                          â† Training environment management
+â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”œâ”€â”€ docker_manager.py              â† Container lifecycle: launch, monitor, kill, restart
+â”‚   â”œâ”€â”€ checkpoint_manager.py          â† Save, restore, integrity-check checkpoints
+â”‚   â””â”€â”€ base_training_image/
+â”‚       â””â”€â”€ Dockerfile                 â† Base Docker image for all training containers
+â”‚
+â”œâ”€â”€ serving/                           â† Model serving infrastructure
+â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”œâ”€â”€ onnx_runtime.py                â† ONNX model loading + inference
+â”‚   â”œâ”€â”€ drift_monitor.py               â† PSI computation service
+â”‚   â””â”€â”€ docker/
+â”‚       â””â”€â”€ Dockerfile                 â† Serving container Dockerfile
+â”‚
+â”œâ”€â”€ scripts/                           â† All training scripts written by Forge live here
+â”‚   â””â”€â”€ .gitkeep                       â† Forge writes training_script_{job_id}.py here
+â”‚
+â”œâ”€â”€ outputs/                           â† All job outputs: models, logs, reports
+â”‚   â””â”€â”€ .gitkeep
+â”‚
+â”œâ”€â”€ data/                              â† Dataset uploads for local dev/testing
+â”‚   â””â”€â”€ .gitkeep
+â”‚
+â”œâ”€â”€ tests/                             â† All test files
+â”‚   â”œâ”€â”€ __init__.py
+â”‚   â”œâ”€â”€ integration/
+â”‚   â”‚   â”œâ”€â”€ test_titanic_e2e.py        â† Phase 1 gate test. Must stay green.
+â”‚   â”‚   â””â”€â”€ test_three_kaggle_e2e.py   â† Phase 2 gate test.
+â”‚   â”œâ”€â”€ unit/
+â”‚   â”‚   â”œâ”€â”€ test_scout_tools.py
+â”‚   â”‚   â”œâ”€â”€ test_forge_decision_tree.py
+â”‚   â”‚   â”œâ”€â”€ test_dissect_taxonomy.py   â† Test each error category + repair strategy
+â”‚   â”‚   â”œâ”€â”€ test_arbiter_metrics.py
+â”‚   â”‚   â””â”€â”€ test_bus_events.py
+â”‚   â””â”€â”€ fixtures/
+â”‚       â”œâ”€â”€ titanic.csv
+â”‚       â””â”€â”€ injected_errors/           â† 5 deliberately broken scripts for Dissect testing
+â”‚
+â”œâ”€â”€ frontend/                          â† Next.js live agent feed UI
+â”‚   â”œâ”€â”€ package.json
+â”‚   â””â”€â”€ src/
+â”‚       â””â”€â”€ app/
+â”‚           â””â”€â”€ feed/                  â† Live SSE feed page
+â”‚
+â”œâ”€â”€ infra/                             â† Infrastructure config (Phase 3)
+â”‚   â”œâ”€â”€ kubernetes/
+â”‚   â”‚   â””â”€â”€ deployment.yaml
+â”‚   â”œâ”€â”€ helm/
+â”‚   â””â”€â”€ monitoring/
+â”‚       â”œâ”€â”€ prometheus.yml
+â”‚       â””â”€â”€ grafana_dashboard.json
+â”‚
+â”œâ”€â”€ research/                          â† Research experiment for MSR/ASE 2026 paper
+â”‚   â”œâ”€â”€ benchmark/
+â”‚   â”‚   â”œâ”€â”€ problems.json              â† 50 ML problems definition
+â”‚   â”‚   â””â”€â”€ results/
+â”‚   â”œâ”€â”€ patch_log.jsonl                â† THE RESEARCH DATASET (JSONL). Never delete.
+â”‚   â”œâ”€â”€ convert_jsonl_to_json.py       â† Post-experiment: JSONL â†’ JSON array for paper
+â”‚   â””â”€â”€ paper/
+â”‚       â””â”€â”€ draft.md
+â”‚
+â””â”€â”€ docker-compose.yml                 â† Local dev: Redis + ChromaDB + serving stack
 ```
 
 ---
 
-## 3. THE SIX AGENTS — CONTRACTS
+## 3. THE SIX AGENTS â€” CONTRACTS
 
 Each agent has a fixed role. Read this before writing any agent code.
 
-### 3.1 Scout — The Perceiver
+### 3.1 Scout â€” The Perceiver
 - **Input:** Raw natural-language problem description + dataset file path + constraints
 - **Output:** `mission_brief.json` written to Redis key `job:{job_id}:mission_brief`
 - **Tools it can call:** `parse_problem`, `detect_modality`, `run_eda`, `write_mission_brief`
@@ -226,7 +226,7 @@ Each agent has a fixed role. Read this before writing any agent code.
   feature_types, recommended_metric, data_warnings
 - **Does NOT do:** Training, architecture selection, evaluation, deployment
 
-### 3.2 Forge — The Architect
+### 3.2 Forge â€” The Architect
 - **Input:** `mission_brief.json` from Redis
 - **Output:** `training_script_{job_id}.py` written to `scripts/` + `search_space.json`
   written to Redis key `job:{job_id}:search_space`
@@ -237,7 +237,7 @@ Each agent has a fixed role. Read this before writing any agent code.
 - **Architecture decision logic lives in:** `agents/forge/decision_tree.py`
 - **Does NOT do:** Running training, evaluating, patching errors, deploying
 
-### 3.3 Furnace — The Trainer
+### 3.3 Furnace â€” The Trainer
 - **Input:** `training_script_{job_id}.py` path from Redis + `search_space.json`
 - **Output:** Trained model checkpoint at `outputs/{job_id}/checkpoints/best.ckpt`
   + live metrics stream
@@ -250,7 +250,7 @@ Each agent has a fixed role. Read this before writing any agent code.
 - **Subscribes to:** `forge_output` stream + `dissect_output` stream (RESUME_TRAINING)
 - **Does NOT do:** Writing code, evaluating, deploying, patching
 
-### 3.4 Dissect — The Debugger (Core Scientific Contribution)
+### 3.4 Dissect â€” The Debugger (Core Scientific Contribution)
 - **Input:** `CRASH_EVENT` from `furnace_crash` stream
 - **Output:** Patched `training_script_{job_id}.py` + entry in `research/patch_log.jsonl`
   + `RESUME_TRAINING` event
@@ -261,13 +261,13 @@ Each agent has a fixed role. Read this before writing any agent code.
   - `ESCALATE` on stream `dissect_output` (after 3 failed patch attempts)
 - **Subscribes to:** `furnace_crash` stream
 - **Max auto-patch attempts per crash:** 3. After 3, publish ESCALATE.
-- **Patch must be tested:** Apply patch → run patched script in sandbox container →
-  if it fails again within 3 epochs → rollback → try next strategy → if no strategy
-  works after 3 attempts → ESCALATE.
+- **Patch must be tested:** Apply patch â†’ run patched script in sandbox container â†’
+  if it fails again within 3 epochs â†’ rollback â†’ try next strategy â†’ if no strategy
+  works after 3 attempts â†’ ESCALATE.
 - **patch_log.jsonl entry is MANDATORY for every patch attempt, success or failure**
 - **Does NOT do:** Training, evaluating, deploying, selecting architectures
 
-### 3.5 Arbiter — The Critic
+### 3.5 Arbiter â€” The Critic
 - **Input:** Best model checkpoint path from Redis + test dataset path
 - **Output:** `eval_report_{job_id}.json` written to `outputs/{job_id}/` +
   decision signal
@@ -279,16 +279,16 @@ Each agent has a fixed role. Read this before writing any agent code.
   - `ESCALATE` on stream `arbiter_output` (metrics far below or 3+ crashes occurred)
 - **Subscribes to:** `furnace_output` stream (waits for `TRAINING_COMPLETE`)
 - **Decision logic:**
-  - All metrics ≥ threshold → PASS
-  - Metrics < threshold but within 15% → RETRY (signals Forge for new architecture)
-  - Metrics > 15% below threshold OR ≥ 3 crashes → ESCALATE
+  - All metrics â‰¥ threshold â†’ PASS
+  - Metrics < threshold but within 15% â†’ RETRY (signals Forge for new architecture)
+  - Metrics > 15% below threshold OR â‰¥ 3 crashes â†’ ESCALATE
 - **Regression threshold strategy:** Regression metrics (RMSE, MAE) are dataset-relative,
   not absolute. The baseline is `std(y_target)` (standard deviation of the target column).
-  A model must beat the naive mean prediction by ≥15%: `threshold_rmse = std(y_target) * 0.85`.
+  A model must beat the naive mean prediction by â‰¥15%: `threshold_rmse = std(y_target) * 0.85`.
   Arbiter computes this dynamically from the test set, not from a hardcoded constant.
 - **Does NOT do:** Training, patching, deploying, modifying scripts
 
-### 3.6 Harbor — The Deployer
+### 3.6 Harbor â€” The Deployer
 - **Input:** `PASS` event from `arbiter_output` + checkpoint path
 - **Output:** Live HTTPS endpoint URL + monitoring dashboard
 - **Tools it can call:** `serialize_to_onnx`, `generate_fastapi_app`, `build_docker_image`,
@@ -300,7 +300,7 @@ Each agent has a fixed role. Read this before writing any agent code.
 - **Subscribes to:** `arbiter_output` (waits for PASS) + `harbor_output` for its own
   DRIFT_ALERT (to trigger retraining cycle back to Scout)
 - **Drift check:** PSI computed hourly on last 1,000 live inputs vs training distribution
-- **PSI threshold:** > 0.2 triggers DRIFT_ALERT → Scout begins new cycle
+- **PSI threshold:** > 0.2 triggers DRIFT_ALERT â†’ Scout begins new cycle
 - **Does NOT do:** Training, patching, evaluating, architecture selection
 - **Phase 1-3:** Deploy to local Docker Compose only
 - **Phase 4:** Deploy to GKE (Kubernetes manifests in `infra/kubernetes/`)
@@ -330,7 +330,7 @@ The owner column is retained per path for traceability if external contributors 
 
 ---
 
-## 5. REDIS EVENT TAXONOMY — EXACT SCHEMAS
+## 5. REDIS EVENT TAXONOMY â€” EXACT SCHEMAS
 
 These are the contracts between agents. Never add, remove, or rename a field without
 updating this section and all subscriber code simultaneously.
@@ -341,7 +341,7 @@ All event type string constants live in `bus/events.py`. Import from there. Neve
 raw strings for event types in agent or tool code.
 
 ```python
-# bus/events.py — the ONLY place event type strings are defined
+# bus/events.py â€” the ONLY place event type strings are defined
 
 MISSION_BRIEF_READY   = "MISSION_BRIEF_READY"
 TRAINING_SCRIPT_READY = "TRAINING_SCRIPT_READY"
@@ -409,7 +409,7 @@ JOB_FAILED            = "JOB_FAILED"
     "script_path": str,               # Path to the crashed script
     "last_checkpoint_path": str,      # Path to last valid checkpoint (or null)
     "epoch_at_crash": int,
-    "crash_attempt_number": int,      # 1, 2, or 3 — escalate after 3
+    "crash_attempt_number": int,      # 1, 2, or 3 â€” escalate after 3
     "timestamp": str
 }
 
@@ -452,7 +452,7 @@ JOB_FAILED            = "JOB_FAILED"
     "timestamp": str
 }
 
-# JOB_FAILED  ← published by Orchestrator after consuming ESCALATE (not by agents)
+# JOB_FAILED  â† published by Orchestrator after consuming ESCALATE (not by agents)
 {
     "event_type": "JOB_FAILED",
     "job_id": str,
@@ -462,7 +462,7 @@ JOB_FAILED            = "JOB_FAILED"
     "timestamp": str
 }
 
-# ENDPOINT_LIVE  ← published by Harbor after successful deployment
+# ENDPOINT_LIVE  â† published by Harbor after successful deployment
 {
     "event_type": "ENDPOINT_LIVE",
     "job_id": str,
@@ -473,7 +473,7 @@ JOB_FAILED            = "JOB_FAILED"
     "timestamp": str
 }
 
-# DRIFT_ALERT  ← published by Harbor when PSI exceeds threshold
+# DRIFT_ALERT  â† published by Harbor when PSI exceeds threshold
 {
     "event_type": "DRIFT_ALERT",
     "job_id": str,
@@ -484,14 +484,14 @@ JOB_FAILED            = "JOB_FAILED"
 }
 ```
 
-### ESCALATE Resolution Path — What Happens After ESCALATE
+### ESCALATE Resolution Path â€” What Happens After ESCALATE
 
 ESCALATE is consumed by the Orchestrator via `orchestrator_consumers` group on the
 stream where it was published (`dissect_output` or `arbiter_output`).
 
 **What the Orchestrator does on receiving ESCALATE:**
 1. Sets `job:{job_id}:status` in Redis to `"ESCALATED"`
-2. If source is Dissect: sends KILL signal to Furnace → Furnace kills the training
+2. If source is Dissect: sends KILL signal to Furnace â†’ Furnace kills the training
    container and releases Docker resources
 3. If source is Arbiter: no container to kill (training already complete)
 4. Writes `diagnostic_report_{job_id}.json` to `outputs/{job_id}/` containing:
@@ -501,7 +501,7 @@ stream where it was published (`dissect_output` or `arbiter_output`).
    - The reason string from the ESCALATE event
 5. Publishes `JOB_FAILED` event to stream `orchestrator_output`
 6. Frontend SSE feed reads `JOB_FAILED` and displays to the user:
-   "Job failed — Prometheus Swarm could not automatically resolve this issue.
+   "Job failed â€” Prometheus Swarm could not automatically resolve this issue.
    Download the diagnostic report to understand what went wrong."
    with a link to `diagnostic_report_{job_id}.json`
 
@@ -510,14 +510,14 @@ stream where it was published (`dissect_output` or `arbiter_output`).
 - Redis keys `job:{job_id}:*`: preserved for 24 hours (TTL), then auto-deleted
 - `research/patch_log.jsonl`: all Dissect attempts recorded with `outcome=escalated`
 - Harbor: never receives this job. Harbor ONLY processes EVALUATION_PASS events.
-- The job does NOT block new submissions — orchestrator continues serving the queue
+- The job does NOT block new submissions â€” orchestrator continues serving the queue
 - The escalated job_id is permanently marked `ESCALATED` in job history
 
 **ESCALATE does NOT mean the system stops. It means this specific job failed.**
 
 ---
 
-## 6. mission_brief.json — EXACT SCHEMA
+## 6. mission_brief.json â€” EXACT SCHEMA
 
 Written by Scout to Redis key `job:{job_id}:mission_brief`.
 Read by Forge, Furnace, Arbiter, and Harbor.
@@ -560,12 +560,12 @@ Never add or remove fields without updating all reader agents.
 
 ---
 
-## 7. patch_log — STORAGE + EXACT SCHEMA (THE RESEARCH DATASET)
+## 7. patch_log â€” STORAGE + EXACT SCHEMA (THE RESEARCH DATASET)
 
-Every Dissect patch attempt — success OR failure — must be recorded.
+Every Dissect patch attempt â€” success OR failure â€” must be recorded.
 Never truncate, overwrite, or skip an entry. This is the paper's dataset.
 
-### Storage Strategy — Race Condition Protection
+### Storage Strategy â€” Race Condition Protection
 
 **DO NOT** append directly to `research/patch_log.jsonl` from agent code.
 Concurrent jobs writing to the same flat JSON file will corrupt it (interleaved writes,
@@ -575,35 +575,35 @@ partial JSON, broken array structure). This would destroy the research dataset.
 
 ```
 Dissect generates patch entry (dict)
-        │
-        ▼
+        â”‚
+        â–¼
 Redis RPUSH "patch_log_queue" (atomic, thread-safe, handles concurrency)
-        │
-        ▼
+        â”‚
+        â–¼
 patch_log_writer.py (single-threaded background process, owned by SWE Lead)
 Reads from "patch_log_queue" with BLPOP (blocking pop, one entry at a time)
-        │
-        ▼
-Appends to research/patch_log.jsonl with file lock (filelock — cross-platform, works on Windows + Linux)
+        â”‚
+        â–¼
+Appends to research/patch_log.jsonl with file lock (filelock â€” cross-platform, works on Windows + Linux)
 ```
 
 This means:
-- `agents/dissect/patch_log.py` only does `RPUSH` to Redis — never file I/O
+- `agents/dissect/patch_log.py` only does `RPUSH` to Redis â€” never file I/O
 - `orchestrator/patch_log_writer.py` is the only process that writes the file
-- File is opened in append mode: `open(path, 'a')` — never 'w'
+- File is opened in append mode: `open(path, 'a')` â€” never 'w'
 - Each entry is written as a single JSON line (JSONL format), not as a JSON array
-- Post-experiment: `research/convert_jsonl_to_json.py` converts JSONL → JSON array
+- Post-experiment: `research/convert_jsonl_to_json.py` converts JSONL â†’ JSON array
   for paper submission and ChromaDB ingestion
 
-**⚠️ The patch_log is JSONL (one JSON object per line), NOT a JSON array.**
+**âš ï¸ The patch_log is JSONL (one JSON object per line), NOT a JSON array.**
 Do not write `[` or `]` wrappers. Do not read it with `json.load()`.
 Read it with: `[json.loads(line) for line in open(path)]`
 
 Add to directory structure:
-- `orchestrator/patch_log_writer.py` — SWE Lead owns this file
-- `research/convert_jsonl_to_json.py` — AI Lead owns this file
+- `orchestrator/patch_log_writer.py` â€” SWE Lead owns this file
+- `research/convert_jsonl_to_json.py` â€” AI Lead owns this file
 Add to Redis keys:
-- `patch_log_queue` — list, global (not job-scoped), RPUSH by Dissect, BLPOP by writer
+- `patch_log_queue` â€” list, global (not job-scoped), RPUSH by Dissect, BLPOP by writer
 
 ### patch_log Entry Schema
 
@@ -615,7 +615,7 @@ Each entry is one line. No newlines within an entry. No trailing comma. No array
 
 ---
 
-## 8. DISSECT ERROR TAXONOMY — ALL KNOWN CATEGORIES
+## 8. DISSECT ERROR TAXONOMY â€” ALL KNOWN CATEGORIES
 
 Defined in `agents/dissect/taxonomy.py`.
 This is the AI Lead's (Mohamed's) primary ownership domain.
@@ -637,26 +637,26 @@ Do not add or modify categories without updating this section.
 
 ---
 
-## 9. OBSERVABILITY PLAN — PROMETHEUS METRIC NAMES
+## 9. OBSERVABILITY PLAN â€” PROMETHEUS METRIC NAMES
 
 All metrics are exposed at:
 - `/metrics` on Harbor's serving endpoint (per-model prediction metrics)
 - Internal metrics endpoint on the **orchestrator** (port 9090) via
-  `prometheus_client.start_http_server(9090)` — started in `orchestrator/runtime.py`
+  `prometheus_client.start_http_server(9090)` â€” started in `orchestrator/runtime.py`
   at orchestrator startup. This exposes all Furnace, Dissect, Arbiter, and Orchestrator
   counters/gauges/histograms to Prometheus scraping.
 
-Names are final — do not invent new metric names without updating this section.
+Names are final â€” do not invent new metric names without updating this section.
 
 Use `prometheus-client` Python library. All metrics defined in `serving/metrics.py`
 and imported by the relevant agent/module. Never define metrics inline in agent code.
 
 ```python
-# serving/metrics.py — THE ONLY place Prometheus metric objects are instantiated
+# serving/metrics.py â€” THE ONLY place Prometheus metric objects are instantiated
 
 from prometheus_client import Counter, Gauge, Histogram
 
-# ── Furnace metrics ──────────────────────────────────────────────────────────
+# â”€â”€ Furnace metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 furnace_epochs_total = Counter(
     "prometheus_furnace_epochs_total",
     "Total training epochs completed across all jobs",
@@ -684,7 +684,7 @@ furnace_training_duration_seconds = Histogram(
     buckets=[60, 300, 600, 1200, 1800, 3600]
 )
 
-# ── Dissect metrics ──────────────────────────────────────────────────────────
+# â”€â”€ Dissect metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 dissect_patches_attempted_total = Counter(
     "prometheus_dissect_patches_attempted_total",
     "Total patch attempts by Dissect",
@@ -713,7 +713,7 @@ dissect_patch_duration_seconds = Histogram(
     buckets=[1, 5, 10, 30, 60, 120]
 )
 
-# ── Arbiter metrics ──────────────────────────────────────────────────────────
+# â”€â”€ Arbiter metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 arbiter_decisions_total = Counter(
     "prometheus_arbiter_decisions_total",
     "Total evaluation decisions made",
@@ -725,7 +725,7 @@ arbiter_primary_metric_value = Gauge(
     ["job_id", "metric_name"]
 )
 
-# ── Harbor / Serving metrics ─────────────────────────────────────────────────
+# â”€â”€ Harbor / Serving metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 harbor_prediction_requests_total = Counter(
     "prometheus_harbor_prediction_requests_total",
     "Total /predict requests served",
@@ -748,7 +748,7 @@ harbor_drift_alerts_total = Counter(
     ["job_id"]
 )
 
-# ── Orchestrator / Job metrics ────────────────────────────────────────────────
+# â”€â”€ Orchestrator / Job metrics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 orchestrator_jobs_submitted_total = Counter(
     "prometheus_orchestrator_jobs_submitted_total",
     "Total jobs submitted to the queue",
@@ -780,16 +780,16 @@ Pin all versions in `requirements.txt`. Never use unpinned dependencies.
 
 ### LLM Layer
 ```
-anthropic>=0.25.0          # Anthropic Python SDK — Claude Sonnet powers all agents
+anthropic>=0.25.0          # Anthropic Python SDK â€” Claude Sonnet powers all agents
 ```
-- Model: loaded from env var `ANTHROPIC_MODEL` — NEVER hardcoded in agent code
+- Model: loaded from env var `ANTHROPIC_MODEL` â€” NEVER hardcoded in agent code
 - Default value in `.env`: `claude-sonnet-4-6` (current as of 2026)
-- When Anthropic releases a new model, update `.env` only — no code changes needed
+- When Anthropic releases a new model, update `.env` only â€” no code changes needed
 - Fallback chain: if the configured model returns a 404 or model-not-found error,
-  log a CRITICAL warning and halt — do NOT silently fall back to an older model,
+  log a CRITICAL warning and halt â€” do NOT silently fall back to an older model,
   as different models have different tool-use behaviour that may break agent contracts
 - Loaded from env: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`
-- Rate limit strategy: exponential backoff (1s → 2s → 4s)
+- Rate limit strategy: exponential backoff (1s â†’ 2s â†’ 4s)
 - Cache agent outputs in Redis to avoid re-calling on retry
 
 ### ML Training Libraries
@@ -802,7 +802,7 @@ transformers>=4.41.0       # HuggingFace Transformers (DistilBERT, ViT)
 optuna>=3.6.1
 imbalanced-learn>=0.12.3   # SMOTE and variants
 pandas>=2.2.2
-numpy>=1.26.4,<2.0         # Pin below 2.0 — sentence-transformers/chromadb compat
+numpy>=1.26.4,<2.0         # Pin below 2.0 â€” sentence-transformers/chromadb compat
 ```
 
 ### Infrastructure
@@ -814,7 +814,7 @@ fastapi>=0.111.0           # Model serving API
 uvicorn>=0.30.0            # ASGI server for FastAPI
 onnx>=1.16.0               # Model serialisation format
 onnxruntime>=1.18.0        # ONNX inference runtime
-onnxmltools>=1.12.0        # LightGBM/XGBoost → ONNX conversion
+onnxmltools>=1.12.0        # LightGBM/XGBoost â†’ ONNX conversion
 docker>=7.1.0              # Docker SDK for Python (container management)
 filelock>=3.15.0           # Cross-platform file locking (replaces fcntl for Windows compat)
 ```
@@ -915,14 +915,14 @@ elif modality == "text":
     if task_type == "classification":
         model = DistilBERT (fine-tuned)
     else:
-        model = DistilBERT (generative head — future)
+        model = DistilBERT (generative head â€” future)
 elif modality == "image":
     if task_type == "classification":
         model = EfficientNet-B0  # scale to B4 based on dataset size
     elif task_type == "detection":
         model = EfficientNet-B0 + detection head  # future
 
-FALLBACK: if LightGBM produces poor results after 2 Optuna trials → switch to XGBoost
+FALLBACK: if LightGBM produces poor results after 2 Optuna trials â†’ switch to XGBoost
 ```
 
 ---
@@ -934,13 +934,13 @@ FALLBACK: if LightGBM produces poor results after 2 Optuna trials → switch to 
 - **Lifetime:** Job duration + TTL (24 hours on ephemeral data)
 - **Used for:** Job state, agent communication (pub/sub via Streams), checkpoint pointers
 - **Key naming convention:**
-  - `job:{job_id}:mission_brief` — mission_brief.json contents
-  - `job:{job_id}:search_space` — Optuna search space config
-  - `job:{job_id}:status` — current job status string
-  - `job:{job_id}:checkpoint` — path to last valid checkpoint
-  - `job:{job_id}:crash_count` — number of crashes this job
+  - `job:{job_id}:mission_brief` â€” mission_brief.json contents
+  - `job:{job_id}:search_space` â€” Optuna search space config
+  - `job:{job_id}:status` â€” current job status string
+  - `job:{job_id}:checkpoint` â€” path to last valid checkpoint
+  - `job:{job_id}:crash_count` â€” number of crashes this job
 
-**⚠️ KNOWN GAP — Multi-Tenancy (Phase 0–2 Research Only):**
+**âš ï¸ KNOWN GAP â€” Multi-Tenancy (Phase 0â€“2 Research Only):**
 The current Redis key schema (`job:{job_id}:*`) uses job-level isolation only.
 There is NO tenant-level isolation, no per-user rate limiting, and no auth layer.
 This is intentional and acceptable for the graduation research environment (single user,
@@ -950,13 +950,13 @@ production deployment, the following must be added:
 - Auth: API key validation middleware in the orchestrator's job submission endpoint
 - Rate limiting: per-tenant job concurrency limit enforced before job enqueue
 - Redis ACLs: per-tenant Redis user with key-pattern access restrictions
-Do not implement these during Phases 0–2. Flag this section when beginning Phase 3.
+Do not implement these during Phases 0â€“2. Flag this section when beginning Phase 3.
 
 ### Long-Term: ChromaDB
 - **Type:** Vector database (cosine similarity search)
-- **Lifetime:** Permanent across jobs — this is the moat
+- **Lifetime:** Permanent across jobs â€” this is the moat
 - **Three collections:**
-  - `patch_memory`: error description + patch text → vectors. Dissect queries this
+  - `patch_memory`: error description + patch text â†’ vectors. Dissect queries this
     for K-nearest similar past errors before generating a new patch.
   - `architecture_memory`: architecture decision + outcome (final AUC, success/fail).
     Forge queries this to improve selection over time.
@@ -967,11 +967,11 @@ Do not implement these during Phases 0–2. Flag this section when beginning Pha
 
 ---
 
-## 13. CONCURRENCY MODEL — EXACT EXECUTION ORDER
+## 13. CONCURRENCY MODEL â€” EXACT EXECUTION ORDER
 
 This section is authoritative. When writing orchestrator or agent code, follow this exactly.
 
-### 13.1 Agent Execution — Sequential vs Parallel
+### 13.1 Agent Execution â€” Sequential vs Parallel
 
 Agents are NOT all launched at startup. The orchestrator launches each agent when its
 trigger event arrives. The execution order per job is strictly sequential between phases,
@@ -979,50 +979,50 @@ with ONE exception: Furnace and Dissect run concurrently during the training pha
 
 ```
 Job Submitted
-      │
-      ▼
-  [Scout]          ← Runs alone. Blocking. Must complete before Forge starts.
-      │ MISSION_BRIEF_READY
-      ▼
-  [Forge]          ← Runs alone. Blocking. Must complete before Furnace starts.
-      │ TRAINING_SCRIPT_READY
-      ▼
-  [Furnace] ──────────────────────────────────────────────┐
-      │                                                    │ (concurrent)
-      │ CRASH_EVENT (conditional)                         │
-      ▼                                                    │
-  [Dissect] ── RESUME_TRAINING ──────────────────────────►│
-      │                                                    │
-      │ ESCALATE (if 3 failures) ──────────────► [Orchestrator marks job FAILED]
-      │                                                    │
-      │                              TRAINING_COMPLETE ◄──┘
-      ▼
-  [Arbiter]        ← Runs alone. Blocking. Must complete before Harbor starts.
-      │ EVALUATION_PASS
-      ▼
-  [Harbor]         ← Runs alone. Then monitors indefinitely (drift loop).
-      │ ENDPOINT_LIVE
-      ▼
+      â”‚
+      â–¼
+  [Scout]          â† Runs alone. Blocking. Must complete before Forge starts.
+      â”‚ MISSION_BRIEF_READY
+      â–¼
+  [Forge]          â† Runs alone. Blocking. Must complete before Furnace starts.
+      â”‚ TRAINING_SCRIPT_READY
+      â–¼
+  [Furnace] â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+      â”‚                                                    â”‚ (concurrent)
+      â”‚ CRASH_EVENT (conditional)                         â”‚
+      â–¼                                                    â”‚
+  [Dissect] â”€â”€ RESUME_TRAINING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–ºâ”‚
+      â”‚                                                    â”‚
+      â”‚ ESCALATE (if 3 failures) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–º [Orchestrator marks job FAILED]
+      â”‚                                                    â”‚
+      â”‚                              TRAINING_COMPLETE â—„â”€â”€â”˜
+      â–¼
+  [Arbiter]        â† Runs alone. Blocking. Must complete before Harbor starts.
+      â”‚ EVALUATION_PASS
+      â–¼
+  [Harbor]         â† Runs alone. Then monitors indefinitely (drift loop).
+      â”‚ ENDPOINT_LIVE
+      â–¼
   Job Complete
 ```
 
 Rules:
-- Scout → Forge → (Furnace ‖ Dissect) → Arbiter → Harbor is the invariant order
+- Scout â†’ Forge â†’ (Furnace â€– Dissect) â†’ Arbiter â†’ Harbor is the invariant order
 - The orchestrator MUST NOT start Arbiter until it receives TRAINING_COMPLETE
 - The orchestrator MUST NOT start Harbor until it receives EVALUATION_PASS
-- EVALUATION_RETRY loops back to Forge only — Scout is NOT re-run on retry
-- DRIFT_ALERT loops back to Scout — full pipeline re-runs with fresh data
+- EVALUATION_RETRY loops back to Forge only â€” Scout is NOT re-run on retry
+- DRIFT_ALERT loops back to Scout â€” full pipeline re-runs with fresh data
 - Multiple jobs from different users run as separate parallel pipelines, each with
   their own isolated Redis key namespace (`job:{job_id}:*`)
 
-### 13.2 Consumer Group Design — Furnace ↔ Dissect Loop
+### 13.2 Consumer Group Design â€” Furnace â†” Dissect Loop
 
 This is the most complex interaction in the system. Read carefully.
 
 Redis Streams consumer groups used:
 ```
 Stream name         Consumer group          Consumers
-─────────────────────────────────────────────────────────
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 furnace_feed        frontend_consumers      Next.js SSE feed reader
 furnace_output      arbiter_consumers       Arbiter (one consumer)
 furnace_crash       dissect_consumers       Dissect (one consumer)
@@ -1031,7 +1031,7 @@ dissect_output      furnace_consumers       Furnace (one consumer)
 arbiter_output      harbor_consumers        Harbor (one consumer)
                     orchestrator_consumers  Orchestrator (monitors all decisions)
 harbor_output       orchestrator_consumers  Orchestrator (monitors ENDPOINT_LIVE)
-                    scout_consumers         Scout (monitors DRIFT_ALERT → new cycle)
+                    scout_consumers         Scout (monitors DRIFT_ALERT â†’ new cycle)
 ```
 
 Consumer group rules:
@@ -1043,53 +1043,53 @@ Consumer group rules:
 - If an agent crashes mid-processing, the orchestrator reclaims the pending message
   and restarts the agent from that message
 
-### 13.3 Furnace ↔ Dissect Crash-Recovery Sequence Diagram
+### 13.3 Furnace â†” Dissect Crash-Recovery Sequence Diagram
 
 ```
 Furnace                  Redis Streams              Dissect
-   │                          │                        │
-   │── launch container ──────│                        │
-   │── epoch 1 complete ─────►│ furnace_feed           │
-   │── epoch 2 complete ─────►│ furnace_feed           │
-   │                          │                        │
-   │  [CRASH at epoch 3]      │                        │
-   │                          │                        │
-   │── save last checkpoint ──│                        │
-   │── publish CRASH_EVENT ──►│ furnace_crash          │
-   │── enter WAIT state ──────│                        │
-   │   (blocks on RESUME)     │                        │
-   │                          │◄── XREADGROUP ─────────│
-   │                          │                        │── parse stack trace
-   │                          │                        │── classify error
-   │                          │                        │── query patch_memory (K=3)
-   │                          │                        │── generate diff
-   │                          │                        │── apply patch to script
-   │                          │                        │── run sandbox test
-   │                          │                        │
-   │                          │   [Sandbox PASS]       │
-   │                          │                        │── write patch_log entry
-   │                          │                        │── publish RESUME_TRAINING
-   │                          │◄───────────────────────│ dissect_output
-   │◄── XREADGROUP ───────────│                        │
-   │                          │                        │
-   │── reload patched script  │                        │
-   │── restore checkpoint ────│                        │
-   │── resume from epoch 3 ──►│ furnace_feed           │
-   │── epoch 4 complete ─────►│ furnace_feed           │
-   │── training complete ─────►│ furnace_output        │
-   │                          │                        │
-   │                    [Sandbox FAIL — attempt 2]     │
-   │                          │                        │── rollback patch
-   │                          │                        │── try next strategy
-   │                          │                        │── write patch_log (outcome=rollback)
-   │                          │                        │── publish RESUME_TRAINING (attempt 2)
-   │                          │                        │
-   │                    [All 3 attempts failed]        │
-   │                          │                        │── write patch_log (outcome=escalated)
-   │                          │                        │── publish ESCALATE
-   │◄── Orchestrator reads ESCALATE, marks job FAILED  │
-   │── Furnace receives ESCALATE signal from Orch.     │
-   │── Furnace kills container, releases resources     │
+   â”‚                          â”‚                        â”‚
+   â”‚â”€â”€ launch container â”€â”€â”€â”€â”€â”€â”‚                        â”‚
+   â”‚â”€â”€ epoch 1 complete â”€â”€â”€â”€â”€â–ºâ”‚ furnace_feed           â”‚
+   â”‚â”€â”€ epoch 2 complete â”€â”€â”€â”€â”€â–ºâ”‚ furnace_feed           â”‚
+   â”‚                          â”‚                        â”‚
+   â”‚  [CRASH at epoch 3]      â”‚                        â”‚
+   â”‚                          â”‚                        â”‚
+   â”‚â”€â”€ save last checkpoint â”€â”€â”‚                        â”‚
+   â”‚â”€â”€ publish CRASH_EVENT â”€â”€â–ºâ”‚ furnace_crash          â”‚
+   â”‚â”€â”€ enter WAIT state â”€â”€â”€â”€â”€â”€â”‚                        â”‚
+   â”‚   (blocks on RESUME)     â”‚                        â”‚
+   â”‚                          â”‚â—„â”€â”€ XREADGROUP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚
+   â”‚                          â”‚                        â”‚â”€â”€ parse stack trace
+   â”‚                          â”‚                        â”‚â”€â”€ classify error
+   â”‚                          â”‚                        â”‚â”€â”€ query patch_memory (K=3)
+   â”‚                          â”‚                        â”‚â”€â”€ generate diff
+   â”‚                          â”‚                        â”‚â”€â”€ apply patch to script
+   â”‚                          â”‚                        â”‚â”€â”€ run sandbox test
+   â”‚                          â”‚                        â”‚
+   â”‚                          â”‚   [Sandbox PASS]       â”‚
+   â”‚                          â”‚                        â”‚â”€â”€ write patch_log entry
+   â”‚                          â”‚                        â”‚â”€â”€ publish RESUME_TRAINING
+   â”‚                          â”‚â—„â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚ dissect_output
+   â”‚â—„â”€â”€ XREADGROUP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”‚                        â”‚
+   â”‚                          â”‚                        â”‚
+   â”‚â”€â”€ reload patched script  â”‚                        â”‚
+   â”‚â”€â”€ restore checkpoint â”€â”€â”€â”€â”‚                        â”‚
+   â”‚â”€â”€ resume from epoch 3 â”€â”€â–ºâ”‚ furnace_feed           â”‚
+   â”‚â”€â”€ epoch 4 complete â”€â”€â”€â”€â”€â–ºâ”‚ furnace_feed           â”‚
+   â”‚â”€â”€ training complete â”€â”€â”€â”€â”€â–ºâ”‚ furnace_output        â”‚
+   â”‚                          â”‚                        â”‚
+   â”‚                    [Sandbox FAIL â€” attempt 2]     â”‚
+   â”‚                          â”‚                        â”‚â”€â”€ rollback patch
+   â”‚                          â”‚                        â”‚â”€â”€ try next strategy
+   â”‚                          â”‚                        â”‚â”€â”€ write patch_log (outcome=rollback)
+   â”‚                          â”‚                        â”‚â”€â”€ publish RESUME_TRAINING (attempt 2)
+   â”‚                          â”‚                        â”‚
+   â”‚                    [All 3 attempts failed]        â”‚
+   â”‚                          â”‚                        â”‚â”€â”€ write patch_log (outcome=escalated)
+   â”‚                          â”‚                        â”‚â”€â”€ publish ESCALATE
+   â”‚â—„â”€â”€ Orchestrator reads ESCALATE, marks job FAILED  â”‚
+   â”‚â”€â”€ Furnace receives ESCALATE signal from Orch.     â”‚
+   â”‚â”€â”€ Furnace kills container, releases resources     â”‚
 ```
 
 Invariants in this loop:
@@ -1097,14 +1097,14 @@ Invariants in this loop:
   receives RESUME_TRAINING or the orchestrator sends a KILL signal
 - Dissect never publishes RESUME_TRAINING without first writing to patch_log
 - The crash_attempt_number in CRASH_EVENT increments on each failure: 1, 2, 3
-- On attempt 3 failure, Dissect publishes ESCALATE — never a 4th RESUME_TRAINING
-- Furnace ONLY exits WAIT state on RESUME_TRAINING or orchestrator KILL — never on timeout
+- On attempt 3 failure, Dissect publishes ESCALATE â€” never a 4th RESUME_TRAINING
+- Furnace ONLY exits WAIT state on RESUME_TRAINING or orchestrator KILL â€” never on timeout
 
 ---
 
-## 14. BUILD PHASES — CURRENT STATUS + GATES
+## 14. BUILD PHASES â€” CURRENT STATUS + GATES
 
-### Phase 0 — Foundation (5 working days)
+### Phase 0 â€” Foundation (5 working days)
 **Goal:** All 4 infrastructure components run independently and communicate via Redis.
 
 Deliverables:
@@ -1119,8 +1119,8 @@ Deliverables:
 **Gate to pass:** All 4 infrastructure components run independently AND communicate via Redis.
 Do not start Phase 1 until this gate passes.
 
-### Phase 1 — Scout + Forge + Furnace (6 working days)
-**Goal:** Titanic dataset → trained LightGBM model, no error recovery, no human intervention.
+### Phase 1 â€” Scout + Forge + Furnace (6 working days)
+**Goal:** Titanic dataset â†’ trained LightGBM model, no error recovery, no human intervention.
 
 Deliverables:
 - [ ] Scout parses 3 dataset types and writes correct mission_brief.json
@@ -1131,7 +1131,7 @@ Deliverables:
 **Gate to pass:** Titanic problem completes without human intervention, val AUC > 0.82.
 This test must stay green for the rest of the project.
 
-### Phase 2 — Dissect + Arbiter + Harbor (5 working days)
+### Phase 2 â€” Dissect + Arbiter + Harbor (5 working days)
 **Goal:** Full pipeline including error recovery on 3 Kaggle datasets.
 
 Deliverables:
@@ -1144,26 +1144,26 @@ Deliverables:
 **Gate to pass:** 3/3 Kaggle datasets complete with < 2 human interventions each.
 Harbor endpoint serves correct predictions.
 
-### Phase 3 — ChromaDB Memory + Orchestrator Hardening (5 working days)
+### Phase 3 â€” ChromaDB Memory + Orchestrator Hardening (5 working days)
 **Goal:** ChromaDB memory working, Dissect learning from history, full pipeline bulletproof.
 
 Deliverables:
 - [ ] ChromaDB `patch_memory` collection: Dissect stores and retrieves similar past patches
 - [ ] ChromaDB `architecture_memory` collection: Forge improves selection over time
 - [ ] ChromaDB `tool_memory` collection: semantic tool retrieval working
-- [ ] Orchestrator v2: concurrent Furnace ↔ Dissect loop fully wired
-- [ ] ESCALATE → JOB_FAILED full handling: diagnostic report written, container killed
+- [ ] Orchestrator v2: concurrent Furnace â†” Dissect loop fully wired
+- [ ] ESCALATE â†’ JOB_FAILED full handling: diagnostic report written, container killed
 - [ ] `tests/integration/test_three_kaggle_e2e.py` passes on all 3 Kaggle datasets
 - [ ] All pytest tests green
 
 **Gate to pass:** All pytest green. 3/3 Kaggle datasets complete. Dissect successfully
 uses past patch history from ChromaDB (K=3 retrieval demonstrated in logs).
 
-### Phase 4 — Research Experiment + Paper (5 working days)
+### Phase 4 â€” Research Experiment + Paper (5 working days)
 **Goal:** Research results ready for paper submission.
 
 Deliverables:
-- [ ] Next.js live feed frontend (SSE from Redis → browser)
+- [ ] Next.js live feed frontend (SSE from Redis â†’ browser)
 - [ ] GKE deployment for Harbor (Phase 4 only, not before)
 - [ ] PSI drift monitor live
 - [ ] 50-problem benchmark run: 3 conditions (manual, no Dissect, with Dissect)
@@ -1180,20 +1180,20 @@ interventions (Mann-Whitney U test, p < 0.05). Paper accepted by advisor.
 
 ### Python
 - Python 3.11+
-- Type hints on every function signature — no exceptions
+- Type hints on every function signature â€” no exceptions
 - Pydantic models for all data structures that cross agent boundaries
 - All agent tool functions must have a docstring describing: what it does, its parameters,
   its return type, and what Redis keys or files it reads/writes
 - `async` / `await` for all I/O: Redis calls, Anthropic API calls, Docker SDK calls,
   ChromaDB calls
-- Every tool function is independently unit-testable — no side effects hidden in
+- Every tool function is independently unit-testable â€” no side effects hidden in
   module-level code
 
 ### Error Handling
 - Every Anthropic API call wrapped in try/except with exponential backoff
-- Every Docker SDK call wrapped in try/except — container failures must not crash the
+- Every Docker SDK call wrapped in try/except â€” container failures must not crash the
   orchestrator
-- Every Redis call wrapped in try/except — Redis outage must not crash the system silently
+- Every Redis call wrapped in try/except â€” Redis outage must not crash the system silently
 - All exceptions logged with job_id, agent name, and full traceback before re-raising
 
 ### CI/CD Pipeline
@@ -1238,7 +1238,7 @@ jobs:
                   ast.parse(open(f).read())
                   print(f'{f}: OK')
               except SyntaxError as e:
-                  print(f'{f}: SYNTAX ERROR — {e}')
+                  print(f'{f}: SYNTAX ERROR â€” {e}')
                   sys.exit(1)
           "
         name: Syntax check
@@ -1303,12 +1303,12 @@ logger.error(f"[job={job_id}] Crash detected | exception={exc_type}: {exc_msg}")
 ```
 
 Rules:
-- Use `logging.getLogger(__name__)` per module — never `logging.root`
+- Use `logging.getLogger(__name__)` per module â€” never `logging.root`
 - Always include `job_id` in every log line
 - ERROR and CRITICAL include the full traceback
 - WARNING for recoverable issues (retry attempts, missing optional data)
 - INFO for state transitions (agent started, event published, step complete)
-- DEBUG for tool I/O (LLM responses, Redis payloads) — noisy, disabled in production
+- DEBUG for tool I/O (LLM responses, Redis payloads) â€” noisy, disabled in production
 - Never log API keys, full Anthropic responses, or raw dataset values
 - Log files written to `outputs/{job_id}/agent.log` by the orchestrator
 
@@ -1328,7 +1328,7 @@ Rules:
 - No direct commits to `main`. All changes via PR.
 - PRs require passing CI (pytest) before merge.
 - Never commit `.env`, model checkpoints, or dataset files.
-- Create `.github/CODEOWNERS` to enforce Section 4 ownership (solo build → all @mohamed):
+- Create `.github/CODEOWNERS` to enforce Section 4 ownership (solo build â†’ all @mohamed):
   ```
   * @mohamed
   ```
@@ -1382,7 +1382,7 @@ Prometheus metric. Check Section 13 before writing any concurrency or consumer g
 
 ---
 
-## 19. RESEARCH EXPERIMENT — DO NOT MODIFY
+## 19. RESEARCH EXPERIMENT â€” DO NOT MODIFY
 
 The research experiment comparing:
 - Condition A: Human ML engineer (manual baseline)
@@ -1396,7 +1396,7 @@ Statistical test: Mann-Whitney U test (non-parametric, does not assume normality
 Required for publication at MSR / ASE 2026.
 
 The `research/patch_log.jsonl` is the dataset for this experiment.
-Never truncate it. Never edit past entries. Only append via Redis RPUSH → patch_log_writer.
+Never truncate it. Never edit past entries. Only append via Redis RPUSH â†’ patch_log_writer.
 See Section 7 for the exact write path and schema.
 
 Target conferences: MSR 2026 (acceptance rate ~25%), ASE 2026 (acceptance rate ~22%).
@@ -1408,16 +1408,16 @@ Target conferences: MSR 2026 (acceptance rate ~25%), ASE 2026 (acceptance rate ~
 Prometheus Swarm is the architectural foundation for a commercial product.
 
 Business model tiers:
-- Starter: $99/month — 5 deployments/month
-- Professional: $499/month — 20 deployments/month
-- Team: $2,000/month — 100 deployments/month, audit log export
-- Enterprise: $10k-$50k/month — private deployment, SLA, compliance
+- Starter: $99/month â€” 5 deployments/month
+- Professional: $499/month â€” 20 deployments/month
+- Team: $2,000/month â€” 100 deployments/month, audit log export
+- Enterprise: $10k-$50k/month â€” private deployment, SLA, compliance
 
 The competitive moat: every job run adds to patch_memory and architecture_memory in
 ChromaDB. The system improves with usage. A competitor cannot catch up without running
 the same number of jobs.
 
-This connects to Nexora (nexoraintel.com) — the existing production RAG SaaS.
+This connects to Nexora (nexoraintel.com) â€” the existing production RAG SaaS.
 Prometheus Swarm is the next Nexora product: ML-as-a-service.
 
 Every architectural decision made during the graduation project is a production decision.
@@ -1427,7 +1427,7 @@ Build as if this will serve paying customers. Because it will.
 
 ## 21. COMMERCIALIZATION READINESS
 
-These items are NOT implemented during Phases 0–2 (graduation research). They are
+These items are NOT implemented during Phases 0â€“2 (graduation research). They are
 architectural requirements for the commercial product and must be designed-for even
 if not implemented yet.
 
@@ -1440,10 +1440,10 @@ if not implemented yet.
 - Logged as `deployment_mode: "shadow"` in the job record.
 
 ### 21.2 Kill Switches
-- **Job-level kill switch:** `POST /api/jobs/{job_id}/cancel` → sets
+- **Job-level kill switch:** `POST /api/jobs/{job_id}/cancel` â†’ sets
   `job:{job_id}:status = CANCELLED`, sends KILL to Furnace container.
-- **System-level kill switch:** `POST /api/system/pause` → stops accepting new jobs,
-  lets in-flight jobs complete. `POST /api/system/halt` → force-kills all containers.
+- **System-level kill switch:** `POST /api/system/pause` â†’ stops accepting new jobs,
+  lets in-flight jobs complete. `POST /api/system/halt` â†’ force-kills all containers.
 - Both kill switches are orchestrator-level, not agent-level.
 
 ### 21.3 Cost Tracking
@@ -1499,7 +1499,7 @@ source .venv/bin/activate
 ```
 
 ### 22.2 File Locking
-- **Do NOT use `fcntl`** — it does not exist on Windows.
+- **Do NOT use `fcntl`** â€” it does not exist on Windows.
 - Use `filelock` (pip package) for cross-platform file locking.
 - `patch_log_writer.py` uses `from filelock import FileLock` instead of `import fcntl`.
 
@@ -1521,9 +1521,9 @@ source .venv/bin/activate
 | `kill <pid>` | `Stop-Process -Id <pid>` |
 
 ### 22.5 Path Handling in Code
-- Always use `pathlib.Path` for file operations — never string concatenation with `/`.
+- Always use `pathlib.Path` for file operations â€” never string concatenation with `/`.
 - Always use `os.path.abspath()` for paths passed to Docker SDK.
-- Never use `\\` literal backslashes in Python code — `pathlib` handles this.
+- Never use `\\` literal backslashes in Python code â€” `pathlib` handles this.
 
 ### 22.6 Windows asyncio Event Loop Workaround
 Python's default `ProactorEventLoop` on Windows does not support subprocess + `asyncio` in all cases.
@@ -1539,11 +1539,11 @@ if sys.platform == "win32":
 ```
 
 This switches to the `SelectorEventLoop`, which Windows supports natively and handles socket I/O without issues.
-Only needed for the orchestrator entry point — individual agent processes using pure async Redis calls work fine
+Only needed for the orchestrator entry point â€” individual agent processes using pure async Redis calls work fine
 with the default loop.
 
 ---
 
-*End of CLAUDE.md — Prometheus Swarm v1.2*
+*End of CLAUDE.md â€” Prometheus Swarm v1.2*
 *Last updated: 2026-06-29 | Mohamed Mosad Ghonaim | Alamein International University | Nexora Lab*
 *Any modification to this file must be reviewed by the AI Lead before merging.*

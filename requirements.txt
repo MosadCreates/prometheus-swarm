@@ -1,4 +1,4 @@
-﻿# LLM
+# LLM
 anthropic==0.25.0
 
 # ML Training

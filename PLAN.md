@@ -1,4 +1,4 @@
-# PLAN.md — Prometheus Swarm Build Plan
+# PLAN.md â€” Prometheus Swarm Build Plan
 # Solo Build | Claude Sonnet API from Phase 0 | RTX GPU Available
 # Owner: Mohamed Mosad Ghonaim | Nexora Lab
 # Read CLAUDE.md first. This file answers HOW to build. CLAUDE.md answers WHAT to build.
@@ -11,45 +11,45 @@ Every step in this plan is written so an AI agent can execute it without asking 
 anything. Every file has its full content described. Every command is copy-paste ready.
 Every external resource you need to bring in is listed with exact download steps.
 
-When a step says "YOU DO THIS" — that is something only you can do (download a file,
+When a step says "YOU DO THIS" â€” that is something only you can do (download a file,
 create an account, get a key). Everything else is handled by Claude Code.
 
 LLM strategy:
-- All phases (0–4): Claude Sonnet via Anthropic API (ANTHROPIC_MODEL env var)
+- All phases (0â€“4): Claude Sonnet via Anthropic API (ANTHROPIC_MODEL env var)
 - No local LLM. Claude Sonnet is used from day one for all agent LLM calls.
-- API cost during dev is ~$5–15/day with moderate usage. Budget accordingly.
+- API cost during dev is ~$5â€“15/day with moderate usage. Budget accordingly.
 
 ---
 
-## BEFORE YOU START — EXTERNAL RESOURCES YOU NEED TO BRING
+## BEFORE YOU START â€” EXTERNAL RESOURCES YOU NEED TO BRING
 
 Do these once, before Phase 0. They take ~30 minutes total.
 
 ### A. Install Required Software
 
-**Step 1 — Python 3.11**
+**Step 1 â€” Python 3.11**
 Open terminal and run:
 ```bash
 python3 --version
 ```
 If it says 3.11.x or higher, skip this. If not:
-- Windows: go to python.org/downloads → download Python 3.11.x → install with "Add to PATH" checked
+- Windows: go to python.org/downloads â†’ download Python 3.11.x â†’ install with "Add to PATH" checked
 - Mac: run `brew install python@3.11`
 - Linux (Ubuntu): run `sudo apt install python3.11 python3.11-venv python3.11-pip`
 
-**Step 2 — Docker Desktop**
+**Step 2 â€” Docker Desktop**
 Go to: https://www.docker.com/products/docker-desktop
 Download for your OS. Install it. Open it. Wait until the whale icon in your taskbar is
 green/running. You need Docker running for every session of this build.
 
-**Step 3 — Git**
+**Step 3 â€” Git**
 Run: `git --version`
 If not installed:
-- Windows: https://git-scm.com/download/win → download → install with defaults
+- Windows: https://git-scm.com/download/win â†’ download â†’ install with defaults
 - Mac: run `xcode-select --install`
 - Linux: run `sudo apt install git`
 
-**Step 4 — Anthropic API Key**
+**Step 4 â€” Anthropic API Key**
 1. Go to: https://console.anthropic.com
 2. Sign up or log in
 3. Go to "API Keys" in the left menu
@@ -57,26 +57,26 @@ If not installed:
 5. Copy the key (starts with `sk-ant-...`)
 6. You will paste this into `.env` during Phase 0 Day 1
 
-**Step 5 — Node.js (for frontend, Phase 3 only)**
+**Step 5 â€” Node.js (for frontend, Phase 3 only)**
 You don't need this until Phase 3. Skip for now.
 
 ### B. Get Your Datasets
 
-**YOU DO THIS — 3 datasets needed:**
+**YOU DO THIS â€” 3 datasets needed:**
 
-Dataset 1 — Titanic (used from Phase 1 gate onward):
+Dataset 1 â€” Titanic (used from Phase 1 gate onward):
 1. Go to: https://www.kaggle.com/competitions/titanic/data
 2. Create a free Kaggle account if you don't have one
 3. Click "Download All"
 4. Unzip the file
 5. Copy `train.csv` to `data/titanic.csv` in your repo (do this after Phase 0 Day 1)
 
-Dataset 2 — House Prices (used in Phase 3 E2E test):
+Dataset 2 â€” House Prices (used in Phase 3 E2E test):
 1. Go to: https://www.kaggle.com/competitions/house-prices-advanced-regression-techniques/data
 2. Click "Download All"
 3. Copy `train.csv` to `data/house_prices.csv`
 
-Dataset 3 — SMS Spam (used in Phase 3 E2E test):
+Dataset 3 â€” SMS Spam (used in Phase 3 E2E test):
 1. Go to: https://www.kaggle.com/datasets/uciml/sms-spam-collection-dataset
 2. Click "Download"
 3. Unzip and copy `spam.csv` to `data/sms_spam.csv`
@@ -90,7 +90,7 @@ nvidia-smi
 ```
 If you see your GPU listed, Docker can use it. If you get "nvidia-smi not found":
 - Go to: https://developer.nvidia.com/cuda-downloads
-- Select your OS → download and install CUDA Toolkit 12.x
+- Select your OS â†’ download and install CUDA Toolkit 12.x
 - Then install NVIDIA Container Toolkit:
   ```bash
   # Linux only:
@@ -103,14 +103,14 @@ If you see your GPU listed, Docker can use it. If you get "nvidia-smi not found"
 
 ---
 
-## PHASE 0 — FOUNDATION
+## PHASE 0 â€” FOUNDATION
 **Duration: 5 days | Goal: All infrastructure running, bus layer proven end-to-end**
 
 ---
 
 ### DAY 0-1: Repository + Python Environment
 
-**Morning — repo and venv:**
+**Morning â€” repo and venv:**
 ```bash
 mkdir prometheus-swarm
 cd prometheus-swarm
@@ -188,7 +188,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 ```
 
-**Create `requirements.txt` — exact pinned versions:**
+**Create `requirements.txt` â€” exact pinned versions:**
 ```
 # LLM
 anthropic==0.25.0
@@ -234,7 +234,7 @@ This takes 5-10 minutes. Let it run.
 
 **Create `.env.example`:**
 ```bash
-# LLM — Claude Sonnet for all phases
+# LLM â€” Claude Sonnet for all phases
 ANTHROPIC_API_KEY=sk-ant-YOUR_KEY_HERE
 ANTHROPIC_MODEL=claude-sonnet-4-6
 
@@ -250,7 +250,7 @@ CHROMA_COLLECTION_PATCH_MEMORY=patch_memory
 CHROMA_COLLECTION_ARCH_MEMORY=architecture_memory
 CHROMA_COLLECTION_TOOL_MEMORY=tool_memory
 
-# Embedding model — sentence-transformers model for ChromaDB
+# Embedding model â€” sentence-transformers model for ChromaDB
 EMBEDDING_MODEL=all-MiniLM-L6-v2
 
 # Docker
@@ -289,11 +289,11 @@ cp .env.example .env
 # Prometheus Swarm
 
 Autonomous multi-agent ML pipeline. You describe the problem. The swarm trains, debugs,
-evaluates, and serves a model — without human intervention.
+evaluates, and serves a model â€” without human intervention.
 
 See [CLAUDE.md](./CLAUDE.md) for architecture. See [PLAN.md](./PLAN.md) for build steps.
 
-**Status:** Phase 0 — Infrastructure
+**Status:** Phase 0 â€” Infrastructure
 ```
 
 **Git commit:**
@@ -373,7 +373,7 @@ docker compose ps
 ```
 
 If any check fails:
-- ChromaDB fail: `docker compose logs chromadb` → read the error
+- ChromaDB fail: `docker compose logs chromadb` â†’ read the error
 
 **Git commit:**
 ```bash
@@ -392,7 +392,7 @@ All agents call Claude Sonnet via the Anthropic API from day one. Zero code chan
 
 ```python
 """
-LLM Client — Anthropic Claude Sonnet interface for all agents.
+LLM Client â€” Anthropic Claude Sonnet interface for all agents.
 All agents import get_llm_response from here. Never call Anthropic directly.
 """
 
@@ -424,7 +424,7 @@ async def get_llm_response(
         {
             "text": str,           # The text content of the response
             "tool_calls": list,    # List of tool call dicts (empty if none)
-            "input_tokens": int,   # For cost tracking (CLAUDE.md §21.3)
+            "input_tokens": int,   # For cost tracking (CLAUDE.md Â§21.3)
             "output_tokens": int,  # For cost tracking
             "raw": dict            # Full raw response from the backend
         }
@@ -502,7 +502,7 @@ async def get_embedding(text: str) -> list[float]:
 **Create `agents/base.py`:**
 ```python
 """
-BaseAgent — common pattern inherited by all six agents.
+BaseAgent â€” common pattern inherited by all six agents.
 Provides: LLM calling, Redis I/O, structured logging, retry logic.
 """
 
@@ -572,7 +572,7 @@ class BaseAgent(ABC):
         return response
 ```
 
-**Smoke test — verify Claude Sonnet is callable:**
+**Smoke test â€” verify Claude Sonnet is callable:**
 ```bash
 python3 -c "
 import asyncio
@@ -674,7 +674,7 @@ class RedisClient:
         """Blocking pop from a Redis list. Used by patch_log_writer."""
         result = await self._client.blpop(list_key, timeout=timeout)
         if result:
-            return result[1]  # (key, value) tuple → return value
+            return result[1]  # (key, value) tuple â†’ return value
         return None
 ```
 
@@ -698,7 +698,7 @@ JOB_FAILED            = "JOB_FAILED"
 ENDPOINT_LIVE         = "ENDPOINT_LIVE"
 DRIFT_ALERT           = "DRIFT_ALERT"
 
-# Stream names — one per producing agent
+# Stream names â€” one per producing agent
 STREAM_SCOUT_OUTPUT      = "scout_output"
 STREAM_FORGE_OUTPUT      = "forge_output"
 STREAM_FURNACE_FEED      = "furnace_feed"
@@ -723,7 +723,7 @@ GROUP_SCOUT       = "scout_consumers"
 **Create `bus/publisher.py`:**
 ```python
 """
-Publisher — sends events to Redis Streams via XADD.
+Publisher â€” sends events to Redis Streams via XADD.
 All agents call publish() to send events. Never call XADD directly.
 """
 
@@ -760,7 +760,7 @@ async def publish(
         **payload,
     }
 
-    # Redis Streams require string values — serialize nested dicts
+    # Redis Streams require string values â€” serialize nested dicts
     flat = {k: json.dumps(v) if isinstance(v, (dict, list)) else str(v)
             for k, v in full_payload.items()}
 
@@ -772,7 +772,7 @@ async def publish(
 **Create `bus/consumer.py`:**
 ```python
 """
-Consumer — reads events from Redis Streams via XREADGROUP.
+Consumer â€” reads events from Redis Streams via XREADGROUP.
 Handles consumer group creation, blocking reads, and ACK.
 """
 
@@ -801,7 +801,7 @@ async def ensure_consumer_group(
         logger.info(f"Created consumer group {group_name} on stream {stream_name}")
     except aioredis.ResponseError as e:
         if "BUSYGROUP" in str(e):
-            pass  # Group already exists — not an error
+            pass  # Group already exists â€” not an error
         else:
             raise
 
@@ -839,7 +839,7 @@ async def consume_one(
 
     stream, messages = results[0]
     for msg_id, raw_fields in messages:
-        # Deserialize — JSON fields back to Python objects
+        # Deserialize â€” JSON fields back to Python objects
         message = {}
         for k, v in raw_fields.items():
             try:
@@ -854,7 +854,7 @@ async def consume_one(
         except Exception as e:
             logger.error(
                 f"Handler failed for {msg_id} on {stream_name}/{group_name}: {e}. "
-                f"Message NOT ACK'd — will be reclaimed by health monitor."
+                f"Message NOT ACK'd â€” will be reclaimed by health monitor."
             )
             raise
 
@@ -906,7 +906,7 @@ async def consume_loop(
 ```python
 """
 Pydantic models for all data structures that cross agent boundaries.
-All agents import and use these — never use raw dicts for cross-agent data.
+All agents import and use these â€” never use raw dicts for cross-agent data.
 """
 
 from datetime import datetime
@@ -923,7 +923,7 @@ class DatasetInfo(BaseModel):
     file_path: str
     num_rows: int
     num_columns: int
-    column_types: dict[str, str]  # column_name → "numeric|categorical|text|datetime|target"
+    column_types: dict[str, str]  # column_name â†’ "numeric|categorical|text|datetime|target"
 
 
 class DataQuality(BaseModel):
@@ -1099,7 +1099,7 @@ git commit -m "[Bus] Implement Redis Streams publisher, consumer, and event taxo
 **Create `orchestrator/patch_log_writer.py`:**
 ```python
 """
-Patch log writer — single background process that reads from Redis patch_log_queue
+Patch log writer â€” single background process that reads from Redis patch_log_queue
 and appends to research/patch_log.jsonl. Never write to patch_log.jsonl directly.
 This is the ONLY process that writes to patch_log.jsonl.
 """
@@ -1142,7 +1142,7 @@ async def run_writer() -> None:
             _, raw_entry = result
             entry = json.loads(raw_entry)
 
-            # Write one JSON line — atomic with file lock
+            # Write one JSON line â€” atomic with file lock
             lock_path = str(log_path) + ".lock"
             with FileLock(lock_path):
                 with open(log_path, "a") as f:
@@ -1219,7 +1219,7 @@ echo "=== Bus test ===" && pytest tests/integration/test_bus_e2e.py -v --tb=shor
 
 ```bash
 git add -A
-git commit -m "[Phase0] Gate passed — all infrastructure verified"
+git commit -m "[Phase0] Gate passed â€” all infrastructure verified"
 ```
 
 Update `.env`:
@@ -1229,8 +1229,8 @@ PHASE_0_COMPLETE=true
 ```
 ---
 
-## PHASE 1 — SCOUT + FORGE + FURNACE
-**Duration: 6 days | Goal: Titanic CSV → trained LightGBM → val AUC > 0.82, zero human intervention**
+## PHASE 1 â€” SCOUT + FORGE + FURNACE
+**Duration: 6 days | Goal: Titanic CSV â†’ trained LightGBM â†’ val AUC > 0.82, zero human intervention**
 
 ---
 
@@ -1246,13 +1246,13 @@ structured Mission Brief in JSON format.
 RULES YOU MUST FOLLOW:
 1. You ALWAYS output valid JSON. Never output prose. Never add markdown code fences.
 2. When you need to call a tool, output ONLY the tool_call JSON, nothing else.
-3. You NEVER guess data types — you always inspect the actual data first.
-4. You NEVER invent column names — you only use columns that actually exist.
+3. You NEVER guess data types â€” you always inspect the actual data first.
+4. You NEVER invent column names â€” you only use columns that actually exist.
 5. If you cannot determine a field with confidence, set it to null.
 
 OUTPUT FORMAT (after all tool calls complete):
 You must output a single JSON object that matches the MissionBrief schema exactly.
-All string enum values must be one of the specified options — no others are valid.
+All string enum values must be one of the specified options â€” no others are valid.
 
 task_type options: classification, regression, detection, generation
 modality options: tabular, text, image
@@ -1266,7 +1266,7 @@ recommended_architecture_family options: lightgbm, xgboost, tabnet, distilbert, 
 ```python
 """
 Scout tools. Each function is independently unit-testable.
-All functions are pure — no side effects except Redis writes (marked explicitly).
+All functions are pure â€” no side effects except Redis writes (marked explicitly).
 """
 
 import json
@@ -1294,7 +1294,7 @@ def detect_modality(file_path: str) -> str:
     elif ext in {".txt", ".jsonl", ".json"}:
         return "text"
     elif ext in {".jpg", ".jpeg", ".png", ".zip"}:
-        # Zip might be image dataset — check contents
+        # Zip might be image dataset â€” check contents
         return "image"
     else:
         # Try to load as CSV as a fallback
@@ -1311,7 +1311,7 @@ def run_eda(file_path: str, target_column: str | None = None) -> dict[str, Any]:
     Returns a dict with all fields needed to populate MissionBrief.dataset
     and MissionBrief.data_quality.
 
-    Does NOT write to Redis — returns a plain dict.
+    Does NOT write to Redis â€” returns a plain dict.
     """
     try:
         df = pd.read_csv(file_path)
@@ -1464,7 +1464,7 @@ SCOUT_TOOLS = [
 **Create `agents/scout/agent.py`:**
 ```python
 """
-Scout agent — The Perceiver.
+Scout agent â€” The Perceiver.
 Input: problem description + file path + constraints
 Output: MissionBrief written to Redis + MISSION_BRIEF_READY event published
 """
@@ -1527,10 +1527,10 @@ class ScoutAgent(BaseAgent):
         """
         logger.info(f"[Scout][job={self.job_id}] Starting")
 
-        # Step 1: Detect modality (deterministic — no LLM needed)
+        # Step 1: Detect modality (deterministic â€” no LLM needed)
         modality = detect_modality(self.file_path)
 
-        # Step 2: Run EDA (deterministic — pandas analysis)
+        # Step 2: Run EDA (deterministic â€” pandas analysis)
         eda = run_eda(self.file_path, self.target_column)
         if "error" in eda:
             raise RuntimeError(f"Scout EDA failed: {eda['error']}")
@@ -1557,7 +1557,7 @@ Reply with JSON only: {{"task_type": "classification|regression", "notes": "..."
 """,
         )
 
-        # Parse LLM refinement (best effort — fall back to deterministic if LLM fails)
+        # Parse LLM refinement (best effort â€” fall back to deterministic if LLM fails)
         try:
             llm_data = json.loads(llm_response["text"])
             task_type = llm_data.get("task_type", task_type)
@@ -1620,7 +1620,7 @@ Reply with JSON only: {{"task_type": "classification|regression", "notes": "..."
 
 **Create `tests/unit/test_scout_tools.py`:**
 ```python
-"""Unit tests for Scout tools. No Redis, no LLM — pure function tests."""
+"""Unit tests for Scout tools. No Redis, no LLM â€” pure function tests."""
 import pytest
 import pandas as pd
 import tempfile
@@ -1659,7 +1659,7 @@ def test_run_eda_basic(tmp_path):
 
 
 def test_run_eda_detects_imbalance(tmp_path):
-    # 10 class 0, 1 class 1 → ratio 10:1
+    # 10 class 0, 1 class 1 â†’ ratio 10:1
     data = {"label": [0]*10 + [1]*1, "feature": range(11)}
     path = make_csv(data, tmp_path)
     result = run_eda(path, target_column="label")
@@ -1700,12 +1700,12 @@ Expected: all 6 tests pass.
 
 ---
 
-### DAY 1-2 to 1-3: Forge — Architecture Selection + Script Generation
+### DAY 1-2 to 1-3: Forge â€” Architecture Selection + Script Generation
 
 **Create `agents/forge/decision_tree.py`:**
 ```python
 """
-Architecture decision tree. Pure Python — no LLM, no I/O.
+Architecture decision tree. Pure Python â€” no LLM, no I/O.
 Implements CLAUDE.md Section 11 exactly.
 """
 
@@ -1759,7 +1759,7 @@ def select(
         trials = 10
 
     else:
-        # Unknown modality — default to LightGBM
+        # Unknown modality â€” default to LightGBM
         arch = "lightgbm"
         strategy = "none"
         trials = 20
@@ -1841,7 +1841,7 @@ ARCHITECTURE DECISION:
 - Early stopping rounds: {decision.early_stopping_rounds}
 
 REQUIREMENTS FOR THE SCRIPT:
-1. The script must be completely self-contained — no imports outside standard library + installed packages
+1. The script must be completely self-contained â€” no imports outside standard library + installed packages
 2. It must load data from the file path in the mission brief
 3. It must use Optuna for hyperparameter search with the number of trials specified
 4. It must save the best model checkpoint to: outputs/{{JOB_ID}}/checkpoints/best.ckpt
@@ -1862,7 +1862,7 @@ Start with: import ...
 
 **Create `agents/forge/agent.py`:**
 ```python
-"""Forge agent — The Architect. Subscribes to MISSION_BRIEF_READY → writes training script."""
+"""Forge agent â€” The Architect. Subscribes to MISSION_BRIEF_READY â†’ writes training script."""
 
 import json
 import logging
@@ -1909,8 +1909,8 @@ class ForgeAgent(BaseAgent):
 
     async def run(self) -> str:
         """
-        Wait for MISSION_BRIEF_READY → read brief → select architecture →
-        generate script → validate → save → publish TRAINING_SCRIPT_READY.
+        Wait for MISSION_BRIEF_READY â†’ read brief â†’ select architecture â†’
+        generate script â†’ validate â†’ save â†’ publish TRAINING_SCRIPT_READY.
         Returns path to saved script.
         """
         logger.info(f"[Forge][job={self.job_id}] Waiting for MISSION_BRIEF_READY")
@@ -1977,13 +1977,13 @@ class ForgeAgent(BaseAgent):
                 "search_space_redis_key": f"job:{self.job_id}:search_space",
             },
         )
-        logger.info(f"[Forge][job={self.job_id}] Published TRAINING_SCRIPT_READY → {script_path}")
+        logger.info(f"[Forge][job={self.job_id}] Published TRAINING_SCRIPT_READY â†’ {script_path}")
         return script_path
 ```
 
 ---
 
-### DAY 1-4 to 1-5: Furnace — Docker Training + Metrics Streaming
+### DAY 1-4 to 1-5: Furnace â€” Docker Training + Metrics Streaming
 
 **Create `training/base_training_image/Dockerfile`:**
 ```dockerfile
@@ -2006,9 +2006,9 @@ RUN pip install --no-cache-dir \
     onnxruntime==1.18.0
 
 # Scripts and data are mounted at runtime via volumes:
-# /app/script.py   ← training script written by Forge
-# /app/data/       ← dataset files
-# /app/outputs/    ← model checkpoints written here
+# /app/script.py   â† training script written by Forge
+# /app/data/       â† dataset files
+# /app/outputs/    â† model checkpoints written here
 
 CMD ["python", "/app/script.py"]
 ```
@@ -2090,7 +2090,7 @@ class DockerTrainingManager:
                     docker.types.DeviceRequest(count=-1, capabilities=[["gpu"]])
                 ]
         except Exception:
-            pass  # No GPU available — use CPU
+            pass  # No GPU available â€” use CPU
 
         self.container = self.client.containers.run(
             image=TRAINING_IMAGE,
@@ -2121,7 +2121,7 @@ class DockerTrainingManager:
                 parsed = json.loads(decoded)
                 yield parsed
             except json.JSONDecodeError:
-                # Non-JSON output — log it but don't crash
+                # Non-JSON output â€” log it but don't crash
                 logger.debug(f"[job={self.job_id}] Container non-JSON output: {decoded}")
 
     def get_exit_code(self) -> int:
@@ -2194,7 +2194,7 @@ class CheckpointManager:
 **Create `agents/furnace/agent.py`:**
 ```python
 """
-Furnace agent — The Trainer.
+Furnace agent â€” The Trainer.
 Launches training container, streams metrics, publishes events, handles crashes.
 On CRASH: saves checkpoint, publishes CRASH_EVENT, enters WAIT state.
 On RESUME_TRAINING: reloads patched script, resumes from checkpoint.
@@ -2325,7 +2325,7 @@ class FurnaceAgent(BaseAgent):
                     f"Entering WAIT state for Dissect."
                 )
 
-                # WAIT state — block until RESUME_TRAINING or ESCALATE
+                # WAIT state â€” block until RESUME_TRAINING or ESCALATE
                 resume = await self._wait_for_resume()
 
                 if resume is None:
@@ -2422,7 +2422,7 @@ class FurnaceAgent(BaseAgent):
         """
         Block in WAIT state, reading from dissect_output stream.
         Returns RESUME_TRAINING payload or None if ESCALATE received.
-        Times out after 10 minutes — returns None on timeout (treated as escalate).
+        Times out after 10 minutes â€” returns None on timeout (treated as escalate).
         """
         await ensure_consumer_group(self._redis, STREAM_DISSECT_OUTPUT, GROUP_FURNACE)
         consumer_name = f"furnace-{self.job_id}"
@@ -2467,7 +2467,7 @@ class FurnaceAgent(BaseAgent):
 **Create `orchestrator/runtime.py`:**
 ```python
 """
-Orchestrator v1 — sequential Scout → Forge → Furnace pipeline.
+Orchestrator v1 â€” sequential Scout â†’ Forge â†’ Furnace pipeline.
 Phase 1 version: no Dissect, no Arbiter, no Harbor.
 """
 
@@ -2531,7 +2531,7 @@ class Orchestrator:
         target_column: str | None = None,
     ) -> dict:
         """
-        Run a full job sequentially: Scout → Forge → Furnace.
+        Run a full job sequentially: Scout â†’ Forge â†’ Furnace.
         Returns the final result dict.
         """
         await self._redis.set(f"job:{job_id}:status", "RUNNING")
@@ -2595,7 +2595,7 @@ def require_titanic():
 @pytest.mark.asyncio
 async def test_titanic_e2e(require_titanic):
     """
-    Full pipeline: Titanic CSV → Scout → Forge → Furnace.
+    Full pipeline: Titanic CSV â†’ Scout â†’ Forge â†’ Furnace.
     Verifies:
     1. MissionBrief has correct schema (tabular, classification)
     2. Training script is generated and is valid Python
@@ -2654,9 +2654,9 @@ pytest tests/integration/test_titanic_e2e.py -v -s
 
 If it fails because the training script is bad Python, open `scripts/training_script_{job_id}.py`
 and look at what Forge generated. The most common issues:
-- LLM added markdown fences despite instructions → already handled in forge/agent.py
-- LLM hallucinated an import → fix by adding the package to the training image Dockerfile
-- LLM didn't follow the JSON stdout format → adjust forge/tools.py prompt
+- LLM added markdown fences despite instructions â†’ already handled in forge/agent.py
+- LLM hallucinated an import â†’ fix by adding the package to the training image Dockerfile
+- LLM didn't follow the JSON stdout format â†’ adjust forge/tools.py prompt
 
 After each fix: `pytest tests/integration/test_titanic_e2e.py -v`
 
@@ -2664,16 +2664,16 @@ Gate passes when: test is green AND `best_val_metric > 0.70`.
 
 ```bash
 git add -A
-git commit -m "[Phase1] Gate passed — Titanic E2E: Scout + Forge + Furnace"
+git commit -m "[Phase1] Gate passed â€” Titanic E2E: Scout + Forge + Furnace"
 ```
 
 Update `.env`: `PHASE_1_COMPLETE=true`
 
 ---
 
-## PHASE 2 — DISSECT + ARBITER + HARBOR
+## PHASE 2 â€” DISSECT + ARBITER + HARBOR
 **Duration: 5 days | Goal: Full pipeline with crash recovery on 3 datasets**
-**⚠️ This is the most complex phase. The Furnace↔Dissect crash-recovery loop is the hardest part of the entire system. Budget 2-3 extra days if debugging takes longer than expected — this phase contains the core scientific contribution and getting it right matters more than hitting the day count.**
+**âš ï¸ This is the most complex phase. The Furnaceâ†”Dissect crash-recovery loop is the hardest part of the entire system. Budget 2-3 extra days if debugging takes longer than expected â€” this phase contains the core scientific contribution and getting it right matters more than hitting the day count.**
 
 ---
 
@@ -2887,7 +2887,7 @@ def classify_error(
             if re.search(pattern, exception_message, re.IGNORECASE):
                 return entry.category, entry.confidence, "regex"
 
-    # No match — will be classified by LLM
+    # No match â€” will be classified by LLM
     return "novel_error", 0.0, "llm_classification"
 ```
 
@@ -3026,7 +3026,7 @@ def run_sandbox_test(script_path: str, job_id: str, max_epochs: int = 3) -> tupl
     try:
         client = docker_sdk.from_env()
 
-        # Mount only the script and data — no outputs needed for sandbox
+        # Mount only the script and data â€” no outputs needed for sandbox
         data_dir = os.path.abspath(os.getenv("DATA_DIR", "./data"))
         volumes = {
             os.path.abspath(script_path): {"bind": "/app/script.py", "mode": "ro"},
@@ -3071,7 +3071,7 @@ def run_sandbox_test(script_path: str, job_id: str, max_epochs: int = 3) -> tupl
 ```python
 """
 Patch log writer for Dissect. Pushes entries to Redis patch_log_queue.
-NEVER writes directly to patch_log.jsonl — that's orchestrator/patch_log_writer.py's job.
+NEVER writes directly to patch_log.jsonl â€” that's orchestrator/patch_log_writer.py's job.
 """
 
 import json
@@ -3104,7 +3104,7 @@ of the script.
 YOU MUST:
 1. Output ONLY the complete fixed Python script. No explanations. No markdown.
 2. The first line of your output must be a Python import statement.
-3. Preserve ALL functionality of the original script — only fix the error.
+3. Preserve ALL functionality of the original script â€” only fix the error.
 4. Apply the MINIMUM change needed to fix the specific error. Do not refactor.
 5. If you are less than 60% confident the fix is correct, output exactly:
    ESCALATE: <reason>
@@ -3125,9 +3125,9 @@ ONLY fix the specific error.
 **Create `agents/dissect/agent.py`:**
 ```python
 """
-Dissect agent — The Debugger. Core scientific contribution.
-Subscribes to CRASH_EVENT → classifies error → generates patch →
-applies patch → sandbox test → RESUME_TRAINING or ESCALATE.
+Dissect agent â€” The Debugger. Core scientific contribution.
+Subscribes to CRASH_EVENT â†’ classifies error â†’ generates patch â†’
+applies patch â†’ sandbox test â†’ RESUME_TRAINING or ESCALATE.
 """
 
 import json
@@ -3295,7 +3295,7 @@ Remember: output ONLY Python code, or ESCALATE: <reason> if unsure.
                 )
             return
 
-        # Step 7: Sandbox passed — write success log
+        # Step 7: Sandbox passed â€” write success log
         patch_id = str(uuid.uuid4())
         entry = PatchLogEntry(
             patch_id=patch_id,
@@ -3374,13 +3374,13 @@ Remember: output ONLY Python code, or ESCALATE: <reason> if unsure.
         return "Unknown category"
 
     async def run(self) -> None:
-        """Not used directly — Dissect is called by Orchestrator via handle_crash()."""
+        """Not used directly â€” Dissect is called by Orchestrator via handle_crash()."""
         pass
 ```
 
 **Create `tests/unit/test_dissect_taxonomy.py`:**
 ```python
-"""Unit tests for Dissect taxonomy — one test per error category."""
+"""Unit tests for Dissect taxonomy â€” one test per error category."""
 import pytest
 from agents.dissect.taxonomy import classify_error
 
@@ -3436,7 +3436,7 @@ Expected: all 10 tests pass.
 
 **Create injected error fixtures in `tests/fixtures/injected_errors/`:**
 
-`01_shape_mismatch.py` — script with a deliberate shape mismatch:
+`01_shape_mismatch.py` â€” script with a deliberate shape mismatch:
 ```python
 # Injected error: shape mismatch
 # The encoder is fit on 5 features but transform is called on 4
@@ -3468,7 +3468,7 @@ print(json.dumps({"type": "training_complete", "best_val_metric": 0.8, "total_ep
 
 `02_dtype_mismatch.py`:
 ```python
-# Injected error: dtype mismatch — categorical column not encoded
+# Injected error: dtype mismatch â€” categorical column not encoded
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import GradientBoostingClassifier
@@ -3522,7 +3522,7 @@ df = pd.read_csv("/app/data/titanic.csv")
 target = "Survived"
 df = df.dropna(subset=[target])
 
-# BUG: no fillna — Age has NaN values
+# BUG: no fillna â€” Age has NaN values
 features = ["Pclass", "Age", "Fare"]
 X = df[features].values  # Contains NaN from Age column
 y = df[target].values
@@ -3550,8 +3550,8 @@ print(json.dumps({"type": "training_complete", "best_val_metric": 0.8, "total_ep
 **Create `agents/arbiter/agent.py`:**
 ```python
 """
-Arbiter agent — The Critic.
-Subscribes to TRAINING_COMPLETE → loads checkpoint → evaluates → decides PASS/RETRY/ESCALATE.
+Arbiter agent â€” The Critic.
+Subscribes to TRAINING_COMPLETE â†’ loads checkpoint â†’ evaluates â†’ decides PASS/RETRY/ESCALATE.
 """
 
 import json
@@ -3839,9 +3839,9 @@ async def metrics():
 **Create `agents/harbor/agent.py`:**
 ```python
 """
-Harbor agent — The Deployer.
-Subscribes to EVALUATION_PASS → serializes model → generates FastAPI app →
-deploys to local Docker Compose → monitors for drift.
+Harbor agent â€” The Deployer.
+Subscribes to EVALUATION_PASS â†’ serializes model â†’ generates FastAPI app â†’
+deploys to local Docker Compose â†’ monitors for drift.
 """
 
 import json
@@ -4002,13 +4002,13 @@ All must be green before Phase 3.
 
 ```bash
 git add -A
-git commit -m "[Phase2] Gate passed — Dissect + Arbiter + Harbor complete"
+git commit -m "[Phase2] Gate passed â€” Dissect + Arbiter + Harbor complete"
 ```
 Update `.env`: `PHASE_2_COMPLETE=true`
 
 ---
 
-## PHASE 3 — CHROMADB MEMORY + ORCHESTRATOR HARDENING
+## PHASE 3 â€” CHROMADB MEMORY + ORCHESTRATOR HARDENING
 **Duration: 5 days | Goal: ChromaDB memory working, Dissect learning from history, orchestrator bulletproof**
 
 ---
@@ -4017,7 +4017,7 @@ Update `.env`: `PHASE_2_COMPLETE=true`
 
 **Create `memory/chroma_client.py`:**
 ```python
-"""ChromaDB client — vector database for long-term memory."""
+"""ChromaDB client â€” vector database for long-term memory."""
 import logging
 import os
 from typing import Any
@@ -4046,7 +4046,7 @@ def get_or_create_collection(client: chromadb.HttpClient, name: str):
 
 **Create `memory/collections/patch_memory.py`:**
 ```python
-"""patch_memory ChromaDB collection — Dissect learns from past patches."""
+"""patch_memory ChromaDB collection â€” Dissect learns from past patches."""
 import json
 import logging
 from typing import Any
@@ -4104,7 +4104,7 @@ async def query_similar_patches(exception_type: str, exception_message: str, k: 
     patches = []
     for doc, dist in zip(results["documents"][0], results["distances"][0]):
         entry = json.loads(doc)
-        entry["_similarity_score"] = 1 - dist  # cosine distance → similarity
+        entry["_similarity_score"] = 1 - dist  # cosine distance â†’ similarity
         patches.append(entry)
 
     return patches
@@ -4118,7 +4118,7 @@ Update `orchestrator/runtime.py` to add:
 1. Concurrent Furnace + Dissect using `asyncio.create_task()`
 2. Arbiter after TRAINING_COMPLETE
 3. Harbor after EVALUATION_PASS
-4. ESCALATE handling → JOB_FAILED
+4. ESCALATE handling â†’ JOB_FAILED
 5. Start patch_log_writer as background task
 
 The key pattern for concurrent Furnace + Dissect:
@@ -4166,7 +4166,7 @@ furnace_result = await furnace.run(script_path=script_path)
 if self.use_dissect:
     dissect_task.cancel()
 
-# After Furnace completes → Arbiter
+# After Furnace completes â†’ Arbiter
 arbiter = ArbiterAgent(job_id=job_id, redis_client=self._redis)
 eval_report = await arbiter.run(checkpoint_path=furnace_result["checkpoint_path"])
 
@@ -4219,7 +4219,7 @@ git commit -m "[Phase3] ChromaDB memory + orchestrator hardening complete"
 
 ---
 
-## PHASE 4 — FINAL RESEARCH BENCHMARK + PAPER
+## PHASE 4 â€” FINAL RESEARCH BENCHMARK + PAPER
 **Duration: 5 days | Goal: Real benchmark results, paper dataset, research-ready system**
 
 ---
@@ -4227,7 +4227,7 @@ git commit -m "[Phase3] ChromaDB memory + orchestrator hardening complete"
 ### DAY 4-1: Verify Claude API + Benchmark Setup
 
 **You should already have your API key from Phase 0. If not:**
-1. Go to: https://console.anthropic.com → API Keys → Create Key
+1. Go to: https://console.anthropic.com â†’ API Keys â†’ Create Key
 2. Set `ANTHROPIC_API_KEY` in `.env` if you haven't already
 
 **Verify the API is still working (Claude Sonnet has been used since Phase 0):**
@@ -4260,23 +4260,23 @@ All tests must pass before proceeding to the benchmark.
 
 ### DAY 4-2 to 4-3: 50-Problem Benchmark
 
-**YOU DO THIS — download 50 benchmark datasets:**
+**YOU DO THIS â€” download 50 benchmark datasets:**
 
 The benchmark uses standard Kaggle/UCI datasets. Here's the minimal list that covers
 the 3 conditions (manual, no Dissect, with Dissect) with statistical power:
 
 For a Mann-Whitney U test with effect size d=0.5 and power=0.8: need n=34 per condition.
-Use 50 problems → more than sufficient.
+Use 50 problems â†’ more than sufficient.
 
 Download from Kaggle (each takes 1 minute):
-1. titanic → already have it
-2. heart-disease (UCI): https://www.kaggle.com/datasets/redwankarimsony/heart-disease-ms → `data/heart_disease.csv`
-3. breast-cancer (UCI): https://www.kaggle.com/datasets/uciml/breast-cancer-wisconsin-data → `data/breast_cancer.csv`
-4. adult-income: https://www.kaggle.com/datasets/wenruliu/adult-income-dataset → `data/adult_income.csv`
-5. bank-marketing: https://www.kaggle.com/datasets/janiobachmann/bank-marketing-dataset → `data/bank_marketing.csv`
+1. titanic â†’ already have it
+2. heart-disease (UCI): https://www.kaggle.com/datasets/redwankarimsony/heart-disease-ms â†’ `data/heart_disease.csv`
+3. breast-cancer (UCI): https://www.kaggle.com/datasets/uciml/breast-cancer-wisconsin-data â†’ `data/breast_cancer.csv`
+4. adult-income: https://www.kaggle.com/datasets/wenruliu/adult-income-dataset â†’ `data/adult_income.csv`
+5. bank-marketing: https://www.kaggle.com/datasets/janiobachmann/bank-marketing-dataset â†’ `data/bank_marketing.csv`
 
 (For the full 50, run the 5 datasets above with 10 different injected error types each.
-This gives 50 "problems" — each with a different failure mode for Dissect to handle.)
+This gives 50 "problems" â€” each with a different failure mode for Dissect to handle.)
 
 **Create `research/benchmark/problems.json`:**
 ```json
@@ -4293,7 +4293,7 @@ This gives 50 "problems" — each with a different failure mode for Dissect to h
 ```python
 """
 Run the 3-condition benchmark for the paper.
-Condition A: manual (skip — recorded manually by Mohamed)
+Condition A: manual (skip â€” recorded manually by Mohamed)
 Condition B: Prometheus Swarm WITHOUT Dissect (disable Dissect in orchestrator)
 Condition C: Prometheus Swarm WITH Dissect (full system)
 """
@@ -4423,7 +4423,7 @@ def run_analysis():
     print(f"p-value: {p_value:.6f}")
     print(f"Result: {'SIGNIFICANT (p < 0.05)' if p_value < 0.05 else 'NOT significant'}")
 
-    print(f"\nMean duration — B: {np.mean(b_durations):.1f}s | C: {np.mean(c_durations):.1f}s")
+    print(f"\nMean duration â€” B: {np.mean(b_durations):.1f}s | C: {np.mean(c_durations):.1f}s")
 
     reduction = (np.mean(b_interventions) - np.mean(c_interventions)) / max(np.mean(b_interventions), 0.001)
     print(f"Intervention reduction with Dissect: {reduction:.1%}")
@@ -4462,7 +4462,7 @@ def convert():
     with open(json_path, "w") as f:
         json.dump(entries, f, indent=2)
 
-    print(f"Converted {len(entries)} entries → {json_path}")
+    print(f"Converted {len(entries)} entries â†’ {json_path}")
 
 if __name__ == "__main__":
     convert()
@@ -4498,7 +4498,7 @@ multi-agent semantic code modification to patch runtime execution errors directl
 ### 4.3 Metrics
 
 ## 5. Results
-[TBD — paste from statistical_analysis.py output]
+[TBD â€” paste from statistical_analysis.py output]
 
 ## 6. Discussion
 
@@ -4514,7 +4514,7 @@ pytest tests/ -v --tb=short 2>&1 | tail -20
 
 ```bash
 git add -A
-git commit -m "[Phase4] Research experiment complete — paper-ready"
+git commit -m "[Phase4] Research experiment complete â€” paper-ready"
 ```
 
 **Dataset Publication:**
@@ -4558,7 +4558,7 @@ All environment-specific configuration lives in `.env`.
 
 ---
 
-## QUICK REFERENCE — DAILY STARTUP COMMANDS
+## QUICK REFERENCE â€” DAILY STARTUP COMMANDS
 
 ```bash
 # Start every session with these:
@@ -4568,7 +4568,7 @@ cd prometheus-swarm
 docker compose up -d             # Start Redis + ChromaDB
 
 # Verify everything is healthy:
-docker exec prometheus-redis redis-cli ping   # → PONG
+docker exec prometheus-redis redis-cli ping   # â†’ PONG
 python3 -c "import urllib.request, json; d=json.loads(urllib.request.urlopen('http://localhost:8000/api/v1/heartbeat').read().decode()); print('ChromaDB', 'OK' if d.get('nanosecond heartbeat') else 'FAIL')"
 
 # Run tests:
@@ -4580,6 +4580,6 @@ docker compose stop              # Stop Redis + ChromaDB (data preserved in volu
 
 ---
 
-*End of PLAN.md — Prometheus Swarm Build Plan*
+*End of PLAN.md â€” Prometheus Swarm Build Plan*
 *Owner: Mohamed Mosad Ghonaim | Nexora Lab | nexoraintel.com*
-*Built on CLAUDE.md v1.2 — read CLAUDE.md before reading this file*
+*Built on CLAUDE.md v1.2 â€” read CLAUDE.md before reading this file*

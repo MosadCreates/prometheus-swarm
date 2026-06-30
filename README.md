@@ -1,4 +1,4 @@
-﻿# Prometheus Swarm
+# Prometheus Swarm
 
 Autonomous multi-agent ML pipeline. You describe the problem. The swarm trains, debugs,
 evaluates, and serves a model — without human intervention.
