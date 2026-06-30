@@ -137,18 +137,6 @@ The core contribution is the **Dissect** agent: autonomous self-patching of ML t
 
 ---
 
-## Commercial Context
-
-Built at **Nexora Lab** ([nexoraintel.com](https://nexoraintel.com)), Alamein International University.
-
-Prometheus Swarm is the architectural foundation for an ML-as-a-service SaaS product. The competitive moat is ChromaDB long-term memory — every job run improves patch success rates.
-
----
-
 ## License
 
 MIT — see LICENSE file.
-
----
-
-*Built by Mohamed Mosad Ghonaim | Alamein International University | Nexora Lab*
