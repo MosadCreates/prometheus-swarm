@@ -7,3 +7,4 @@ description = "Autonomous multi-agent ML pipeline system"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["."]
