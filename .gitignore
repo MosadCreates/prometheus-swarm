@@ -20,3 +20,4 @@ data/*.parquet
 node_modules/
 .pytest_cache/
 frontend/.next/
+prometheus_swarm_blueprint.pdf

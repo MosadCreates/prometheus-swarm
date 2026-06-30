@@ -1,6 +1,6 @@
 """Error taxonomy: categories + repair strategies for Dissect. Matches CLAUDE.md Section 8."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import re
 
 
@@ -73,6 +73,66 @@ TAXONOMY: list[TaxonomyEntry] = [
         exception_types=["UnpicklingError", "EOFError"],
         message_patterns=[r"invalid load key", r"unpickl"],
         repair_strategy="Delete checkpoint; restart from epoch 0; increase save frequency",
+    ),
+    TaxonomyEntry(
+        category="feature_mismatch",
+        exception_types=["ValueError"],
+        message_patterns=[r"number of features", r"feature_names", r"X has \d+ features"],
+        repair_strategy="Align feature order and count between train/test; re-run encoder on combined column set",
+    ),
+    TaxonomyEntry(
+        category="index_error",
+        exception_types=["IndexError"],
+        message_patterns=[r"index \d+ is out of bounds", r"index out of range", r"list index"],
+        repair_strategy="Add bounds check before array access; verify label encoding produced correct indices",
+    ),
+    TaxonomyEntry(
+        category="zero_division",
+        exception_types=["ZeroDivisionError", "RuntimeWarning"],
+        message_patterns=[r"division by zero", r"divide by zero", r"invalid value encountered"],
+        repair_strategy="Add epsilon (1e-8) to denominator in metric computations; check for constant target column",
+    ),
+    TaxonomyEntry(
+        category="empty_dataset",
+        exception_types=["ValueError", "IndexError", "StopIteration"],
+        message_patterns=[r"zero-size array", r"empty", r"0 rows", r"no samples"],
+        repair_strategy="Check that train_test_split produced non-empty sets; verify filtering did not remove all rows",
+    ),
+    TaxonomyEntry(
+        category="invalid_axis",
+        exception_types=["ValueError"],
+        message_patterns=[r"axis", r"no axis named", r"invalid axis"],
+        repair_strategy="Correct axis parameter: use axis=0 for rows, axis=1 for columns in pandas/numpy operations",
+    ),
+    TaxonomyEntry(
+        category="optimizer_divergence",
+        exception_types=["RuntimeError", "ValueError"],
+        message_patterns=[r"loss.*inf", r"loss.*nan", r"diverg", r"explode"],
+        repair_strategy="Reduce learning rate by 0.5x; add gradient clipping; check for NaN in input features",
+    ),
+    TaxonomyEntry(
+        category="encoding_error",
+        exception_types=["UnicodeDecodeError", "UnicodeEncodeError", "LookupError"],
+        message_patterns=[r"codec", r"encode", r"decode", r"charmap"],
+        repair_strategy="Open file with encoding='utf-8' and errors='replace'; detect file encoding automatically",
+    ),
+    TaxonomyEntry(
+        category="permission_error",
+        exception_types=["PermissionError", "OSError"],
+        message_patterns=[r"permission denied", r"access is denied", r"cannot open"],
+        repair_strategy="Check output directory exists and is writable; create directory with exist_ok=True",
+    ),
+    TaxonomyEntry(
+        category="label_mismatch",
+        exception_types=["ValueError"],
+        message_patterns=[r"class", r"label", r"n_classes", r"number of classes"],
+        repair_strategy="Check that all classes are present in training data; add missing classes to label encoder",
+    ),
+    TaxonomyEntry(
+        category="pickle_version_mismatch",
+        exception_types=["UnpicklingError", "ModuleNotFoundError"],
+        message_patterns=[r"pickle", r"protocol", r"unsupported pickle"],
+        repair_strategy="Load pickle with fix_imports=True; re-save with protocol=2 for cross-version compatibility",
     ),
     TaxonomyEntry(
         category="novel_error",

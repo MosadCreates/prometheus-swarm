@@ -3,15 +3,14 @@ Scout Agent ? The Perceiver.
 Accepts a raw problem description + dataset, produces a mission_brief.json.
 """
 
-import json
 import os
 from typing import Any
 
 from agents.base import BaseAgent
 from agents.scout.prompts import SCOUT_SYSTEM_PROMPT
 from agents.scout.tools import (
-    detect_modality, run_eda, infer_task_type,
-    select_evaluation_metric, write_mission_brief,
+    run_eda,
+    write_mission_brief,
 )
 from bus.events import MISSION_BRIEF_READY, STREAM_SCOUT_OUTPUT
 from bus.publisher import publish
@@ -58,9 +57,7 @@ class ScoutAgent(BaseAgent):
         await self.redis.set_json(mission_key, brief)
 
         await self.redis.set_str(f"job:{self.job_id}:file_path", file_path)
-        await self.redis.set_str(
-            f"job:{self.job_id}:problem_description", problem_description
-        )
+        await self.redis.set_str(f"job:{self.job_id}:problem_description", problem_description)
 
         await publish(
             self.redis._client,
@@ -75,8 +72,11 @@ class ScoutAgent(BaseAgent):
         )
 
     async def run_with_data(
-        self, problem_description: str, file_path: str,
-        target_column: str | None = None, constraints: dict | None = None,
+        self,
+        problem_description: str,
+        file_path: str,
+        target_column: str | None = None,
+        constraints: dict | None = None,
     ) -> dict[str, Any]:
         self.job_data = {
             "problem_description": problem_description,

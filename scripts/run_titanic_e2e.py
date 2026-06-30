@@ -1,4 +1,5 @@
 """End-to-end pipeline runner for Titanic."""
+
 import asyncio
 import json
 import logging
@@ -11,7 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
+
 load_dotenv()
 
 
@@ -48,7 +50,7 @@ async def main():
     with open(script_path) as f:
         code = f.read()
     compile(code, script_path, "exec")
-    print(f"  Syntax: OK")
+    print("  Syntax: OK")
 
     # ── Phase 3: Training ───────────────────────────────────────────
     print("\n=== PHASE 3: TRAINING ===")
@@ -57,7 +59,10 @@ async def main():
 
     result = subprocess.run(
         [sys.executable, script_path],
-        capture_output=True, text=True, timeout=120, env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=env,
     )
     print(f"  stdout: {result.stdout.strip()}")
     if result.stderr:
@@ -76,10 +81,11 @@ async def main():
     # ── Phase 4: Arbiter ────────────────────────────────────────────
     print("\n=== PHASE 4: ARBITER ===")
     from agents.arbiter.tools import (
-        compute_classification_metrics, make_decision, generate_failure_analysis
+        compute_classification_metrics,
+        make_decision,
+        generate_failure_analysis,
     )
     import pandas as pd
-    import numpy as np
 
     # Load model and real test data
     df = pd.read_csv(titanic_path)
@@ -112,7 +118,7 @@ async def main():
         y_prob=y_prob.tolist() if y_prob is not None else None,
     )
     decision, reason = make_decision("classification", metrics, crash_count=0)
-    analysis = generate_failure_analysis(metrics, decision, reason)
+    _ = generate_failure_analysis(metrics, decision, reason)
 
     print(f"  AUC: {metrics.get('auc_roc', 0):.4f}")
     print(f"  Accuracy: {metrics.get('accuracy', 0):.4f}")
@@ -121,6 +127,7 @@ async def main():
 
     # Write eval report
     from datetime import datetime, timezone
+
     eval_report = {
         "job_id": job_id,
         "decision": decision,
@@ -139,8 +146,11 @@ async def main():
     # ── Phase 5: Harbor ─────────────────────────────────────────────
     print("\n=== PHASE 5: HARBOR ===")
     from agents.harbor.tools import (
-        serialize_to_onnx, generate_fastapi_app, build_docker_image,
-        deploy_local_compose, configure_drift_monitor,
+        serialize_to_onnx,
+        generate_fastapi_app,
+        build_docker_image,
+        deploy_local_compose,
+        configure_drift_monitor,
     )
     from bus.events import ENDPOINT_LIVE, STREAM_HARBOR_OUTPUT
     from bus.publisher import publish
@@ -177,7 +187,7 @@ async def main():
         print(f"  Deploy: {'OK' if deploy_ok else 'FAIL'} - {deploy_msg}")
 
         # Configure drift monitoring
-        drift_config = configure_drift_monitor(
+        _ = configure_drift_monitor(
             job_id=job_id,
             training_data_path=f"outputs/{job_id}/training_data.csv",
         )
@@ -186,15 +196,18 @@ async def main():
         redis = RedisClient()
         await redis.connect()
         await publish(
-            redis._client, STREAM_HARBOR_OUTPUT, ENDPOINT_LIVE, {
+            redis._client,
+            STREAM_HARBOR_OUTPUT,
+            ENDPOINT_LIVE,
+            {
                 "job_id": job_id,
-                "endpoint_url": f"http://localhost:8081",
+                "endpoint_url": "http://localhost:8081",
                 "val_metric": metrics.get("auc_roc", 0),
                 "p95_latency_ms": 0.0,
                 "model_format": model_format,
-            }
+            },
         )
-        endpoint_url = f"http://localhost:8081"
+        endpoint_url = "http://localhost:8081"
         print(f"  Endpoint: {endpoint_url}/docs")
         await redis.close()
     else:
@@ -202,7 +215,7 @@ async def main():
 
     # ── Summary ─────────────────────────────────────────────────────
     print(f"\n{'='*60}")
-    print(f"  TITANIC PIPELINE COMPLETE")
+    print("  TITANIC PIPELINE COMPLETE")
     print(f"  Job ID: {job_id}")
     print(f"  Checkpoint: {checkpoint_path}")
     print(f"  AUC: {metrics.get('auc_roc', 0):.4f}")

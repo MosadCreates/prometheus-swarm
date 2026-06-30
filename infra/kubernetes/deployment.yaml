@@ -1,5 +1,4 @@
-# Phase 4 GKE deployment — Prometheus Swarm serving endpoint
-# Not used during Phases 0-3. Phase 4 only.
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:

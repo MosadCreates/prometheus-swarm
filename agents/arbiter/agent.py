@@ -3,7 +3,6 @@
 import json
 import os
 from datetime import datetime, timezone
-from typing import Any
 
 from agents.base import BaseAgent
 from agents.arbiter.prompts import ARBITER_SYSTEM_PROMPT
@@ -17,7 +16,6 @@ from bus.events import (
     EVALUATION_PASS,
     EVALUATION_RETRY,
     ESCALATE,
-    TRAINING_COMPLETE,
     STREAM_ARBITER_OUTPUT,
 )
 from bus.publisher import publish
@@ -132,6 +130,8 @@ class ArbiterAgent(BaseAgent):
 
         if event_type == ESCALATE:
             payload["source_agent"] = "Arbiter"
-            payload["diagnostic_report_path"] = f"outputs/{self.job_id}/diagnostic_{self.job_id}.json"
+            payload["diagnostic_report_path"] = (
+                f"outputs/{self.job_id}/diagnostic_{self.job_id}.json"
+            )
 
         await publish(self.redis._client, STREAM_ARBITER_OUTPUT, event_type, payload)

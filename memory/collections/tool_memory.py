@@ -93,12 +93,14 @@ def query_tools(
             meta = results["metadatas"][0][i] if results["metadatas"] else {}
             distance = results["distances"][0][i] if results["distances"] else 0.0
 
-            tools.append({
-                "tool_id": doc_id,
-                "similarity_score": round(max(0.0, 1.0 - float(distance)), 4),
-                "tool_name": meta.get("tool_name", ""),
-                "agent_name": meta.get("agent_name", ""),
-                "docstring": results["documents"][0][i] if results.get("documents") else "",
-            })
+            tools.append(
+                {
+                    "tool_id": doc_id,
+                    "similarity_score": round(max(0.0, 1.0 - float(distance)), 4),
+                    "tool_name": meta.get("tool_name", ""),
+                    "agent_name": meta.get("agent_name", ""),
+                    "docstring": results["documents"][0][i] if results.get("documents") else "",
+                }
+            )
 
     return tools

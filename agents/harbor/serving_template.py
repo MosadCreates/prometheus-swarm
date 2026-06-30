@@ -38,9 +38,10 @@ PREDICTION_LATENCY = Histogram(
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
 
-# Load model
+# Resolve model path relative to this script's directory
+_script_dir = os.path.dirname(os.path.abspath(__file__))
 _model = None
-_model_path = "{model_path}"
+_model_path = os.path.join(_script_dir, "{model_path}")
 _model_format = "{model_format}"
 
 # Column configuration
@@ -149,12 +150,30 @@ async def predict(request: Request):
     start = time.time()
     try:
         body = await request.json()
-        raw_input = body.get("instances", body.get("data", body))
 
-        if isinstance(raw_input, list):
+        # Handle both batch (list) and single (dict) inputs
+        if isinstance(body, list):
+            raw_input = body
+        elif isinstance(body, dict):
+            # Try body["instances"] first for ML serving convention, else full body
+            instances = body.get("instances", body.get("data", None))
+            if instances is not None:
+                raw_input = instances
+            else:
+                raw_input = body
+        else:
+            raw_input = [body]
+
+        if isinstance(raw_input, dict):
+            df = pd.DataFrame([raw_input])
+        elif isinstance(raw_input, list) and len(raw_input) > 0:
             df = pd.DataFrame(raw_input)
         else:
-            df = pd.DataFrame([raw_input])
+            return JSONResponse({{"error": "No valid input provided"}}, status_code=400)
+
+        if _model is None:
+            # Lazy-load model if startup event didn't trigger (e.g. in tests)
+            load_model()
 
         if _model_format == "onnx":
             input_array = _apply_preprocessing(df)
@@ -168,8 +187,9 @@ async def predict(request: Request):
         PREDICTIONS_TOTAL.labels(status_code="200").inc()
         PREDICTION_LATENCY.observe(latency)
 
+        pred_list = predictions.tolist() if hasattr(predictions, "tolist") else predictions
         return JSONResponse({{
-            "predictions": predictions.tolist() if hasattr(predictions, "tolist") else predictions,
+            "predictions": pred_list,
             "latency_ms": round(latency * 1000, 2),
         }})
 

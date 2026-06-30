@@ -3,7 +3,6 @@
 import json
 import os
 from datetime import datetime, timezone
-from typing import Any
 
 from agents.base import BaseAgent
 from agents.harbor.prompts import HARBOR_SYSTEM_PROMPT
@@ -13,11 +12,10 @@ from agents.harbor.tools import (
     build_docker_image,
     deploy_local_compose,
     configure_drift_monitor,
+    start_drift_monitor_loop,
 )
 from bus.events import (
-    EVALUATION_PASS,
     ENDPOINT_LIVE,
-    DRIFT_ALERT,
     STREAM_HARBOR_OUTPUT,
 )
 from bus.publisher import publish
@@ -117,7 +115,7 @@ class HarborAgent(BaseAgent):
             self.logger.warning(f"[job={self.job_id}] ONNX fallback to pickle: {onnx_result}")
             model_format = "pickle"
 
-        app_path = generate_fastapi_app(
+        generate_fastapi_app(
             model_path=os.path.abspath(model_path),
             output_dir=output_dir,
             model_format=model_format,
@@ -143,9 +141,16 @@ class HarborAgent(BaseAgent):
         drift_config = configure_drift_monitor(
             job_id=self.job_id,
             training_data_path=f"outputs/{self.job_id}/training_data.csv",
+            feature_names=feature_names or None,
+            numeric_cols=numeric_cols or None,
         )
 
-        endpoint_url = f"http://localhost:8080"
+        if drift_config.get("enabled") and drift_config.get("feature_distributions"):
+            import asyncio
+
+            asyncio.create_task(start_drift_monitor_loop(self.redis._client, drift_config))
+
+        endpoint_url = "http://localhost:8080"
 
         self.logger.info(f"[job={self.job_id}] Model live at {endpoint_url}")
 
@@ -165,15 +170,19 @@ class HarborAgent(BaseAgent):
 
         config_path = f"{output_dir}/deploy_config.json"
         with open(config_path, "w") as f:
-            json.dump({
-                "job_id": self.job_id,
-                "endpoint_url": endpoint_url,
-                "model_format": model_format,
-                "model_path": model_path,
-                "container_name": container_name,
-                "image_name": image_name,
-                "drift_config": drift_config,
-                "feature_names": feature_names,
-                "numeric_cols": numeric_cols,
-                "categorical_cols": categorical_cols,
-            }, f, indent=2)
+            json.dump(
+                {
+                    "job_id": self.job_id,
+                    "endpoint_url": endpoint_url,
+                    "model_format": model_format,
+                    "model_path": model_path,
+                    "container_name": container_name,
+                    "image_name": image_name,
+                    "drift_config": drift_config,
+                    "feature_names": feature_names,
+                    "numeric_cols": numeric_cols,
+                    "categorical_cols": categorical_cols,
+                },
+                f,
+                indent=2,
+            )

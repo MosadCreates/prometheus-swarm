@@ -54,7 +54,7 @@ def test_all_stream_names_are_non_empty():
         STREAM_ORCHESTRATOR_OUT,
     ]
     for s in streams:
-        assert s, f"Stream name is empty"
+        assert s, "Stream name is empty"
         assert len(s) > 0
 
 

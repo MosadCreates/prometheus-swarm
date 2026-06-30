@@ -3,15 +3,14 @@
 import asyncio
 import os
 from datetime import datetime, timezone
-from typing import Any
 import uuid
 
 from agents.base import BaseAgent
 from agents.dissect.prompts import DISSECT_SYSTEM_PROMPT
 from agents.dissect.taxonomy import classify_error, get_repair_strategy
-from agents.dissect.tools import parse_stack_trace, apply_patch, rollback_patch, compute_diff, run_sandbox_test
+from agents.dissect.tools import apply_patch, rollback_patch, compute_diff, run_sandbox_test
 from agents.dissect.patch_log import write_patch_log
-from bus.events import RESUME_TRAINING, ESCALATE, CRASH_EVENT, STREAM_DISSECT_OUTPUT
+from bus.events import RESUME_TRAINING, ESCALATE, STREAM_DISSECT_OUTPUT
 from bus.publisher import publish
 
 
@@ -37,7 +36,6 @@ class DissectAgent(BaseAgent):
         script_path = crash_event["script_path"]
         exception_type = crash_event["exception_type"]
         exception_message = crash_event["exception_message"]
-        traceback_str = crash_event.get("traceback", "")
         attempt_number = int(crash_event.get("crash_attempt_number", 1))
 
         category, confidence, match_method = classify_error(exception_type, exception_message)
@@ -76,7 +74,9 @@ class DissectAgent(BaseAgent):
             return
 
         diff = compute_diff(original_code, patched_code)
-        lines_changed = len([l for l in diff.split("\n") if l.startswith("+") or l.startswith("-")])
+        lines_changed = sum(
+            1 for line in diff.split("\n") if line.startswith("+") or line.startswith("-")
+        )
 
         sandbox_passed, sandbox_output = await run_sandbox_test(script_path, self.job_id)
 

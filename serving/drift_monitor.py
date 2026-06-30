@@ -81,7 +81,9 @@ def check_drift(
     drift_detected = psi > threshold
 
     if drift_detected:
-        logger.warning(f"Drift detected | feature={feature_name} PSI={psi:.4f} threshold={threshold}")
+        logger.warning(
+            f"Drift detected | feature={feature_name} PSI={psi:.4f} threshold={threshold}"
+        )
 
     return {
         "feature": feature_name,

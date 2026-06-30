@@ -36,7 +36,12 @@ def parse_stack_trace(traceback_str: str) -> dict:
 
     for line in reversed(lines):
         line = line.strip()
-        if line and not line.startswith("Traceback") and not line.startswith("  File") and not line.startswith("  "):
+        if (
+            line
+            and not line.startswith("Traceback")
+            and not line.startswith("  File")
+            and not line.startswith("  ")
+        ):
             result["exception_line"] = line
             break
 

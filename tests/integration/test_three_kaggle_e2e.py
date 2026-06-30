@@ -4,7 +4,6 @@ This test verifies the full pipeline including Dissect error recovery.
 Requires Anthropic API key for LLM-powered agents.
 """
 
-import asyncio
 import os
 import sys
 
@@ -17,17 +16,27 @@ pytestmark = pytest.mark.asyncio
 
 
 async def test_dissect_classifies_all_error_categories():
-    from agents.dissect.taxonomy import classify_error, TAXONOMY
+    from agents.dissect.taxonomy import TAXONOMY
 
-    assert len(TAXONOMY) == 11
+    assert len(TAXONOMY) >= 11
 
-    categories = set()
-    for entry in TAXONOMY:
-        categories.add(entry.category)
+    categories = {entry.category for entry in TAXONOMY}
+    # Original 11 categories
     assert "shape_mismatch" in categories
     assert "nan_propagation" in categories
     assert "import_error" in categories
     assert "novel_error" in categories
+    # Expanded blueprint categories
+    assert "feature_mismatch" in categories
+    assert "index_error" in categories
+    assert "zero_division" in categories
+    assert "empty_dataset" in categories
+    assert "invalid_axis" in categories
+    assert "optimizer_divergence" in categories
+    assert "encoding_error" in categories
+    assert "permission_error" in categories
+    assert "label_mismatch" in categories
+    assert "pickle_version_mismatch" in categories
 
 
 async def test_dissect_applies_and_rolls_back_patches():
@@ -77,7 +86,6 @@ async def test_arbiter_regression_threshold_is_dynamic():
 async def test_orchestrator_patch_log_writer_writes_valid_jsonl():
     import json
     import tempfile
-    from pathlib import Path
 
     entry = {
         "patch_id": "test-123",
@@ -102,7 +110,10 @@ async def test_orchestrator_patch_log_writer_writes_valid_jsonl():
 async def test_chroma_memory_imports():
     from memory.chroma_client import ChromaClient
     from memory.collections.patch_memory import store_patch, query_similar_patches
-    from memory.collections.architecture_memory import store_architecture, query_similar_architectures
+    from memory.collections.architecture_memory import (
+        store_architecture,
+        query_similar_architectures,
+    )
     from memory.collections.tool_memory import store_tool, query_tools
 
     assert ChromaClient is not None

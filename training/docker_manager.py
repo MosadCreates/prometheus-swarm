@@ -10,8 +10,6 @@ asyncio.get_event_loop().run_in_executor() to avoid blocking the event loop.
 import asyncio
 import logging
 import os
-import sys
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +27,8 @@ class DockerManager:
 
     def __init__(self, training_image: str | None = None):
         self.training_image = training_image or os.getenv(
-            "TRAINING_IMAGE_NAME", "prometheus-training-base",
+            "TRAINING_IMAGE_NAME",
+            "prometheus-training-base",
         )
         self._client = None
         self._containers: dict[str, str] = {}
@@ -74,7 +73,6 @@ class DockerManager:
 
         # Auto-mount standard paths if no custom volumes provided
         if volumes is None:
-            root = os.path.abspath(".")
             volumes = {
                 os.path.abspath("scripts"): {"bind": "/app/scripts", "mode": "ro"},
                 os.path.abspath("data"): {"bind": "/app/data", "mode": "ro"},
@@ -110,7 +108,9 @@ class DockerManager:
         return container.id
 
     async def wait_for_exit(
-        self, job_id: str, timeout: int = 3600,
+        self,
+        job_id: str,
+        timeout: int = 3600,
     ) -> tuple[int, str]:
         """Wait for a training container to exit and return its exit code + logs.
 
@@ -133,11 +133,13 @@ class DockerManager:
         try:
             container = client.containers.get(cid)
             result = await loop.run_in_executor(
-                None, lambda: container.wait(timeout=timeout),
+                None,
+                lambda: container.wait(timeout=timeout),
             )
             exit_code = result.get("StatusCode", -1)
             logs = await loop.run_in_executor(
-                None, lambda: container.logs(stdout=True, stderr=True).decode("utf-8", errors="replace"),
+                None,
+                lambda: container.logs(stdout=True, stderr=True).decode("utf-8", errors="replace"),
             )
             return exit_code, logs
         except Exception as e:

@@ -24,7 +24,9 @@ class ONNXRuntime:
         self.input_shape = self.session.get_inputs()[0].shape
         self.output_names = [o.name for o in self.session.get_outputs()]
 
-        logger.info(f"ONNX model loaded: {self.model_path.name} | inputs={self.input_name} shape={self.input_shape}")
+        logger.info(
+            f"ONNX model loaded: {self.model_path.name} | inputs={self.input_name} shape={self.input_shape}"
+        )
 
     def predict(self, data: np.ndarray) -> list[Any]:
         """Run inference on input data.

@@ -1,6 +1,5 @@
 """architecture_memory collection: Forge stores and retrieves past architecture decisions."""
 
-import json
 import logging
 import os
 from typing import Any
@@ -73,7 +72,9 @@ def store_architecture(
         documents=[text],
     )
 
-    logger.info(f"Architecture stored: {decision_id} | model={model_selected} outcome={outcome_label}")
+    logger.info(
+        f"Architecture stored: {decision_id} | model={model_selected} outcome={outcome_label}"
+    )
 
 
 def query_similar_architectures(
@@ -117,13 +118,15 @@ def query_similar_architectures(
             meta = results["metadatas"][0][i] if results["metadatas"] else {}
             distance = results["distances"][0][i] if results["distances"] else 0.0
 
-            archs.append({
-                "decision_id": doc_id,
-                "similarity_score": round(max(0.0, 1.0 - float(distance)), 4),
-                "model_selected": meta.get("model_selected", ""),
-                "outcome_label": meta.get("outcome_label", ""),
-                "outcome_metric": meta.get("outcome_metric", ""),
-                "imbalance_strategy": meta.get("imbalance_strategy", ""),
-            })
+            archs.append(
+                {
+                    "decision_id": doc_id,
+                    "similarity_score": round(max(0.0, 1.0 - float(distance)), 4),
+                    "model_selected": meta.get("model_selected", ""),
+                    "outcome_label": meta.get("outcome_label", ""),
+                    "outcome_metric": meta.get("outcome_metric", ""),
+                    "imbalance_strategy": meta.get("imbalance_strategy", ""),
+                }
+            )
 
     return archs

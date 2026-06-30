@@ -9,8 +9,13 @@ import traceback as tb_module
 from agents.base import BaseAgent
 from agents.furnace.prompts import FURNACE_SYSTEM_PROMPT
 from bus.events import (
-    CRASH_EVENT, ESCALATE, RESUME_TRAINING, TRAINING_COMPLETE,
-    STREAM_DISSECT_OUTPUT, STREAM_FURNACE_CRASH, STREAM_FURNACE_OUTPUT,
+    CRASH_EVENT,
+    ESCALATE,
+    RESUME_TRAINING,
+    TRAINING_COMPLETE,
+    STREAM_DISSECT_OUTPUT,
+    STREAM_FURNACE_CRASH,
+    STREAM_FURNACE_OUTPUT,
 )
 from bus.publisher import publish
 from training.docker_manager import DockerManager
@@ -48,7 +53,9 @@ class FurnaceAgent(BaseAgent):
             except Exception as e:
                 crash_attempt += 1
                 resume_payload = await self._handle_crash(
-                    e, current_script, crash_attempt,
+                    e,
+                    current_script,
+                    crash_attempt,
                 )
                 if resume_payload is None:
                     self.logger.error(
@@ -57,8 +64,7 @@ class FurnaceAgent(BaseAgent):
                     return
                 current_script = resume_payload["patched_script_path"]
                 self.logger.info(
-                    f"[job={self.job_id}] Resuming with patched script: "
-                    f"{current_script}"
+                    f"[job={self.job_id}] Resuming with patched script: " f"{current_script}"
                 )
 
     async def _launch_and_monitor_docker(self, script_path: str) -> None:
@@ -66,9 +72,7 @@ class FurnaceAgent(BaseAgent):
         abs_script = os.path.abspath(script_path)
         script_name = os.path.basename(abs_script)
 
-        self.logger.info(
-            f"[job={self.job_id}] Launching Docker training: {script_name}"
-        )
+        self.logger.info(f"[job={self.job_id}] Launching Docker training: {script_name}")
 
         volumes = {
             os.path.abspath("scripts"): {"bind": "/app/scripts", "mode": "ro"},
@@ -83,7 +87,7 @@ class FurnaceAgent(BaseAgent):
             "PYTHONUNBUFFERED": "1",
         }
 
-        container_id = await self.docker.launch_container(
+        await self.docker.launch_container(
             job_id=self.job_id,
             run_cmd=["python", f"/app/scripts/{script_name}"],
             volumes=volumes,
@@ -91,26 +95,23 @@ class FurnaceAgent(BaseAgent):
         )
 
         exit_code, logs = await self.docker.wait_for_exit(
-            self.job_id, timeout=3600,
+            self.job_id,
+            timeout=3600,
         )
 
         await self.docker.kill_container(self.job_id)
 
         if exit_code != 0:
-            raise RuntimeError(
-                f"Training script exited with code {exit_code}: "
-                f"{logs[:2000]}"
-            )
+            raise RuntimeError(f"Training script exited with code {exit_code}: " f"{logs[:2000]}")
 
     async def _launch_and_monitor_subprocess(self, script_path: str) -> None:
         """Launch training as a subprocess (fallback, for testing without Docker)."""
         abs_path = os.path.abspath(script_path)
-        self.logger.info(
-            f"[job={self.job_id}] Launching subprocess training: {abs_path}"
-        )
+        self.logger.info(f"[job={self.job_id}] Launching subprocess training: {abs_path}")
 
         process = await asyncio.create_subprocess_exec(
-            sys.executable, abs_path,
+            sys.executable,
+            abs_path,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -119,8 +120,7 @@ class FurnaceAgent(BaseAgent):
         if process.returncode != 0:
             error_text = stderr.decode("utf-8", errors="replace")
             raise RuntimeError(
-                f"Training script exited with code {process.returncode}: "
-                f"{error_text[:2000]}"
+                f"Training script exited with code {process.returncode}: " f"{error_text[:2000]}"
             )
 
     async def _finalize_training(self, script_path: str) -> None:
@@ -141,21 +141,18 @@ class FurnaceAgent(BaseAgent):
             )
             self.logger.info(f"[job={self.job_id}] Training complete")
         else:
-            raise FileNotFoundError(
-                f"Checkpoint not found at {latest_checkpoint}"
-            )
+            raise FileNotFoundError(f"Checkpoint not found at {latest_checkpoint}")
 
     async def _handle_crash(
-        self, error: Exception, script_path: str, attempt_number: int,
+        self,
+        error: Exception,
+        script_path: str,
+        attempt_number: int,
     ) -> dict | None:
-        self.logger.error(
-            f"[job={self.job_id}] Crash attempt {attempt_number}: {error}"
-        )
+        self.logger.error(f"[job={self.job_id}] Crash attempt {attempt_number}: {error}")
 
         checkpoint_path = f"outputs/{self.job_id}/checkpoints/best.ckpt"
-        last_checkpoint = (
-            checkpoint_path if os.path.exists(checkpoint_path) else None
-        )
+        last_checkpoint = checkpoint_path if os.path.exists(checkpoint_path) else None
 
         await publish(
             self.redis._client,
@@ -174,9 +171,7 @@ class FurnaceAgent(BaseAgent):
         )
 
         if attempt_number > 3:
-            self.logger.error(
-                f"[job={self.job_id}] Exceeded 3 crash attempts. Aborting."
-            )
+            self.logger.error(f"[job={self.job_id}] Exceeded 3 crash attempts. Aborting.")
             return None
 
         self.logger.info(
@@ -212,8 +207,7 @@ class FurnaceAgent(BaseAgent):
                 return message
             elif message.get("event_type") == ESCALATE:
                 self.logger.error(
-                    f"[job={self.job_id}] Dissect published ESCALATE: "
-                    f"{message.get('reason')}"
+                    f"[job={self.job_id}] Dissect published ESCALATE: " f"{message.get('reason')}"
                 )
                 return None
 

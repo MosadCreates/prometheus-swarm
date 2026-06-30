@@ -1,4 +1,4 @@
-"""Unit tests for Dissect error taxonomy. Tests each of the 11 error categories."""
+"""Unit tests for Dissect error taxonomy. Tests all 21 error categories."""
 
 from agents.dissect.taxonomy import classify_error, get_repair_strategy
 
@@ -52,7 +52,9 @@ def test_import_error():
 
 
 def test_nan_propagation():
-    cat, conf, method = classify_error("ValueError", "Input contains NaN, infinity or a value too large")
+    cat, conf, method = classify_error(
+        "ValueError", "Input contains NaN, infinity or a value too large"
+    )
     assert cat == "nan_propagation"
     assert method == "regex"
 
@@ -60,6 +62,66 @@ def test_nan_propagation():
 def test_checkpoint_corruption():
     cat, conf, method = classify_error("UnpicklingError", "invalid load key, 'v'.")
     assert cat == "checkpoint_corruption"
+    assert method == "regex"
+
+
+def test_feature_mismatch():
+    cat, conf, method = classify_error("ValueError", "Number of features of the model must match")
+    assert cat == "feature_mismatch"
+    assert method == "regex"
+
+
+def test_index_error():
+    cat, conf, method = classify_error("IndexError", "index 5 is out of bounds for axis 0")
+    assert cat == "index_error"
+    assert method == "regex"
+
+
+def test_zero_division():
+    cat, conf, method = classify_error("ZeroDivisionError", "division by zero in metric")
+    assert cat == "zero_division"
+    assert method == "regex"
+
+
+def test_empty_dataset():
+    cat, conf, method = classify_error("ValueError", "zero-size array to reduction operation")
+    assert cat == "empty_dataset"
+    assert method == "regex"
+
+
+def test_invalid_axis():
+    cat, conf, method = classify_error("ValueError", "No axis named 2 for object type DataFrame")
+    assert cat == "invalid_axis"
+    assert method == "regex"
+
+
+def test_optimizer_divergence():
+    cat, conf, method = classify_error("RuntimeError", "loss is inf or nan")
+    assert cat == "optimizer_divergence"
+    assert method == "regex"
+
+
+def test_encoding_error():
+    cat, conf, method = classify_error("UnicodeDecodeError", "'charmap' codec can't decode byte")
+    assert cat == "encoding_error"
+    assert method == "regex"
+
+
+def test_permission_error():
+    cat, conf, method = classify_error("PermissionError", "permission denied: 'outputs/model.ckpt'")
+    assert cat == "permission_error"
+    assert method == "regex"
+
+
+def test_label_mismatch():
+    cat, conf, method = classify_error("ValueError", "number of classes must be at least 2")
+    assert cat == "label_mismatch"
+    assert method == "regex"
+
+
+def test_pickle_version_mismatch():
+    cat, conf, method = classify_error("UnpicklingError", "unsupported pickle protocol: 5")
+    assert cat == "pickle_version_mismatch"
     assert method == "regex"
 
 

@@ -3,10 +3,7 @@
 All functions accept data directly for testability. No file I/O in compute functions.
 """
 
-import json
 import logging
-import os
-from typing import Any
 
 import numpy as np
 
@@ -114,7 +111,10 @@ def make_decision(
         if auc >= 0.80:
             return "pass", f"AUC={auc:.4f} >= 0.80. Model passes."
         elif auc >= 0.68:
-            return "retry", f"AUC={auc:.4f} < 0.80 but within 15% margin. Retry with new architecture."
+            return (
+                "retry",
+                f"AUC={auc:.4f} < 0.80 but within 15% margin. Retry with new architecture.",
+            )
         else:
             return "escalate", f"AUC={auc:.4f} < 0.68 (far below threshold). Escalating."
 

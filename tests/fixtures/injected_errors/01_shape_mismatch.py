@@ -1,4 +1,5 @@
 """Deliberate shape mismatch: fit on 5 features, transform on 4."""
+
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 

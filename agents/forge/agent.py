@@ -1,12 +1,9 @@
 """Forge Agent ? The Architect."""
 
-import json
-import os
-
 from agents.base import BaseAgent
 from agents.forge.prompts import FORGE_SYSTEM_PROMPT
 from agents.forge.decision_tree import select_architecture
-from agents.forge.tools import read_mission_brief, write_training_script, define_optuna_space
+from agents.forge.tools import write_training_script, define_optuna_space
 from bus.events import TRAINING_SCRIPT_READY, STREAM_FORGE_OUTPUT
 from bus.publisher import publish
 

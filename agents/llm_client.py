@@ -12,6 +12,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
+
 async def get_llm_response(
     system_prompt: str,
     user_message: str,
@@ -21,6 +22,7 @@ async def get_llm_response(
     max_retries: int = 3,
 ) -> dict[str, Any]:
     import anthropic
+
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set in .env")
@@ -53,13 +55,15 @@ async def get_llm_response(
         except anthropic.NotFoundError as e:
             raise RuntimeError(f"CRITICAL: Model {ANTHROPIC_MODEL} not found") from e
         except Exception as e:
-            wait = 2 ** attempt
+            wait = 2**attempt
             logger.warning(f"[{agent_name}][job={job_id}] LLM call failed attempt {attempt+1}")
             if attempt == max_retries - 1:
                 raise RuntimeError(f"LLM failed after {max_retries} attempts") from e
             await asyncio.sleep(wait)
 
+
 async def get_embedding(text: str) -> list[float]:
     from sentence_transformers import SentenceTransformer
+
     model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"))
     return model.encode(text).tolist()

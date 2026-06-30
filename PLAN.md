@@ -3940,7 +3940,7 @@ class HarborAgent(BaseAgent):
         dockerfile_path = serving_dir / "Dockerfile"
         with open(dockerfile_path, "w") as f:
             f.write("FROM python:3.11-slim\nWORKDIR /app\nCOPY . .\nRUN pip install fastapi uvicorn onnxruntime lightgbm pandas\nCMD [\"uvicorn\", \"app:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8080\"]")
-        
+
         # Start uvicorn via Docker container
         port = SERVING_PORT
         import docker

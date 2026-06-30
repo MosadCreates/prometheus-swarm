@@ -70,9 +70,7 @@ def test_write_mission_brief():
         "class_imbalance_ratio": None,
         "data_warnings": [],
     }
-    brief = write_mission_brief(
-        eda, "job-001", "Test problem", "/path/to/data.csv", "b"
-    )
+    brief = write_mission_brief(eda, "job-001", "Test problem", "/path/to/data.csv", "b")
     assert brief["job_id"] == "job-001"
     assert brief["task_type"] in ("classification", "regression")
     assert brief["modality"] == "tabular"

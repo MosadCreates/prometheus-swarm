@@ -10,27 +10,20 @@ import asyncio
 import json
 import logging
 import os
-import signal
 import sys
 from datetime import datetime, timezone
-from typing import Any
 
 from dotenv import load_dotenv
 import redis.asyncio as aioredis
 
 from agents.forge.agent import ForgeAgent
 from agents.furnace.agent import FurnaceAgent
-from agents.dissect.agent import DissectAgent
 from agents.arbiter.agent import ArbiterAgent
 from agents.harbor.agent import HarborAgent
 from agents.scout.agent import ScoutAgent
 from memory.redis_client import RedisClient
 from bus.events import (
     MISSION_BRIEF_READY,
-    TRAINING_SCRIPT_READY,
-    TRAINING_COMPLETE,
-    CRASH_EVENT,
-    RESUME_TRAINING,
     EVALUATION_PASS,
     EVALUATION_RETRY,
     ESCALATE,
@@ -94,9 +87,7 @@ class OrchestratorRuntime:
         for stream, groups in streams_groups.items():
             for group in groups:
                 try:
-                    await self.redis.xgroup_create(
-                        stream, group, id="0", mkstream=True
-                    )
+                    await self.redis.xgroup_create(stream, group, id="0", mkstream=True)
                 except Exception:
                     pass
 
@@ -282,9 +273,7 @@ class OrchestratorRuntime:
 
     async def _on_mission_brief_ready(self, data: dict) -> None:
         job_id = data.get("job_id", "?")
-        logger.info(
-            f"[job={job_id}] Mission brief ready. Launching Forge."
-        )
+        logger.info(f"[job={job_id}] Mission brief ready. Launching Forge.")
         await self._set_job_status(job_id, "FORGE_WORKING", "Forge")
 
         forge = ForgeAgent(job_id=job_id)
@@ -293,22 +282,14 @@ class OrchestratorRuntime:
             await forge.run()
         except Exception as e:
             logger.error(f"[job={job_id}] Forge failed: {e}")
-            await self._handle_escalate(
-                job_id, "Forge", f"Forge execution failed: {e}"
-            )
+            await self._handle_escalate(job_id, "Forge", f"Forge execution failed: {e}")
 
     async def _on_training_script_ready(self, data: dict) -> None:
         job_id = data.get("job_id", "?")
         script_path = data.get("script_path", "")
-        logger.info(
-            f"[job={job_id}] Training script ready. Launching Furnace."
-        )
-        await self._set_job_status(
-            job_id, "FURNACE_TRAINING", "Furnace"
-        )
-        await self.redis.set(
-            f"job:{job_id}:script_path", script_path
-        )
+        logger.info(f"[job={job_id}] Training script ready. Launching Furnace.")
+        await self._set_job_status(job_id, "FURNACE_TRAINING", "Furnace")
+        await self.redis.set(f"job:{job_id}:script_path", script_path)
 
         furnace = FurnaceAgent(job_id=job_id)
         furnace.redis = self._make_redis_client()
@@ -324,21 +305,11 @@ class OrchestratorRuntime:
 
     async def _on_training_complete(self, data: dict) -> None:
         job_id = data.get("job_id", "?")
-        logger.info(
-            f"[job={job_id}] Training complete. Launching Arbiter."
-        )
-        await self._set_job_status(
-            job_id, "ARBITER_EVALUATING", "Arbiter"
-        )
+        logger.info(f"[job={job_id}] Training complete. Launching Arbiter.")
+        await self._set_job_status(job_id, "ARBITER_EVALUATING", "Arbiter")
         await self.redis.set(
             f"job:{job_id}:checkpoint",
-            json.dumps(
-                {
-                    "checkpoint_path": data.get(
-                        "checkpoint_path", ""
-                    )
-                }
-            ),
+            json.dumps({"checkpoint_path": data.get("checkpoint_path", "")}),
         )
 
         arbiter = ArbiterAgent(job_id=job_id)
@@ -359,26 +330,18 @@ class OrchestratorRuntime:
         decision = (
             "pass"
             if event_type == EVALUATION_PASS
-            else (
-                "retry"
-                if event_type == EVALUATION_RETRY
-                else "escalate"
-            )
+            else ("retry" if event_type == EVALUATION_RETRY else "escalate")
         )
         logger.info(f"[job={job_id}] Arbiter decision: {decision}")
 
         if decision == "pass":
-            await self._set_job_status(
-                job_id, "HARBOR_DEPLOYING", "Harbor"
-            )
+            await self._set_job_status(job_id, "HARBOR_DEPLOYING", "Harbor")
             harbor = HarborAgent(job_id=job_id)
             harbor.redis = self._make_redis_client()
             try:
                 await harbor.on_evaluation_pass(data)
             except Exception as e:
-                logger.error(
-                    f"[job={job_id}] Harbor failed: {e}"
-                )
+                logger.error(f"[job={job_id}] Harbor failed: {e}")
                 await self._handle_escalate(
                     job_id,
                     "Harbor",
@@ -386,13 +349,8 @@ class OrchestratorRuntime:
                 )
 
         elif decision == "retry":
-            await self._set_job_status(
-                job_id, "FORGE_RETRY", "Forge"
-            )
-            logger.info(
-                f"[job={job_id}] Score within 15% — retrying "
-                f"with new architecture"
-            )
+            await self._set_job_status(job_id, "FORGE_RETRY", "Forge")
+            logger.info(f"[job={job_id}] Score within 15% — retrying " f"with new architecture")
             # Re-publish MISSION_BRIEF_READY to re-trigger Forge
             # with the SAME mission brief. Scout is NOT re-run on
             # retry per CLAUDE.md Section 13.1.
@@ -404,9 +362,7 @@ class OrchestratorRuntime:
                 MISSION_BRIEF_READY,
                 {
                     "job_id": job_id,
-                    "mission_brief_redis_key": (
-                        f"job:{job_id}:mission_brief"
-                    ),
+                    "mission_brief_redis_key": (f"job:{job_id}:mission_brief"),
                 },
             )
 
@@ -423,12 +379,8 @@ class OrchestratorRuntime:
         reason = data.get("reason", "No reason provided")
         await self._handle_escalate(job_id, source, reason)
 
-    async def _handle_escalate(
-        self, job_id: str, source: str, reason: str
-    ) -> None:
-        logger.error(
-            f"[job={job_id}] ESCALATED by {source}: {reason}"
-        )
+    async def _handle_escalate(self, job_id: str, source: str, reason: str) -> None:
+        logger.error(f"[job={job_id}] ESCALATED by {source}: {reason}")
 
         await self._set_job_status(job_id, "ESCALATED", source)
 
@@ -441,16 +393,12 @@ class OrchestratorRuntime:
         }
 
         os.makedirs(f"outputs/{job_id}", exist_ok=True)
-        with open(
-            f"outputs/{job_id}/diagnostic_{job_id}.json", "w"
-        ) as f:
+        with open(f"outputs/{job_id}/diagnostic_{job_id}.json", "w") as f:
             json.dump(report, f, indent=2)
 
         await self._publish_job_failed(job_id, source, reason)
 
-    async def _publish_job_failed(
-        self, job_id: str, source: str, reason: str
-    ) -> None:
+    async def _publish_job_failed(self, job_id: str, source: str, reason: str) -> None:
         from bus.publisher import publish
 
         await publish(
@@ -461,9 +409,7 @@ class OrchestratorRuntime:
                 "job_id": job_id,
                 "source_agent": source,
                 "reason": reason,
-                "diagnostic_report_path": (
-                    f"outputs/{job_id}/diagnostic_{job_id}.json"
-                ),
+                "diagnostic_report_path": (f"outputs/{job_id}/diagnostic_{job_id}.json"),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
@@ -478,16 +424,11 @@ class OrchestratorRuntime:
         job_id = data.get("job_id", "?")
         psi = data.get("psi_score", 0.0)
         logger.warning(
-            f"[job={job_id}] Drift detected: PSI={psi}. "
-            f"Starting new cycle via Scout."
+            f"[job={job_id}] Drift detected: PSI={psi}. " f"Starting new cycle via Scout."
         )
 
-        file_path = await self.redis.get(
-            f"job:{job_id}:file_path"
-        )
-        problem_description = await self.redis.get(
-            f"job:{job_id}:problem_description"
-        )
+        file_path = await self.redis.get(f"job:{job_id}:file_path")
+        problem_description = await self.redis.get(f"job:{job_id}:problem_description")
         if not file_path:
             logger.error(
                 f"[job={job_id}] Cannot restart drift cycle: "
@@ -506,26 +447,17 @@ class OrchestratorRuntime:
         try:
             await scout.run()
         except Exception as e:
-            logger.error(
-                f"[job={job_id}] Scout failed during "
-                f"drift-triggered retrain: {e}"
-            )
+            logger.error(f"[job={job_id}] Scout failed during " f"drift-triggered retrain: {e}")
             await self._handle_escalate(
                 job_id,
                 "Scout",
                 f"Drift-triggered Scout run failed: {e}",
             )
 
-    async def _set_job_status(
-        self, job_id: str, status: str, agent: str
-    ) -> None:
+    async def _set_job_status(self, job_id: str, status: str, agent: str) -> None:
         await self.redis.set(f"job:{job_id}:status", status)
-        await self.redis.set(
-            f"job:{job_id}:current_agent", agent
-        )
-        logger.info(
-            f"[job={job_id}] Status: {status} (agent: {agent})"
-        )
+        await self.redis.set(f"job:{job_id}:current_agent", agent)
+        logger.info(f"[job={job_id}] Status: {status} (agent: {agent})")
 
 
 async def main() -> None:
@@ -537,9 +469,7 @@ async def main() -> None:
     )
 
     if sys.platform == "win32":
-        asyncio.set_event_loop_policy(
-            asyncio.WindowsSelectorEventLoopPolicy()
-        )
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
     runtime = OrchestratorRuntime()
     await runtime.initialize()

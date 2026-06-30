@@ -1,7 +1,6 @@
 """Pydantic models for all data structures that cross agent boundaries."""
 
 from datetime import datetime, timezone
-from typing import Any
 from pydantic import BaseModel, Field
 import uuid
 

@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import os
-import subprocess
 import sys
 
 logger = logging.getLogger(__name__)
@@ -17,9 +16,7 @@ async def launch_training_container(
     logger.info(f"[job={job_id}] Launching training for {script_path}")
     abs_path = os.path.abspath(script_path)
 
-    cmd = [
-        sys.executable, abs_path
-    ]
+    cmd = [sys.executable, abs_path]
 
     process = await asyncio.create_subprocess_exec(
         *cmd,

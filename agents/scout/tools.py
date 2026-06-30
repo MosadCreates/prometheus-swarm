@@ -3,15 +3,12 @@ Scout tools. Each function is independently unit-testable.
 All functions are pure ? no side effects except Redis writes (marked explicitly).
 """
 
-import json
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -73,9 +70,7 @@ def run_eda(file_path: str, target_column: str | None = None) -> dict[str, Any]:
             majority = counts.max()
             imbalance_ratio = float(majority / minority)
             if imbalance_ratio > 5:
-                warnings.append(
-                    f"Class imbalance: majority/minority ratio = {imbalance_ratio:.1f}"
-                )
+                warnings.append(f"Class imbalance: majority/minority ratio = {imbalance_ratio:.1f}")
 
     return {
         "num_rows": num_rows,

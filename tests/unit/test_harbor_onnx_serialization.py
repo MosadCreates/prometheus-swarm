@@ -4,6 +4,7 @@ Trains a tiny Pipeline (ColumnTransformer + LGBMClassifier) on synthetic data,
 pickles it, calls serialize_to_onnx with feature/numeric/categorical columns,
 and runs inference via onnxruntime to confirm the multi-input scheme works.
 """
+
 import os
 import sys
 import tempfile
@@ -13,7 +14,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 import joblib
 import numpy as np
 import pandas as pd
-import pytest
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder
@@ -23,24 +23,30 @@ from agents.harbor.tools import serialize_to_onnx
 
 def _train_mini_pipeline() -> tuple[Pipeline, list[str], list[str], list[str]]:
     """Train a tiny Pipeline with mixed numeric/categorical columns."""
-    df = pd.DataFrame({
-        "Age": [25.0, 30.0, 35.0, 22.0, 40.0],
-        "Sex": ["M", "F", "M", "F", "M"],
-        "target": [0, 1, 0, 1, 0],
-    })
+    df = pd.DataFrame(
+        {
+            "Age": [25.0, 30.0, 35.0, 22.0, 40.0],
+            "Sex": ["M", "F", "M", "F", "M"],
+            "target": [0, 1, 0, 1, 0],
+        }
+    )
     X = df[["Age", "Sex"]]
     y = df["target"]
 
     import lightgbm as lgb
 
-    preprocessor = ColumnTransformer([
-        ("num", "passthrough", ["Age"]),
-        ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), ["Sex"]),
-    ])
-    model = Pipeline([
-        ("preprocessor", preprocessor),
-        ("estimator", lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)),
-    ])
+    preprocessor = ColumnTransformer(
+        [
+            ("num", "passthrough", ["Age"]),
+            ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), ["Sex"]),
+        ]
+    )
+    model = Pipeline(
+        [
+            ("preprocessor", preprocessor),
+            ("estimator", lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)),
+        ]
+    )
     model.fit(X, y)
 
     feature_names = ["Age", "Sex"]
@@ -95,6 +101,7 @@ def test_serialize_onnx_pipeline_lightgbm():
         assert os.path.exists(config_path), f"Preprocess config not found at {config_path}"
 
         import json
+
         with open(config_path) as f:
             config = json.load(f)
         assert "numeric_cols" in config
@@ -106,7 +113,9 @@ def test_serialize_onnx_bare_lightgbm():
     """Serialize a bare LGBMClassifier (not wrapped in Pipeline)."""
     import lightgbm as lgb
 
-    X = np.array([[25.0, 0.0], [30.0, 1.0], [35.0, 0.0], [22.0, 1.0], [40.0, 0.0]], dtype=np.float32)
+    X = np.array(
+        [[25.0, 0.0], [30.0, 1.0], [35.0, 0.0], [22.0, 1.0], [40.0, 0.0]], dtype=np.float32
+    )
     y = np.array([0, 1, 0, 1, 0])
 
     model = lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)
@@ -122,6 +131,7 @@ def test_serialize_onnx_bare_lightgbm():
         assert os.path.exists(onnx_path)
 
         import onnxruntime as ort
+
         session = ort.InferenceSession(onnx_path)
         test_input = np.array([[25.0, 0.0]], dtype=np.float32)
         outputs = session.run(None, {session.get_inputs()[0].name: test_input})

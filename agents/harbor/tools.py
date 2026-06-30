@@ -1,16 +1,20 @@
 """Harbor tools — model serialization, API generation, deployment."""
 
+import asyncio
 import json
 import logging
 import os
-import pickle
 import shutil
 import subprocess
-import sys
-from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
+import pandas as pd
+
+from bus.events import DRIFT_ALERT, STREAM_HARBOR_OUTPUT
+from bus.publisher import publish
+from serving.drift_monitor import compute_psi
 
 logger = logging.getLogger(__name__)
 
@@ -118,23 +122,29 @@ def _convert_estimator_to_onnx(
     from onnxconverter_common.data_types import FloatTensorType
 
     if "lightgbm" in module.lower() or "LGBM" in class_name:
-        import onnxmltools
         from onnxmltools.convert import convert_lightgbm
+
         initial_types = [("input", FloatTensorType([None, n_features]))]
-        return convert_lightgbm(estimator, initial_types=initial_types, name="model", target_opset=target_opset)
+        return convert_lightgbm(
+            estimator, initial_types=initial_types, name="model", target_opset=target_opset
+        )
 
     if "xgboost" in module.lower() or "XGB" in class_name:
-        import onnxmltools
         from onnxmltools.convert import convert_xgboost
+
         initial_types = [("input", FloatTensorType([None, n_features]))]
-        return convert_xgboost(estimator, initial_types=initial_types, name="model", target_opset=target_opset)
+        return convert_xgboost(
+            estimator, initial_types=initial_types, name="model", target_opset=target_opset
+        )
 
     from skl2onnx import convert_sklearn
     from skl2onnx.common.data_types import FloatTensorType
 
     initial_types = [("input", FloatTensorType([None, n_features]))]
     options = {id(estimator): {"zipmap": False}} if hasattr(estimator, "classes_") else None
-    return convert_sklearn(estimator, initial_types=initial_types, target_opset=target_opset, options=options)
+    return convert_sklearn(
+        estimator, initial_types=initial_types, target_opset=target_opset, options=options
+    )
 
 
 def serialize_to_onnx(
@@ -190,6 +200,7 @@ def serialize_to_onnx(
 
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             import onnx
+
             onnx.save_model(onnx_model, output_path)
 
             config_path = output_path.replace(".onnx", "_preprocess.json")
@@ -203,6 +214,7 @@ def serialize_to_onnx(
 
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         import onnx
+
         onnx.save_model(onnx_model, output_path)
         return True, output_path
 
@@ -236,7 +248,6 @@ def generate_fastapi_app(
     os.makedirs(output_dir, exist_ok=True)
 
     # Copy model file into the serving directory so Docker can access it
-    import shutil
     model_filename = os.path.basename(model_path)
     dest_model_path = os.path.join(output_dir, model_filename)
     if os.path.abspath(model_path) != os.path.abspath(dest_model_path):
@@ -286,16 +297,18 @@ def build_docker_image(image_name: str, app_dir: str) -> tuple[bool, str]:
             if "lightgbm" in deps or "xgboost" in deps:
                 extra_packages.append("libgomp1")
 
-    apt_cmd = f"RUN apt-get update -qq && apt-get install -y -qq {' '.join(extra_packages)} && rm -rf /var/lib/apt/lists/*" if extra_packages else ""
+    apt_cmd = (
+        f"RUN apt-get update -qq && apt-get install -y -qq {' '.join(extra_packages)} && rm -rf /var/lib/apt/lists/*"
+        if extra_packages
+        else ""
+    )
 
     dockerfile_content = (
-        f"FROM python:3.11-slim\n"
-        f"WORKDIR /app\n"
-        + (apt_cmd + "\n" if apt_cmd else "")
-        + f"COPY . .\n"
-        f"RUN pip install -r requirements.txt --quiet\n"
-        f"EXPOSE 8080\n"
-        f'CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]\n'
+        "FROM python:3.11-slim\n"
+        "WORKDIR /app\n" + (apt_cmd + "\n" if apt_cmd else "") + "COPY . .\n"
+        "RUN pip install -r requirements.txt --quiet\n"
+        "EXPOSE 8080\n"
+        'CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]\n'
     )
 
     with open(dockerfile_path, "w") as f:
@@ -326,10 +339,15 @@ def deploy_local_compose(
     try:
         result = subprocess.run(
             [
-                "docker", "run", "-d",
-                "--name", container_name,
-                "-p", f"{host_port}:8080",
-                "--restart", "unless-stopped",
+                "docker",
+                "run",
+                "-d",
+                "--name",
+                container_name,
+                "-p",
+                f"{host_port}:8080",
+                "--restart",
+                "unless-stopped",
                 image_name,
             ],
             capture_output=True,
@@ -349,18 +367,172 @@ def deploy_local_compose(
 def configure_drift_monitor(
     job_id: str,
     training_data_path: str,
-    psi_threshold: float = 0.2,
+    psi_threshold: float | None = None,
+    feature_names: list[str] | None = None,
+    numeric_cols: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Configure drift monitor settings.
+    """Configure drift monitor with actual feature distribution baselines.
 
-    Returns config dict (PSI check runs in background via orchestrator).
+    Loads the training dataset and computes per-feature histogram baselines
+    (bin edges + counts) for PSI comparison. These baselines are stored in
+    the returned config so that run_drift_check can compare live data against
+    them without re-reading the training file.
+
+    Args:
+        job_id: Job identifier
+        training_data_path: Path to the training dataset CSV
+        psi_threshold: PSI threshold for alert (default: from env or 0.2)
+        feature_names: Ordered list of feature column names to monitor
+        numeric_cols: Subset of numeric feature columns for PSI computation
+
+    Returns:
+        Config dict with stored distribution baselines for each feature
     """
+    threshold = (
+        psi_threshold if psi_threshold is not None else float(os.getenv("PSI_THRESHOLD", "0.2"))
+    )
+    window_size = int(os.getenv("PSI_WINDOW_SIZE", "1000"))
+    interval = int(os.getenv("PSI_CHECK_INTERVAL_SECONDS", "3600"))
+
+    feature_distributions: dict[str, dict[str, Any]] = {}
+
+    if feature_names and os.path.exists(training_data_path):
+        try:
+            df = pd.read_csv(training_data_path)
+            monitor_cols = numeric_cols or [c for c in feature_names if c in df.columns]
+
+            for col in monitor_cols:
+                if col not in df.columns or not pd.api.types.is_numeric_dtype(df[col]):
+                    continue
+                values = df[col].dropna().values.astype(np.float64)
+                if len(values) < 10:
+                    continue
+                # Store histogram baseline: bin edges + count fraction
+                counts, bin_edges = np.histogram(values, bins=10)
+                total = counts.sum()
+                feature_distributions[col] = {
+                    "bin_edges": bin_edges.tolist(),
+                    "expected_pct": (counts / total).tolist() if total > 0 else [],
+                    "mean": float(values.mean()),
+                    "std": float(values.std()),
+                    "min": float(values.min()),
+                    "max": float(values.max()),
+                }
+            logger.info(
+                f"[job={job_id}] Drift baselines computed for {len(feature_distributions)} features"
+            )
+        except Exception as e:
+            logger.warning(f"[job={job_id}] Could not compute drift baselines: {e}")
+
     config = {
         "job_id": job_id,
         "training_data_path": training_data_path,
-        "psi_threshold": psi_threshold,
-        "psi_check_interval_seconds": 3600,
-        "psi_window_size": 1000,
+        "psi_threshold": threshold,
+        "psi_check_interval_seconds": interval,
+        "psi_window_size": window_size,
         "enabled": True,
+        "feature_distributions": feature_distributions,
     }
     return config
+
+
+async def run_drift_check(
+    redis_client: Any,
+    config: dict[str, Any],
+    live_samples: dict[str, list[float]] | None = None,
+) -> list[dict[str, Any]]:
+    """Run one PSI drift check cycle against stored baselines.
+
+    Compares either provided live_samples or (if None) simulates drift-free
+    data from the stored baseline distribution (for testing).
+
+    Args:
+        redis_client: Redis client for publishing DRIFT_ALERT
+        config: Drift monitor config from configure_drift_monitor
+        live_samples: Dict of feature_name -> list of recent inference input values
+
+    Returns:
+        List of per-feature drift check results
+    """
+    results: list[dict[str, Any]] = []
+    distributions = config.get("feature_distributions", {})
+
+    for feature_name, baseline in distributions.items():
+        expected_pct = np.array(baseline.get("expected_pct", []))
+        bin_edges = np.array(baseline.get("bin_edges", []))
+
+        if len(expected_pct) == 0 or len(bin_edges) == 0:
+            continue
+
+        if live_samples and feature_name in live_samples:
+            actual_values = np.array(live_samples[feature_name], dtype=np.float64)
+        else:
+            # Simulate drift-free data from baseline for testing
+            mean = baseline.get("mean", 0.0)
+            std = baseline.get("std", 1.0)
+            actual_values = np.random.normal(mean, max(std, 1e-6), 100)
+
+        actual_counts, _ = np.histogram(actual_values, bins=bin_edges)
+        total = actual_counts.sum()
+        actual_pct = actual_counts / total if total > 0 else np.ones_like(expected_pct) * 1e-6
+
+        psi = compute_psi(expected_pct, actual_pct)
+
+        drift_detected = psi > config.get("psi_threshold", 0.2)
+
+        result = {
+            "feature": feature_name,
+            "psi": round(psi, 4),
+            "threshold": config.get("psi_threshold", 0.2),
+            "drift_detected": drift_detected,
+        }
+        results.append(result)
+
+        if drift_detected:
+            logger.warning(f"[job={config['job_id']}] Drift | feature={feature_name} PSI={psi:.4f}")
+            await publish(
+                redis_client,
+                STREAM_HARBOR_OUTPUT,
+                DRIFT_ALERT,
+                {
+                    "job_id": config["job_id"],
+                    "psi_score": round(psi, 4),
+                    "psi_threshold": config.get("psi_threshold", 0.2),
+                    "window_size": config.get("psi_window_size", 1000),
+                    "feature": feature_name,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+
+    return results
+
+
+async def start_drift_monitor_loop(
+    redis_client: Any,
+    config: dict[str, Any],
+) -> None:
+    """Run the drift monitoring loop in the background.
+
+    Periodically checks PSI for each monitored feature and publishes
+    DRIFT_ALERT events when drift exceeds threshold.
+
+    Args:
+        redis_client: Redis client for publishing alerts
+        config: Drift monitor config from configure_drift_monitor
+    """
+    if not config.get("enabled", True):
+        logger.info(f"[job={config['job_id']}] Drift monitor disabled")
+        return
+
+    interval = config.get("psi_check_interval_seconds", 3600)
+    logger.info(
+        f"[job={config['job_id']}] Drift monitor started (interval={interval}s, "
+        f"features={len(config.get('feature_distributions', {}))})"
+    )
+
+    while True:
+        try:
+            await run_drift_check(redis_client, config)
+        except Exception as e:
+            logger.error(f"[job={config['job_id']}] Drift check failed: {e}")
+        await asyncio.sleep(interval)

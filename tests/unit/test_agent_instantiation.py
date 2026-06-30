@@ -1,8 +1,9 @@
 """Test that all six agent classes can be instantiated without error."""
+
 import sys
+
 sys.path.insert(0, ".")
 
-import pytest
 
 from agents.scout.agent import ScoutAgent
 from agents.forge.agent import ForgeAgent

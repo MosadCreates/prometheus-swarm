@@ -1,6 +1,5 @@
 """patch_memory collection: Dissect stores and retrieves past error patches."""
 
-import json
 import logging
 import os
 from typing import Any
@@ -48,7 +47,9 @@ def store_patch(
         logger.warning(f"Embedding model load failed: {e}")
         return
 
-    text = f"{exception_type}: {exception_message}\nCategory: {category}\nStrategy: {repair_strategy}"
+    text = (
+        f"{exception_type}: {exception_message}\nCategory: {category}\nStrategy: {repair_strategy}"
+    )
     embedding = model.encode(text).tolist()
 
     metadata = {
@@ -113,12 +114,14 @@ def query_similar_patches(
             distance = results["distances"][0][i] if results["distances"] else 0.0
             similarity = max(0.0, 1.0 - float(distance))
 
-            patches.append({
-                "patch_id": doc_id,
-                "similarity_score": round(similarity, 4),
-                "category": metadata.get("category", ""),
-                "outcome": metadata.get("outcome", ""),
-                "repair_strategy": metadata.get("repair_strategy", ""),
-            })
+            patches.append(
+                {
+                    "patch_id": doc_id,
+                    "similarity_score": round(similarity, 4),
+                    "category": metadata.get("category", ""),
+                    "outcome": metadata.get("outcome", ""),
+                    "repair_strategy": metadata.get("repair_strategy", ""),
+                }
+            )
 
     return patches

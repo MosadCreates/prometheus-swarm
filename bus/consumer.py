@@ -17,9 +17,7 @@ async def ensure_consumer_group(
     group_name: str,
 ) -> None:
     try:
-        await redis_client.xgroup_create(
-            stream_name, group_name, id="0", mkstream=True
-        )
+        await redis_client.xgroup_create(stream_name, group_name, id="0", mkstream=True)
         logger.info(f"Created consumer group {group_name} on stream {stream_name}")
     except aioredis.ResponseError as e:
         if "BUSYGROUP" in str(e):
@@ -61,9 +59,7 @@ async def consume_one(
             await redis_client.xack(stream_name, group_name, msg_id)
             logger.debug(f"ACK {msg_id} on {stream_name}/{group_name}")
         except Exception as e:
-            logger.error(
-                f"Handler failed for {msg_id} on {stream_name}/{group_name}: {e}"
-            )
+            logger.error(f"Handler failed for {msg_id} on {stream_name}/{group_name}: {e}")
             raise
 
 

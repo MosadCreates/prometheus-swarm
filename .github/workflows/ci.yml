@@ -7,11 +7,14 @@ jobs:
     services:
       redis:
         image: redis:7-alpine
-        ports: ["6379:6379"]
+        ports:
+          - "6379:6379"
       chromadb:
         image: chromadb/chroma:0.5.0
-        ports: ["8000:8000"]
-        env: { ALLOW_RESET: "true" }
+        ports:
+          - "8000:8000"
+        env:
+          ALLOW_RESET: "true"
 
     steps:
       - uses: actions/checkout@v4
@@ -23,19 +26,33 @@ jobs:
       - run: |
           cp .env.example .env
           echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env
-      - run: pytest tests/ -v --tb=short -x
+      - run: pytest tests/ -v --tb=short -x --timeout=120
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      - run: |
-          python3 -c "
+      - name: Syntax check
+        run: |
+          python -c "
           import ast, sys
-          files = ['agents/scout/tools.py', 'agents/llm_client.py', 'bus/publisher.py']
+          files = [
+            'agents/llm_client.py', 'bus/publisher.py',
+            'agents/scout/tools.py', 'agents/forge/decision_tree.py',
+            'agents/dissect/taxonomy.py',
+          ]
           for f in files:
-              try:
-                  ast.parse(open(f).read())
-                  print(f'{f}: OK')
-              except SyntaxError as e:
-                  print(f'{f}: SYNTAX ERROR — {e}')
-                  sys.exit(1)
+            try:
+              ast.parse(open(f).read())
+              print(f'{f}: OK')
+            except SyntaxError as e:
+              print(f'{f}: SYNTAX ERROR — {e}')
+              sys.exit(1)
           "
-        name: Syntax check
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check --line-length=100 .

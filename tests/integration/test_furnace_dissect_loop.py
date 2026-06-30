@@ -16,13 +16,11 @@ import json
 import os
 import shutil
 import sys
-import time
 
+import pytest
 from dotenv import load_dotenv
 
 load_dotenv()
-
-import pytest
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.timeout(120)]
 
@@ -78,7 +76,9 @@ async def test_furnace_dissect_crash_recovery():
     from memory.redis_client import RedisClient
 
     redis = aioredis.Redis(
-        host="localhost", port=6379, decode_responses=True,
+        host="localhost",
+        port=6379,
+        decode_responses=True,
     )
 
     # Ensure consumer groups before any messages are published
@@ -96,9 +96,7 @@ async def test_furnace_dissect_crash_recovery():
         furnace.redis = RedisClient()
         furnace.redis._client = redis
 
-        furnace_task = asyncio.create_task(
-            furnace.run(script_path=SCRIPT_PATH, use_docker=False)
-        )
+        furnace_task = asyncio.create_task(furnace.run(script_path=SCRIPT_PATH, use_docker=False))
 
         await asyncio.sleep(1)
 
@@ -126,9 +124,7 @@ async def test_furnace_dissect_crash_recovery():
 
         assert crash_event, "No CRASH_EVENT received within 30s"
         etype = crash_event.get("exception_type", "")
-        assert etype == "RuntimeError", (
-            f"Expected RuntimeError, got: {etype}"
-        )
+        assert etype == "RuntimeError", f"Expected RuntimeError, got: {etype}"
         assert crash_event.get("crash_attempt_number") in ("1", 1)
 
         await redis.xack(
@@ -178,36 +174,26 @@ async def test_furnace_dissect_crash_recovery():
             if resume_event:
                 break
 
-        assert resume_event, (
-            "Dissect did not publish RESUME_TRAINING within 60s"
-        )
+        assert resume_event, "Dissect did not publish RESUME_TRAINING within 60s"
         assert resume_event.get("job_id") == JOB_ID
         assert (
             resume_event.get("patched_script_path") == SCRIPT_PATH
         ), f"Expected {SCRIPT_PATH}, got {resume_event.get('patched_script_path')}"
-        assert resume_event.get("patch_id"), (
-            "RESUME_TRAINING should include patch_id"
-        )
+        assert resume_event.get("patch_id"), "RESUME_TRAINING should include patch_id"
 
         # --- Verify the bug was fixed in the script ---
         with open(SCRIPT_PATH) as f:
             content = f.read()
-        assert "Age_log" in content, (
-            "Patched script should contain Age_log column derivation"
-        )
+        assert "Age_log" in content, "Patched script should contain Age_log column derivation"
         assert (
-            "np.log" in content
-            or "np.log10" in content
-            or "np.log1p" in content
+            "np.log" in content or "np.log10" in content or "np.log1p" in content
         ), "Patched script should use a log transform for Age_log"
 
         # --- Wait for Furnace to complete ---
         try:
             await asyncio.wait_for(furnace_task, timeout=60)
         except asyncio.TimeoutError:
-            pytest.fail(
-                "Furnace task did not complete within 60s after patch"
-            )
+            pytest.fail("Furnace task did not complete within 60s after patch")
 
         # --- Verify TRAINING_COMPLETE was published ---
         tc_event = None
@@ -248,14 +234,12 @@ async def test_furnace_dissect_crash_recovery():
             _list_key, log_entry_raw = result
             log_entry = json.loads(log_entry_raw)
             if log_entry.get("patch_id") == patch_id_to_find:
-                assert log_entry.get("patch_outcome") == "success", (
-                    f"Expected patch_outcome=success, got: {log_entry.get('patch_outcome')}"
-                )
+                assert (
+                    log_entry.get("patch_outcome") == "success"
+                ), f"Expected patch_outcome=success, got: {log_entry.get('patch_outcome')}"
                 found_match = True
                 break
-        assert found_match, (
-            f"No patch_log entry found matching patch_id={patch_id_to_find}"
-        )
+        assert found_match, f"No patch_log entry found matching patch_id={patch_id_to_find}"
 
     finally:
         if furnace_task:

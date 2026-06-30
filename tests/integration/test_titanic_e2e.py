@@ -4,8 +4,6 @@ This test must stay green for the rest of the project.
 Verifies: Scout → Forge → Furnace → Arbiter → Harbor pipeline.
 """
 
-import asyncio
-import json
 import os
 import sys
 

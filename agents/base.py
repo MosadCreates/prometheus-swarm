@@ -4,7 +4,6 @@ Provides: LLM calling, Redis I/O, structured logging, retry logic.
 """
 
 import logging
-import os
 from abc import ABC, abstractmethod
 from typing import Any
 
