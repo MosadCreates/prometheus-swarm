@@ -106,6 +106,8 @@ class HarborAgent(BaseAgent):
             checkpoint_path,
             onnx_path,
             feature_names=feature_names or None,
+            numeric_cols=numeric_cols,
+            categorical_cols=categorical_cols,
         )
 
         model_format = "onnx" if onnx_success else "pickle"

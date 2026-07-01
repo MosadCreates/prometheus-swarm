@@ -426,6 +426,7 @@ class OrchestratorRuntime:
         logger.warning(
             f"[job={job_id}] Drift detected: PSI={psi}. " f"Starting new cycle via Scout."
         )
+        await self._set_job_status(job_id, "SCOUT_RETRAIN", "Scout")
 
         file_path = await self.redis.get(f"job:{job_id}:file_path")
         problem_description = await self.redis.get(f"job:{job_id}:problem_description")
