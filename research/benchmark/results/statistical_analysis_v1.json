@@ -1,0 +1,75 @@
+{
+  "baseline": "baseline_v1.json",
+  "metadata": {
+    "created_at": "2026-07-01T22:39:03.145991+00:00",
+    "git_commit": "6205bba"
+  },
+  "descriptive_statistics": {
+    "condition_b": {
+      "n": 50,
+      "mean": 3584.074624,
+      "median": 0.0,
+      "std": 24659.893232,
+      "min": 0.0,
+      "max": 174410.441968
+    },
+    "condition_c": {
+      "n": 50,
+      "mean": 3584.27541,
+      "median": 0.710508,
+      "std": 24659.863457,
+      "min": 0.0,
+      "max": 174410.441968
+    }
+  },
+  "pass_rates": {
+    "condition_b": 0.28,
+    "condition_c": 0.5,
+    "improvement_pp": 0.22
+  },
+  "mann_whitney_u_metrics": {
+    "statistic": 947.5,
+    "p_value": 0.030931,
+    "significant": true,
+    "alpha": 0.05
+  },
+  "mcnemar_test": {
+    "contingency_table": {
+      "b_fail_c_fail": 25,
+      "b_fail_c_pass": 11,
+      "b_pass_c_fail": 0,
+      "b_pass_c_pass": 14
+    },
+    "statistic": 9.0909,
+    "p_value": 0.002569,
+    "significant": true,
+    "alpha": 0.05
+  },
+  "cohens_h": {
+    "effect_size": 0.4556,
+    "interpretation": "small"
+  },
+  "interventions_analysis": {
+    "condition_b": {
+      "mean": 0.72,
+      "median": 1.0,
+      "total": 36,
+      "n": 50
+    },
+    "condition_c": {
+      "mean": 0.5,
+      "median": 0.5,
+      "total": 25,
+      "n": 50
+    },
+    "mann_whitney_u": {
+      "statistic": 1525.0,
+      "p_value": 0.01255,
+      "significant": true,
+      "alpha": 0.05,
+      "alternative": "greater"
+    },
+    "rank_biserial_r": -0.22,
+    "reduction": 0.22
+  }
+}

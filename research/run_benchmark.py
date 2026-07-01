@@ -4,6 +4,7 @@ Benchmark runner — runs problems.json through Conditions B and C.
 Usage:
     python research/run_benchmark.py --start 0 --count 3 --condition B
     python research/run_benchmark.py --start 0 --count 10 --condition both
+    python research/run_benchmark.py --start 20 --count 10 --condition C --output my_results.json
 """
 
 import argparse
@@ -11,10 +12,13 @@ import asyncio
 import json
 import logging
 import os
+import platform
 import shutil
+import subprocess
 import sys
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -521,6 +525,9 @@ async def main():
     parser.add_argument(
         "--condition", choices=["B", "C", "both"], default="both", help="Which condition(s) to run"
     )
+    parser.add_argument(
+        "--output", help="Path to save combined baseline JSON (auto-generates if not provided)"
+    )
     args = parser.parse_args()
 
     os.chdir(str(PROJECT_ROOT))
@@ -555,6 +562,10 @@ async def main():
                 if "C" in args.condition:
                     results_c.append(r)
             continue
+
+    # If --output specified, write combined baseline JSON
+    if args.output:
+        _write_combined_baseline(args.output, results_b, results_c, batch)
 
 
 async def _run_single_problem(
@@ -637,6 +648,84 @@ async def _run_single_problem(
         save_results_batch("B_no_dissect", results_b, batch_idx)
     if results_c:
         save_results_batch("C_with_dissect", results_c, batch_idx)
+
+
+def _get_git_commit() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _write_combined_baseline(
+    output_path: str, results_b: list[dict], results_c: list[dict], batch: list[dict]
+):
+    """Write a combined baseline_v1.json-style output with auto-metadata."""
+
+    def _agg(results):
+        total = len(results)
+        passed = sum(1 for r in results if r["status"] == "pass")
+        crashed = sum(1 for r in results if r["status"] == "crash")
+        escalated = sum(1 for r in results if r["status"] == "escalate")
+        metrics = [
+            r["best_val_metric"]
+            for r in results
+            if r["best_val_metric"] is not None and r["status"] == "pass"
+        ]
+        avg_metric = sum(metrics) / len(metrics) if metrics else 0.0
+        durations = [r["duration_seconds"] for r in results]
+        avg_duration = sum(durations) / len(durations) if durations else 0.0
+        return {
+            "total_problems": total,
+            "passed": passed,
+            "crashed": crashed,
+            "escalated": escalated,
+            "avg_metric": round(avg_metric, 6),
+            "avg_duration_seconds": round(avg_duration, 2),
+            "total_human_interventions": sum(r.get("human_interventions", 0) for r in results),
+            "results": results,
+        }
+
+    pass_rate_b = (
+        (sum(1 for r in results_b if r["status"] == "pass") / max(len(results_b), 1))
+        if results_b
+        else 0.0
+    )
+    pass_rate_c = (
+        (sum(1 for r in results_c if r["status"] == "pass") / max(len(results_c), 1))
+        if results_c
+        else 0.0
+    )
+
+    output = {
+        "schema_version": "1.0",
+        "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "metadata": {
+            "git_commit": _get_git_commit(),
+            "platform": platform.system(),
+            "condition": "both",
+            "problems_file": str(BENCHMARK_PATH),
+        },
+        "condition_b": _agg(results_b) if results_b else {},
+        "condition_c": _agg(results_c) if results_c else {},
+        "comparison": {
+            "pass_rate_b": round(pass_rate_b, 4),
+            "pass_rate_c": round(pass_rate_c, 4),
+            "improvement_pp": round(pass_rate_c - pass_rate_b, 4),
+        },
+    }
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(output, f, indent=2)
+    logger.info(f"Combined baseline written to {output_path}")
 
 
 if __name__ == "__main__":
