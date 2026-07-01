@@ -1,0 +1,15 @@
+[
+  {
+    "problem_id": "TR07",
+    "condition": "C_with_dissect",
+    "status": "pass",
+    "job_id": "bench-tr07-d89f64",
+    "best_val_metric": 15.543102551229099,
+    "decision": "pass",
+    "duration_seconds": 2.69,
+    "crash_count": 0,
+    "human_interventions": 0,
+    "architecture": "lightgbm",
+    "error": null
+  }
+]

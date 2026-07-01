@@ -111,9 +111,9 @@ def _parse_exception(stderr: str) -> tuple[str, str]:
         if "Error:" in line or "Exception:" in line:
             exc_msg = line.strip()
             parts = line.split(":", 1)
-            if len(parts) == 2:
+            if len(parts) >= 2:
                 exc_type = parts[0].strip()
-                exc_msg = parts[1].strip()
+                exc_msg = ":".join(parts[1:]).strip()
             break
     return exc_type, exc_msg
 
@@ -221,6 +221,30 @@ async def run_arbiter_eval(job_id: str, task_type: str) -> dict | None:
         "reason": reason,
         "task_type": task_type,
     }
+
+
+PATCH_LOG_PATH = Path("research/patch_log.jsonl")
+
+
+async def drain_patch_log_queue(redis_client) -> int:
+    """Pop all entries from patch_log_queue and append to patch_log.jsonl.
+    Returns the number of entries flushed.
+    """
+    count = 0
+    while True:
+        raw = await redis_client.blpop("patch_log_queue", timeout=1)
+        if raw is None:
+            break
+        try:
+            entry = json.loads(raw)
+            with open(PATCH_LOG_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, separators=(",", ":")) + "\n")
+            count += 1
+        except Exception:
+            pass
+    if count:
+        logger.info(f"Flushed {count} patch log entries to {PATCH_LOG_PATH}")
+    return count
 
 
 def save_results_batch(condition: str, results: list[dict], batch_idx: int):
@@ -442,6 +466,7 @@ async def run_condition_c(
 
         try:
             await dissect.handle_crash(crash_event)
+            await drain_patch_log_queue(dissect.redis)
         except Exception as e:
             logger.error(f"[{job_id}] Dissect handle_crash raised: {e}")
             return make_result(

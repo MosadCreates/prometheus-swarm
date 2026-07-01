@@ -13,18 +13,39 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+def _infer_modality_from_content(file_path: str) -> str:
+    try:
+        df = pd.read_csv(file_path, nrows=100)
+    except Exception:
+        return "tabular"
+
+    for col in df.columns:
+        lower = col.lower()
+        if any(kw in lower for kw in ("path", "file", "image")):
+            return "image"
+
+    for col in df.select_dtypes(include="object").columns:
+        avg_len = df[col].dropna().astype(str).str.len().mean()
+        if avg_len > 50:
+            return "text"
+
+    return "tabular"
+
+
 def detect_modality(file_path: str, modality_override: str | None = None) -> str:
     if modality_override is not None:
         return modality_override
     path = Path(file_path)
     ext = path.suffix.lower()
 
-    if ext in {".csv", ".parquet", ".tsv", ".xlsx"}:
+    if ext in {".parquet", ".tsv", ".xlsx"}:
         return "tabular"
     elif ext in {".txt", ".jsonl", ".json"}:
         return "text"
     elif ext in {".jpg", ".jpeg", ".png", ".zip"}:
         return "image"
+    elif ext == ".csv":
+        return _infer_modality_from_content(file_path)
     else:
         try:
             pd.read_csv(file_path, nrows=5)

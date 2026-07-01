@@ -477,7 +477,7 @@
     },
     "task_type": "regression",
     "modality": "tabular",
-    "target_column": "CO2",
+    "target_column": "co2TailpipeGpm",
     "evaluation_metric": "rmse",
     "difficulty": "easy",
     "num_rows_expected": 7385,
