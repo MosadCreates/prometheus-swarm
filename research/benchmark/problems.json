@@ -5,7 +5,7 @@
     "dataset": {
       "name": "Titanic",
       "source": "kaggle",
-      "path": "data/titanic.csv"
+      "path": "data\\titanic.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -23,7 +23,7 @@
     "dataset": {
       "name": "Iris",
       "source": "sklearn",
-      "path": null
+      "path": "data\\iris.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -41,7 +41,7 @@
     "dataset": {
       "name": "Pima Indians Diabetes",
       "source": "UCI",
-      "path": null
+      "path": "data\\tc03_pima_indians_diabetes.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -59,7 +59,7 @@
     "dataset": {
       "name": "Default of Credit Card Clients",
       "source": "UCI",
-      "path": null
+      "path": "data\\tc04_default_of_credit_card_clients.xls"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -77,7 +77,7 @@
     "dataset": {
       "name": "Breast Cancer Wisconsin",
       "source": "UCI",
-      "path": null
+      "path": "data\\tc05_breast_cancer_wisconsin.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -95,7 +95,7 @@
     "dataset": {
       "name": "Bank Marketing",
       "source": "UCI",
-      "path": null
+      "path": "data\\tc06_bank_marketing.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -113,7 +113,7 @@
     "dataset": {
       "name": "HR Analytics",
       "source": "kaggle",
-      "path": null
+      "path": "data\\tc07_hr_analytics.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -131,7 +131,7 @@
     "dataset": {
       "name": "Loan Prediction",
       "source": "kaggle",
-      "path": null
+      "path": "data\\tc08_loan_prediction.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -149,7 +149,7 @@
     "dataset": {
       "name": "Wine",
       "source": "UCI",
-      "path": null
+      "path": "data\\wine.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -167,7 +167,7 @@
     "dataset": {
       "name": "Heart Disease Cleveland",
       "source": "UCI",
-      "path": null
+      "path": "data\\tc10_heart_disease_cleveland.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -185,7 +185,7 @@
     "dataset": {
       "name": "Credit Card Fraud",
       "source": "kaggle",
-      "path": null
+      "path": "data\\tc11_credit_card_fraud.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -203,7 +203,7 @@
     "dataset": {
       "name": "Telco Customer Churn",
       "source": "kaggle",
-      "path": null
+      "path": "data\\tc12_telco_customer_churn.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -221,7 +221,7 @@
     "dataset": {
       "name": "Mushroom",
       "source": "UCI",
-      "path": null
+      "path": "data\\tc13_mushroom.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -239,7 +239,7 @@
     "dataset": {
       "name": "Adult Income",
       "source": "UCI",
-      "path": null
+      "path": "data\\tc14_adult_income.data"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -257,7 +257,7 @@
     "dataset": {
       "name": "Glass Identification",
       "source": "UCI",
-      "path": null
+      "path": "data\\tc15_glass_identification.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -275,7 +275,7 @@
     "dataset": {
       "name": "Parkinsons",
       "source": "UCI",
-      "path": null
+      "path": "data\\tc16_parkinsons.data"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -293,7 +293,7 @@
     "dataset": {
       "name": "Voter Turnout",
       "source": "custom",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tc17_voter_turnout.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -311,7 +311,7 @@
     "dataset": {
       "name": "Energy Efficiency",
       "source": "UCI",
-      "path": null
+      "path": "data\\tc18_energy_efficiency.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -329,7 +329,7 @@
     "dataset": {
       "name": "Student Performance",
       "source": "UCI",
-      "path": null
+      "path": "data\\tc19_student_performance.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -347,7 +347,7 @@
     "dataset": {
       "name": "Manufacturing Defects",
       "source": "custom",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tc20_manufacturing_defects.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -365,7 +365,7 @@
     "dataset": {
       "name": "California Housing",
       "source": "sklearn",
-      "path": null
+      "path": "data\\california_housing.csv"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -383,7 +383,7 @@
     "dataset": {
       "name": "Boston Housing",
       "source": "sklearn",
-      "path": null
+      "path": "data\\boston_housing.csv"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -401,7 +401,7 @@
     "dataset": {
       "name": "Wine Quality Red",
       "source": "UCI",
-      "path": null
+      "path": "data\\tr03_wine_quality_red.csv"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -419,7 +419,7 @@
     "dataset": {
       "name": "Appliances Energy",
       "source": "UCI",
-      "path": null
+      "path": "data\\tr04_appliances_energy.csv"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -437,7 +437,7 @@
     "dataset": {
       "name": "Bike Sharing",
       "source": "UCI",
-      "path": null
+      "path": "data\\tr05_bike_sharing.csv"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -455,7 +455,7 @@
     "dataset": {
       "name": "Stock Price",
       "source": "yahoo",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tr06_stock_price.csv"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -473,7 +473,7 @@
     "dataset": {
       "name": "CO2 Emissions",
       "source": "open data",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tr07_co2_emissions.csv"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -491,7 +491,7 @@
     "dataset": {
       "name": "Auto MPG",
       "source": "UCI",
-      "path": null
+      "path": "data\\tr08_auto_mpg.csv"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -509,7 +509,7 @@
     "dataset": {
       "name": "NYC Taxi Duration",
       "source": "kaggle",
-      "path": null
+      "path": "data\\tr09_nyc_taxi_duration.csv"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -527,7 +527,7 @@
     "dataset": {
       "name": "Medical Insurance",
       "source": "kaggle",
-      "path": null
+      "path": "data\\tr10_medical_insurance.csv"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -545,7 +545,7 @@
     "dataset": {
       "name": "Concrete Strength",
       "source": "UCI",
-      "path": null
+      "path": "data\\tr11_concrete_strength.xls"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -563,7 +563,7 @@
     "dataset": {
       "name": "Air Quality",
       "source": "UCI",
-      "path": null
+      "path": "data\\tr12_air_quality.csv"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -581,7 +581,7 @@
     "dataset": {
       "name": "IMDB Reviews",
       "source": "huggingface",
-      "path": null
+      "path": "data\\tx01_imdb_reviews.csv"
     },
     "task_type": "classification",
     "modality": "text",
@@ -599,7 +599,7 @@
     "dataset": {
       "name": "AG News",
       "source": "huggingface",
-      "path": null
+      "path": "data\\tx02_ag_news.csv"
     },
     "task_type": "classification",
     "modality": "text",
@@ -617,7 +617,7 @@
     "dataset": {
       "name": "Hate Speech",
       "source": "huggingface",
-      "path": null
+      "path": "data\\tx03_hate_speech.csv"
     },
     "task_type": "classification",
     "modality": "text",
@@ -635,7 +635,7 @@
     "dataset": {
       "name": "SMS Spam",
       "source": "UCI",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tx04_sms_spam.csv"
     },
     "task_type": "classification",
     "modality": "text",
@@ -653,7 +653,7 @@
     "dataset": {
       "name": "Amazon Reviews",
       "source": "huggingface",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tx05_amazon_reviews.csv"
     },
     "task_type": "classification",
     "modality": "text",
@@ -671,7 +671,7 @@
     "dataset": {
       "name": "Jigsaw Toxic",
       "source": "kaggle",
-      "path": null
+      "path": "data\\tx06_jigsaw_toxic.csv"
     },
     "task_type": "classification",
     "modality": "text",
@@ -689,7 +689,7 @@
     "dataset": {
       "name": "Email Classification",
       "source": "custom",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tx07_email_classification.csv"
     },
     "task_type": "classification",
     "modality": "text",
@@ -707,7 +707,7 @@
     "dataset": {
       "name": "Paper Abstracts",
       "source": "arxiv",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tx08_paper_abstracts.csv"
     },
     "task_type": "classification",
     "modality": "text",
@@ -725,7 +725,7 @@
     "dataset": {
       "name": "Fake Reviews",
       "source": "kaggle",
-      "path": null
+      "path": "data\\tx09_fake_reviews.csv"
     },
     "task_type": "classification",
     "modality": "text",
@@ -743,7 +743,7 @@
     "dataset": {
       "name": "Language Detection",
       "source": "huggingface",
-      "path": null
+      "path": "data\\tx10_language_detection.csv"
     },
     "task_type": "classification",
     "modality": "text",
@@ -761,7 +761,7 @@
     "dataset": {
       "name": "Fashion MNIST",
       "source": "keras",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\ic01_fashion_mnist.csv"
     },
     "task_type": "classification",
     "modality": "image",
@@ -779,7 +779,7 @@
     "dataset": {
       "name": "MNIST",
       "source": "keras",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\ic02_mnist.csv"
     },
     "task_type": "classification",
     "modality": "image",
@@ -797,7 +797,7 @@
     "dataset": {
       "name": "CIFAR-10",
       "source": "keras",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\ic03_cifar10.csv"
     },
     "task_type": "classification",
     "modality": "image",
@@ -815,7 +815,7 @@
     "dataset": {
       "name": "Brain MRI",
       "source": "kaggle",
-      "path": null
+      "path": "data\\ic04_image_dataset.csv"
     },
     "task_type": "classification",
     "modality": "image",
@@ -833,7 +833,7 @@
     "dataset": {
       "name": "Chest X-Ray",
       "source": "kaggle",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\ic05_chest_xray.csv"
     },
     "task_type": "classification",
     "modality": "image",
@@ -851,7 +851,7 @@
     "dataset": {
       "name": "German Traffic Signs",
       "source": "UCI",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\ic06_gtsrb.csv"
     },
     "task_type": "classification",
     "modality": "image",
@@ -869,7 +869,7 @@
     "dataset": {
       "name": "Flowers",
       "source": "tensorflow",
-      "path": null
+      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\ic07_flowers.csv"
     },
     "task_type": "classification",
     "modality": "image",
@@ -887,7 +887,7 @@
     "dataset": {
       "name": "Diabetic Retinopathy",
       "source": "kaggle",
-      "path": null
+      "path": "data\\ic08_diabetic_retinopathy.csv"
     },
     "task_type": "classification",
     "modality": "image",

@@ -65,3 +65,6 @@ class RedisClient:
         if result:
             return result[1]
         return None
+
+    async def lindex(self, list_key: str, index: int) -> str | None:
+        return await self._client.lindex(list_key, index)

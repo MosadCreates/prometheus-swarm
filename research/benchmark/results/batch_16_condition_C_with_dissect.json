@@ -1,0 +1,28 @@
+[
+  {
+    "problem_id": "TR11",
+    "condition": "C_with_dissect",
+    "status": "escalate",
+    "job_id": "bench-tr11-4a1c56",
+    "best_val_metric": 0.0,
+    "decision": "",
+    "duration_seconds": 118.86,
+    "crash_count": 0,
+    "human_interventions": 1,
+    "architecture": "lightgbm",
+    "error": "KeyError: 'strength'"
+  },
+  {
+    "problem_id": "TR12",
+    "condition": "C_with_dissect",
+    "status": "escalate",
+    "job_id": "bench-tr12-183ff7",
+    "best_val_metric": 0.0,
+    "decision": "",
+    "duration_seconds": 114.22,
+    "crash_count": 0,
+    "human_interventions": 1,
+    "architecture": "lightgbm",
+    "error": "KeyError: 'PM2.5'"
+  }
+]

@@ -3,6 +3,7 @@ BaseAgent ? common pattern inherited by all six agents.
 Provides: LLM calling, Redis I/O, structured logging, retry logic.
 """
 
+import json
 import logging
 from abc import ABC, abstractmethod
 from typing import Any
@@ -11,6 +12,10 @@ from dotenv import load_dotenv
 
 from agents.llm_client import get_llm_response
 from memory.redis_client import RedisClient
+
+# Claude Sonnet pricing per 1M tokens (as of 2026)
+_COST_PER_1M_INPUT = 3.00
+_COST_PER_1M_OUTPUT = 15.00
 
 load_dotenv()
 
@@ -58,4 +63,47 @@ class BaseAgent(ABC):
             job_id=self.job_id,
             agent_name=self.agent_name,
         )
+        await self._log_api_cost(response)
         return response
+
+    async def _log_api_cost(self, response: dict[str, Any]) -> None:
+        input_tokens = response.get("input_tokens", 0)
+        output_tokens = response.get("output_tokens", 0)
+        cost = (input_tokens / 1_000_000 * _COST_PER_1M_INPUT) + (
+            output_tokens / 1_000_000 * _COST_PER_1M_OUTPUT
+        )
+        entry = json.dumps(
+            {
+                "agent": self.agent_name,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cost": round(cost, 6),
+            }
+        )
+        await self.redis.rpush(f"job:{self.job_id}:api_cost", entry)
+
+        # Cumulative summary dict for quick retrieval
+        existing = await self.redis.get_json(f"job:{self.job_id}:api_cost_summary") or {}
+        existing["total_input_tokens"] = existing.get("total_input_tokens", 0) + input_tokens
+        existing["total_output_tokens"] = existing.get("total_output_tokens", 0) + output_tokens
+        existing["total_cost_usd"] = round(existing.get("total_cost_usd", 0) + cost, 6)
+        existing["calls"] = existing.get("calls", 0) + 1
+        await self.redis.set_json(
+            f"job:{self.job_id}:api_cost_summary", existing, ttl_seconds=86400
+        )
+
+        self.logger.info(
+            f"[job={self.job_id}] API cost ${cost:.6f} "
+            f"({input_tokens} in / {output_tokens} out)"
+        )
+
+    async def get_total_api_cost(self) -> float:
+        entries = []
+        i = 0
+        while True:
+            entry = await self.redis.lindex(f"job:{self.job_id}:api_cost", i)
+            if entry is None:
+                break
+            entries.append(json.loads(entry))
+            i += 1
+        return round(sum(e["cost"] for e in entries), 6)

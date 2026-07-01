@@ -65,7 +65,7 @@ class DissectAgent(BaseAgent):
             await self._escalate(crash_event, f"Script not found: {script_path}")
             return
 
-        with open(script_path) as f:
+        with open(script_path, encoding="utf-8") as f:
             original_code = f.read()
 
         patch_id = str(uuid.uuid4())
@@ -196,7 +196,7 @@ class DissectAgent(BaseAgent):
     ) -> str:
         script_content = ""
         try:
-            with open(crash_event["script_path"]) as f:
+            with open(crash_event["script_path"], encoding="utf-8") as f:
                 script_content = f.read()
         except Exception:
             script_content = "[unable to read script]"

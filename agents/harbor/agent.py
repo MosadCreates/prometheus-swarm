@@ -171,7 +171,7 @@ class HarborAgent(BaseAgent):
         )
 
         config_path = f"{output_dir}/deploy_config.json"
-        with open(config_path, "w") as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             json.dump(
                 {
                     "job_id": self.job_id,

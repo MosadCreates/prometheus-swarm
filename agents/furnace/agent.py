@@ -1,8 +1,9 @@
-"""Furnace Agent ? The Trainer. Executes training and manages the train loop."""
+"""Furnace Agent — The Trainer. Executes training and manages the train loop."""
 
 import asyncio
 import json
 import os
+import re
 import sys
 import traceback as tb_module
 
@@ -10,11 +11,13 @@ from agents.base import BaseAgent
 from agents.furnace.prompts import FURNACE_SYSTEM_PROMPT
 from bus.events import (
     CRASH_EVENT,
+    EPOCH_COMPLETE,
     ESCALATE,
     RESUME_TRAINING,
     TRAINING_COMPLETE,
     STREAM_DISSECT_OUTPUT,
     STREAM_FURNACE_CRASH,
+    STREAM_FURNACE_FEED,
     STREAM_FURNACE_OUTPUT,
 )
 from bus.publisher import publish
@@ -25,6 +28,7 @@ class FurnaceAgent(BaseAgent):
     def __init__(self, job_id: str):
         super().__init__(job_id=job_id)
         self.docker = DockerManager()
+        self._best_val_metric: float = 0.0
 
     @property
     def agent_name(self) -> str:
@@ -96,7 +100,7 @@ class FurnaceAgent(BaseAgent):
 
         await self.docker.launch_container(
             job_id=self.job_id,
-            run_cmd=["python", f"/app/scripts/{script_name}"],
+            run_cmd=[f"/app/scripts/{script_name}"],
             volumes=volumes,
             environment=environment,
         )
@@ -108,8 +112,49 @@ class FurnaceAgent(BaseAgent):
 
         await self.docker.kill_container(self.job_id)
 
+        for log_line in logs.split("\n"):
+            await self._publish_epoch_from_line(log_line)
+
         if exit_code != 0:
             raise RuntimeError(f"Training script exited with code {exit_code}: " f"{logs[:2000]}")
+
+    async def _publish_epoch_from_line(self, line: str) -> None:
+        match = re.search(r"Accuracy:\s*([\d.]+)", line)
+        if match:
+            val = float(match.group(1))
+            self._best_val_metric = max(self._best_val_metric, val)
+            await publish(
+                self.redis._client,
+                STREAM_FURNACE_FEED,
+                EPOCH_COMPLETE,
+                {
+                    "job_id": self.job_id,
+                    "epoch": 1,
+                    "train_loss": 1.0 - val,
+                    "val_loss": 1.0 - val,
+                    "eta_seconds": 0,
+                },
+            )
+            return
+        match = re.search(r"RMSE:\s*([\d.]+)", line)
+        if match:
+            val = float(match.group(1))
+            self._best_val_metric = (
+                val if self._best_val_metric == 0.0 else min(self._best_val_metric, val)
+            )
+            await publish(
+                self.redis._client,
+                STREAM_FURNACE_FEED,
+                EPOCH_COMPLETE,
+                {
+                    "job_id": self.job_id,
+                    "epoch": 1,
+                    "train_loss": val,
+                    "val_loss": val,
+                    "eta_seconds": 0,
+                },
+            )
+            return
 
     async def _launch_and_monitor_subprocess(self, script_path: str) -> None:
         """Launch training as a subprocess (fallback, for testing without Docker)."""
@@ -122,10 +167,34 @@ class FurnaceAgent(BaseAgent):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await process.communicate()
+
+        async def _read_stream(stream):
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                decoded = line.decode("utf-8", errors="replace").rstrip()
+                self.logger.info(f"[job={self.job_id}] {decoded}")
+                await self._publish_epoch_from_line(decoded)
+
+        stderr_lines = []
+
+        async def _read_stderr(stream):
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                decoded = line.decode("utf-8", errors="replace").rstrip()
+                stderr_lines.append(decoded)
+
+        await asyncio.gather(
+            _read_stream(process.stdout),
+            _read_stderr(process.stderr),
+        )
+        await process.wait()
 
         if process.returncode != 0:
-            error_text = stderr.decode("utf-8", errors="replace")
+            error_text = "\n".join(stderr_lines)
             raise RuntimeError(
                 f"Training script exited with code {process.returncode}: " f"{error_text[:2000]}"
             )
@@ -141,12 +210,14 @@ class FurnaceAgent(BaseAgent):
                 {
                     "job_id": self.job_id,
                     "checkpoint_path": os.path.abspath(latest_checkpoint),
-                    "best_val_metric": 0.0,
+                    "best_val_metric": self._best_val_metric,
                     "total_epochs": 1,
                     "total_crashes_recovered": 0,
                 },
             )
-            self.logger.info(f"[job={self.job_id}] Training complete")
+            self.logger.info(
+                f"[job={self.job_id}] Training complete | best_val_metric={self._best_val_metric}"
+            )
         else:
             raise FileNotFoundError(f"Checkpoint not found at {latest_checkpoint}")
 

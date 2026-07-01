@@ -1,0 +1,67 @@
+[
+  {
+    "problem_id": "TX01",
+    "condition": "B_no_dissect",
+    "status": "crash",
+    "job_id": "bench-tx01-587bc1",
+    "best_val_metric": 0.0,
+    "decision": "",
+    "duration_seconds": 1.23,
+    "crash_count": 0,
+    "human_interventions": 1,
+    "architecture": "distilbert",
+    "error": "KeyError: 'sentiment'"
+  },
+  {
+    "problem_id": "TX02",
+    "condition": "B_no_dissect",
+    "status": "crash",
+    "job_id": "bench-tx02-cdfa99",
+    "best_val_metric": 0.0,
+    "decision": "",
+    "duration_seconds": 1.2,
+    "crash_count": 0,
+    "human_interventions": 1,
+    "architecture": "distilbert",
+    "error": "KeyError: 'category'"
+  },
+  {
+    "problem_id": "TX03",
+    "condition": "B_no_dissect",
+    "status": "crash",
+    "job_id": "bench-tx03-892ac2",
+    "best_val_metric": 0.0,
+    "decision": "",
+    "duration_seconds": 1.3,
+    "crash_count": 0,
+    "human_interventions": 1,
+    "architecture": "distilbert",
+    "error": "KeyError: 'label'"
+  },
+  {
+    "problem_id": "TX04",
+    "condition": "B_no_dissect",
+    "status": "retry",
+    "job_id": "bench-tx04-e207e9",
+    "best_val_metric": 0.6160364337148586,
+    "decision": "retry",
+    "duration_seconds": 3.43,
+    "crash_count": 0,
+    "human_interventions": 1,
+    "architecture": "distilbert",
+    "error": null
+  },
+  {
+    "problem_id": "TX05",
+    "condition": "B_no_dissect",
+    "status": "crash",
+    "job_id": "bench-tx05-e40c81",
+    "best_val_metric": 0.0,
+    "decision": "",
+    "duration_seconds": 1.24,
+    "crash_count": 0,
+    "human_interventions": 1,
+    "architecture": "distilbert",
+    "error": "KeyError: 'rating'"
+  }
+]

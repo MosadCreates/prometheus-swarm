@@ -18,14 +18,14 @@ def convert(input_path: str, output_path: str) -> None:
         sys.exit(1)
 
     entries = []
-    with open(input_file) as f:
+    with open(input_file, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
                 entries.append(json.loads(line))
 
     output_file = Path(output_path)
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(entries, f, indent=2)
 
     print(f"Converted {len(entries)} entries from {input_path} → {output_path}")

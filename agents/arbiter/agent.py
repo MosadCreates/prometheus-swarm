@@ -4,6 +4,8 @@ import json
 import os
 from datetime import datetime, timezone
 
+import numpy as np
+
 from agents.base import BaseAgent
 from agents.arbiter.prompts import ARBITER_SYSTEM_PROMPT
 from agents.arbiter.tools import (
@@ -73,7 +75,7 @@ class ArbiterAgent(BaseAgent):
             "analysis": analysis,
         }
 
-        with open(eval_report_path, "w") as f:
+        with open(eval_report_path, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2)
 
         event_type_map = {
@@ -98,17 +100,15 @@ class ArbiterAgent(BaseAgent):
         return "classification"
 
     async def _compute_metrics(self, task_type: str) -> dict[str, float]:
+        ckpt_dir = f"outputs/{self.job_id}/checkpoints"
+        y_true = np.load(os.path.join(ckpt_dir, "y_test.npy")).tolist()
+        y_pred = np.load(os.path.join(ckpt_dir, "y_pred.npy")).tolist()
         if task_type == "classification":
-            return compute_classification_metrics(
-                y_true=[0, 1, 0, 1, 0],
-                y_pred=[0, 1, 0, 1, 1],
-                y_prob=[0.1, 0.9, 0.2, 0.8, 0.4],
-            )
+            prob_path = os.path.join(ckpt_dir, "y_prob.npy")
+            y_prob = np.load(prob_path).tolist() if os.path.exists(prob_path) else None
+            return compute_classification_metrics(y_true, y_pred, y_prob)
         else:
-            return compute_regression_metrics(
-                y_true=[1.0, 2.0, 3.0, 4.0, 5.0],
-                y_pred=[1.1, 2.2, 2.9, 4.1, 4.8],
-            )
+            return compute_regression_metrics(y_true, y_pred)
 
     async def _publish_decision(
         self,

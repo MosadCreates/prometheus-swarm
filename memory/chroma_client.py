@@ -43,5 +43,5 @@ class ChromaClient:
     def get_or_create_collection(self, name: str) -> chromadb.Collection:
         try:
             return self.client.get_collection(name)
-        except ValueError:
+        except Exception:
             return self.client.create_collection(name)

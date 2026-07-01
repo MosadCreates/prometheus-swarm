@@ -204,7 +204,7 @@ def serialize_to_onnx(
             onnx.save_model(onnx_model, output_path)
 
             config_path = output_path.replace(".onnx", "_preprocess.json")
-            with open(config_path, "w") as f:
+            with open(config_path, "w", encoding="utf-8") as f:
                 json.dump(preprocess_config, f, indent=2, default=str)
 
             return True, output_path
@@ -266,7 +266,7 @@ def generate_fastapi_app(
     )
 
     app_path = os.path.join(output_dir, "app.py")
-    with open(app_path, "w") as f:
+    with open(app_path, "w", encoding="utf-8") as f:
         f.write(app_code)
 
     requirements_path = os.path.join(output_dir, "requirements.txt")
@@ -281,7 +281,7 @@ def generate_fastapi_app(
         base_reqs.extend(["joblib>=1.3.0", "scikit-learn>=1.4.2", "lightgbm>=4.3.0"])
     else:
         base_reqs.append("onnxruntime>=1.18.0")
-    with open(requirements_path, "w") as f:
+    with open(requirements_path, "w", encoding="utf-8") as f:
         f.write("\n".join(base_reqs) + "\n")
 
     return app_path
@@ -292,7 +292,7 @@ def build_docker_image(image_name: str, app_dir: str) -> tuple[bool, str]:
     dockerfile_path = os.path.join(app_dir, "Dockerfile")
     extra_packages = []
     if os.path.exists(os.path.join(app_dir, "requirements.txt")):
-        with open(os.path.join(app_dir, "requirements.txt")) as f:
+        with open(os.path.join(app_dir, "requirements.txt"), encoding="utf-8") as f:
             deps = f.read()
             if "lightgbm" in deps or "xgboost" in deps:
                 extra_packages.append("libgomp1")
@@ -311,7 +311,7 @@ def build_docker_image(image_name: str, app_dir: str) -> tuple[bool, str]:
         'CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]\n'
     )
 
-    with open(dockerfile_path, "w") as f:
+    with open(dockerfile_path, "w", encoding="utf-8") as f:
         f.write(dockerfile_content)
 
     try:

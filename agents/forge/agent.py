@@ -42,8 +42,8 @@ class ForgeAgent(BaseAgent):
         except Exception:
             self.logger.warning(f"[job={self.job_id}] Architecture memory query failed")
 
-        # Select architecture (deterministic, but past outcomes are logged)
-        architecture = select_architecture(brief)
+        # Select architecture (uses memory to boost successful past choices)
+        architecture = select_architecture(brief, use_memory=True, similar_architectures=similar)
         imbalance_strategy = select_imbalance_strategy(class_imbalance_ratio, brief)
 
         # On retry, try the next-best architecture if available
@@ -63,14 +63,6 @@ class ForgeAgent(BaseAgent):
                 f"switching from {architecture} to {alt}"
             )
             architecture = alt
-
-        if similar:
-            succeeded = [a["model_selected"] for a in similar if a["outcome_label"] == "success"]
-            if succeeded and not retry_count:
-                self.logger.info(
-                    f"[job={self.job_id}] Similar past success: {succeeded[0]} "
-                    f"(default would be {architecture})"
-                )
 
         search_space = define_optuna_space(architecture)
 

@@ -13,7 +13,9 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def detect_modality(file_path: str) -> str:
+def detect_modality(file_path: str, modality_override: str | None = None) -> str:
+    if modality_override is not None:
+        return modality_override
     path = Path(file_path)
     ext = path.suffix.lower()
 
@@ -125,6 +127,16 @@ def suggest_imbalance_strategy(imbalance_ratio: float | None) -> str:
     return "none"
 
 
+def select_architecture_family(modality: str, task_type: str, num_rows: int) -> str:
+    if modality == "tabular":
+        return "tabnet" if num_rows >= 1_000_000 else "lightgbm"
+    elif modality == "text":
+        return "distilbert"
+    elif modality == "image":
+        return "efficientnet"
+    return "lightgbm"
+
+
 def write_mission_brief(
     eda_results: dict[str, Any],
     job_id: str,
@@ -132,10 +144,11 @@ def write_mission_brief(
     file_path: str,
     target_column: str | None = None,
     constraints: dict | None = None,
+    modality_override: str | None = None,
 ) -> dict[str, Any]:
     task_type = infer_task_type(target_column, eda_results.get("column_types", {}), file_path)
     metric = select_evaluation_metric(task_type, eda_results.get("class_imbalance_ratio"))
-    modality = detect_modality(file_path)
+    modality = detect_modality(file_path, modality_override=modality_override)
     imbalance_strategy = suggest_imbalance_strategy(eda_results.get("class_imbalance_ratio"))
 
     brief = {
@@ -160,7 +173,9 @@ def write_mission_brief(
             "data_warnings": eda_results.get("data_warnings", []),
         },
         "imbalance_strategy": imbalance_strategy,
-        "recommended_architecture_family": None,
+        "recommended_architecture_family": select_architecture_family(
+            modality, task_type, eda_results.get("num_rows", 0)
+        ),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 

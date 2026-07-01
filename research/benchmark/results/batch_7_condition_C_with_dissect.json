@@ -1,0 +1,67 @@
+[
+  {
+    "problem_id": "TX01",
+    "condition": "C_with_dissect",
+    "status": "crash",
+    "job_id": "bench-tx01-b9918d",
+    "best_val_metric": 0.0,
+    "decision": "",
+    "duration_seconds": 135.63,
+    "crash_count": 1,
+    "human_interventions": 1,
+    "architecture": "distilbert",
+    "error": "No predictions found"
+  },
+  {
+    "problem_id": "TX02",
+    "condition": "C_with_dissect",
+    "status": "escalate",
+    "job_id": "bench-tx02-70c907",
+    "best_val_metric": 0.0,
+    "decision": "",
+    "duration_seconds": 121.55,
+    "crash_count": 0,
+    "human_interventions": 1,
+    "architecture": "distilbert",
+    "error": "KeyError: 'category'"
+  },
+  {
+    "problem_id": "TX03",
+    "condition": "C_with_dissect",
+    "status": "pass",
+    "job_id": "bench-tx03-9bb33d",
+    "best_val_metric": 1.0,
+    "decision": "pass",
+    "duration_seconds": 85.6,
+    "crash_count": 1,
+    "human_interventions": 0,
+    "architecture": "distilbert",
+    "error": null
+  },
+  {
+    "problem_id": "TX04",
+    "condition": "C_with_dissect",
+    "status": "retry",
+    "job_id": "bench-tx04-ec51aa",
+    "best_val_metric": 0.6160364337148586,
+    "decision": "retry",
+    "duration_seconds": 2.61,
+    "crash_count": 0,
+    "human_interventions": 1,
+    "architecture": "distilbert",
+    "error": null
+  },
+  {
+    "problem_id": "TX05",
+    "condition": "C_with_dissect",
+    "status": "escalate",
+    "job_id": "bench-tx05-ed4fb0",
+    "best_val_metric": 0.03587443946188341,
+    "decision": "escalate",
+    "duration_seconds": 76.73,
+    "crash_count": 1,
+    "human_interventions": 1,
+    "architecture": "distilbert",
+    "error": null
+  }
+]

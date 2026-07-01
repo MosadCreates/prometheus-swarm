@@ -61,7 +61,7 @@ def apply_patch(script_path: str, patched_code: str) -> tuple[bool, str]:
         bak_path = script_path + ".bak"
         shutil.copy2(script_path, bak_path)
 
-        with open(script_path, "w") as f:
+        with open(script_path, "w", encoding="utf-8") as f:
             f.write(patched_code)
 
         return True, f"Patch applied. Backup at {bak_path}"
@@ -133,7 +133,7 @@ async def run_sandbox_test(script_path: str, job_id: str, max_epochs: int = 3) -
             None,
             lambda: client.containers.run(
                 image=image,
-                command=["python", f"/app/{script_name}"],
+                command=[f"/app/{script_name}"],
                 name=container_name,
                 detach=True,
                 volumes=volumes,

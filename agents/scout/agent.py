@@ -40,6 +40,8 @@ class ScoutAgent(BaseAgent):
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Dataset not found: {file_path}")
 
+        modality_override = self.job_data.get("modality_override")
+
         eda = run_eda(file_path, target_column)
         if "error" in eda:
             raise ValueError(f"EDA failed: {eda['error']}")
@@ -51,6 +53,7 @@ class ScoutAgent(BaseAgent):
             file_path=file_path,
             target_column=target_column,
             constraints=self.job_data.get("constraints"),
+            modality_override=modality_override,
         )
 
         mission_key = f"job:{self.job_id}:mission_brief"
@@ -77,12 +80,14 @@ class ScoutAgent(BaseAgent):
         file_path: str,
         target_column: str | None = None,
         constraints: dict | None = None,
+        modality_override: str | None = None,
     ) -> dict[str, Any]:
         self.job_data = {
             "problem_description": problem_description,
             "file_path": file_path,
             "target_column": target_column,
             "constraints": constraints,
+            "modality_override": modality_override,
         }
         await self.run()
         return await self.redis.get_json(f"job:{self.job_id}:mission_brief")

@@ -40,7 +40,7 @@ async def run_writer() -> None:
 
             lock_path = str(log_path) + ".lock"
             with FileLock(lock_path):
-                with open(log_path, "a") as f:
+                with open(log_path, "a", encoding="utf-8") as f:
                     f.write(json.dumps(entry, separators=(",", ":")) + "\n")
 
             logger.debug(f"Wrote patch log entry: patch_id={entry.get('patch_id')}")

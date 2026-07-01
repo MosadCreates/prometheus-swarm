@@ -57,7 +57,7 @@ def _load_preprocess_config():
     global _preprocess_config
     config_path = _model_path.replace(".onnx", "_preprocess.json")
     if os.path.exists(config_path):
-        with open(config_path) as f:
+        with open(config_path, encoding="utf-8") as f:
             _preprocess_config = json.load(f)
         logger.info(f"Preprocessing config loaded from {{config_path}}")
 

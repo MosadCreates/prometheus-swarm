@@ -517,7 +517,7 @@ class OrchestratorRuntime:
         }
 
         os.makedirs(f"outputs/{job_id}", exist_ok=True)
-        with open(f"outputs/{job_id}/diagnostic_{job_id}.json", "w") as f:
+        with open(f"outputs/{job_id}/diagnostic_{job_id}.json", "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2)
 
         # Kill training container if running (per CLAUDE.md §14 ESCALATE Resolution Path)
