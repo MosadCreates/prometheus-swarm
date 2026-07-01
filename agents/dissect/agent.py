@@ -12,6 +12,7 @@ from agents.dissect.tools import apply_patch, rollback_patch, compute_diff, run_
 from agents.dissect.patch_log import write_patch_log
 from bus.events import RESUME_TRAINING, ESCALATE, STREAM_DISSECT_OUTPUT
 from bus.publisher import publish
+from memory.collections.patch_memory import store_patch, query_similar_patches
 
 
 class DissectAgent(BaseAgent):
@@ -46,6 +47,20 @@ class DissectAgent(BaseAgent):
             f"confidence={confidence} method={match_method}"
         )
 
+        # Query past similar patches from ChromaDB long-term memory (K=3)
+        retrieved_similar = query_similar_patches(
+            error_text=f"{exception_type}: {exception_message}",
+            category=category,
+            k=3,
+        )
+        if retrieved_similar:
+            self.logger.info(
+                f"[job={self.job_id}] Retrieved {len(retrieved_similar)} "
+                f"similar past patches from ChromaDB"
+            )
+        else:
+            self.logger.info(f"[job={self.job_id}] No similar past patches found in ChromaDB")
+
         if not os.path.exists(script_path):
             await self._escalate(crash_event, f"Script not found: {script_path}")
             return
@@ -55,7 +70,7 @@ class DissectAgent(BaseAgent):
 
         patch_id = str(uuid.uuid4())
         llm_response = await self.call_llm(
-            user_message=self._build_prompt(crash_event, category, strategy),
+            user_message=self._build_prompt(crash_event, category, strategy, retrieved_similar),
         )
 
         patched_code = llm_response["text"]
@@ -80,6 +95,8 @@ class DissectAgent(BaseAgent):
 
         sandbox_passed, sandbox_output = await run_sandbox_test(script_path, self.job_id)
 
+        patch_outcome = "success" if sandbox_passed else "rollback"
+
         entry = {
             "patch_id": patch_id,
             "job_id": self.job_id,
@@ -89,17 +106,32 @@ class DissectAgent(BaseAgent):
             "error_taxonomy_category": category,
             "taxonomy_match_method": match_method,
             "repair_strategy_used": strategy,
-            "retrieved_similar_patches": [],
+            "retrieved_similar_patches": retrieved_similar,
             "diff_applied": diff,
             "lines_changed": lines_changed,
             "sandbox_test_result": "pass" if sandbox_passed else "fail",
-            "patch_outcome": "success" if sandbox_passed else "rollback",
+            "patch_outcome": patch_outcome,
             "confidence_score": confidence,
             "attempt_number": attempt_number,
             "resume_from_checkpoint": f"outputs/{self.job_id}/checkpoints/best.ckpt",
         }
 
         await write_patch_log(self.redis, entry)
+
+        # Store in ChromaDB long-term memory (always — success or failure)
+        try:
+            store_patch(
+                patch_id=patch_id,
+                job_id=self.job_id,
+                exception_type=exception_type,
+                exception_message=exception_message,
+                category=category,
+                repair_strategy=strategy,
+                diff_applied=diff,
+                outcome=patch_outcome,
+            )
+        except Exception as e:
+            self.logger.warning(f"[job={self.job_id}] Failed to store patch in ChromaDB: {e}")
 
         if sandbox_passed:
             self.logger.info(f"[job={self.job_id}] Patch SUCCESS | patch_id={patch_id}")
@@ -119,8 +151,22 @@ class DissectAgent(BaseAgent):
             rollback_patch(script_path)
 
             if attempt_number >= 3:
+                # Store escalated outcome
                 entry["patch_outcome"] = "escalated"
                 await write_patch_log(self.redis, entry)
+                try:
+                    store_patch(
+                        patch_id=patch_id,
+                        job_id=self.job_id,
+                        exception_type=exception_type,
+                        exception_message=exception_message,
+                        category=category,
+                        repair_strategy=strategy,
+                        diff_applied=diff,
+                        outcome="escalated",
+                    )
+                except Exception as e:
+                    self.logger.warning(f"[job={self.job_id}] Failed to store escalated patch: {e}")
                 await self._escalate(crash_event, "3 patch attempts failed")
             else:
                 crash_event["crash_attempt_number"] = attempt_number + 1
@@ -141,13 +187,32 @@ class DissectAgent(BaseAgent):
             },
         )
 
-    def _build_prompt(self, crash_event: dict, category: str, strategy: str) -> str:
+    def _build_prompt(
+        self,
+        crash_event: dict,
+        category: str,
+        strategy: str,
+        similar_patches: list[dict] | None = None,
+    ) -> str:
         script_content = ""
         try:
             with open(crash_event["script_path"]) as f:
                 script_content = f.read()
         except Exception:
             script_content = "[unable to read script]"
+
+        similar_section = ""
+        if similar_patches:
+            lines = []
+            lines.append("Similar past patches retrieved from memory:")
+            for i, p in enumerate(similar_patches, 1):
+                lines.append(
+                    f"  {i}. category={p.get('category')}, "
+                    f"strategy={p.get('repair_strategy')}, "
+                    f"outcome={p.get('outcome')}, "
+                    f"similarity={p.get('similarity_score', 0):.2f}"
+                )
+            similar_section = "\n".join(lines) + "\n\n"
 
         return (
             f"The following training script crashed:\n\n"
@@ -158,6 +223,7 @@ class DissectAgent(BaseAgent):
             f"Exception: {crash_event['exception_type']}: {crash_event['exception_message']}\n"
             f"Error category: {category}\n"
             f"Suggested repair strategy: {strategy}\n\n"
+            f"{similar_section}"
             f"Fix the bug and output the COMPLETE fixed script. "
             f"Do NOT output a diff or patch — output the entire script."
         )

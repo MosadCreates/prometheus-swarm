@@ -1,7 +1,9 @@
 """tool_memory collection: semantic retrieval of tool docstrings."""
 
+import importlib
 import logging
 import os
+import uuid
 from typing import Any
 
 from memory.chroma_client import ChromaClient
@@ -104,3 +106,42 @@ def query_tools(
             )
 
     return tools
+
+
+def register_agent_tools(agent_name: str, module_path: str) -> int:
+    """Register all public callable functions with docstrings from a tools module.
+
+    Scans the module for functions (not starting with ``_``) that have a non-empty
+    docstring and stores each one in the ``tool_memory`` ChromaDB collection.
+
+    Args:
+        agent_name: Agent identifier (e.g. ``"Scout"``, ``"Forge"``)
+        module_path: Dotted module path (e.g. ``"agents.scout.tools"``)
+
+    Returns:
+        Number of tools successfully registered
+    """
+    try:
+        module = importlib.import_module(module_path)
+    except Exception as e:
+        logger.warning(f"Cannot import module {module_path}: {e}")
+        return 0
+
+    import inspect
+
+    count = 0
+    for name, obj in inspect.getmembers(module, inspect.isfunction):
+        if not name.startswith("_"):
+            content = obj.__doc__ or f"{name}({inspect.signature(obj)})"
+            tool_id = str(uuid.uuid4())
+            store_tool(
+                tool_id=tool_id,
+                agent_name=agent_name,
+                tool_name=name,
+                docstring=content,
+                source_file=module_path,
+            )
+            count += 1
+
+    logger.info(f"Registered {count} tools for agent {agent_name} from {module_path}")
+    return count

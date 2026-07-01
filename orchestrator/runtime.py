@@ -24,6 +24,7 @@ from agents.scout.agent import ScoutAgent
 from memory.redis_client import RedisClient
 from bus.events import (
     MISSION_BRIEF_READY,
+    CRASH_EVENT,
     EVALUATION_PASS,
     EVALUATION_RETRY,
     ESCALATE,
@@ -66,6 +67,7 @@ class OrchestratorRuntime:
         logger.info("Orchestrator connected to Redis")
 
         await self._ensure_consumer_groups()
+        await self._register_all_tools()
 
     def _make_redis_client(self) -> RedisClient:
         rc = RedisClient()
@@ -76,7 +78,7 @@ class OrchestratorRuntime:
         """Create all required consumer groups if they don't exist."""
         streams_groups = {
             STREAM_FURNACE_OUTPUT: [GROUP_ORCHESTRATOR, "arbiter_consumers"],
-            STREAM_FURNACE_CRASH: ["dissect_consumers"],
+            STREAM_FURNACE_CRASH: [GROUP_ORCHESTRATOR, "dissect_consumers"],
             STREAM_DISSECT_OUTPUT: [GROUP_ORCHESTRATOR, "furnace_consumers"],
             STREAM_ARBITER_OUTPUT: [GROUP_ORCHESTRATOR, "harbor_consumers"],
             STREAM_HARBOR_OUTPUT: [GROUP_ORCHESTRATOR, "scout_consumers"],
@@ -93,6 +95,29 @@ class OrchestratorRuntime:
 
         logger.info("Consumer groups ensured")
 
+    async def _register_all_tools(self) -> None:
+        """Register all agent tool docstrings in tool_memory ChromaDB collection."""
+        try:
+            from memory.collections.tool_memory import register_agent_tools
+
+            agents = [
+                ("Scout", "agents.scout.tools"),
+                ("Forge", "agents.forge.tools"),
+                ("Furnace", "agents.furnace.tools"),
+                ("Dissect", "agents.dissect.tools"),
+                ("Arbiter", "agents.arbiter.tools"),
+                ("Harbor", "agents.harbor.tools"),
+            ]
+            total = 0
+            for name, module_path in agents:
+                try:
+                    total += register_agent_tools(name, module_path)
+                except Exception as e:
+                    logger.warning(f"Tool registration failed for {name}: {e}")
+            logger.info(f"Registered {total} tool docstrings across {len(agents)} agents")
+        except Exception as e:
+            logger.warning(f"Tool memory registration skipped: {e}")
+
     async def run(self) -> None:
         """Main event loop. Listens on all orchestrator streams in parallel."""
         self._running = True
@@ -102,6 +127,7 @@ class OrchestratorRuntime:
             self._consume_scout(),
             self._consume_forge(),
             self._consume_furnace(),
+            self._consume_furnace_crash(),
             self._consume_dissect(),
             self._consume_arbiter(),
             self._consume_harbor(),
@@ -184,6 +210,32 @@ class OrchestratorRuntime:
                             )
             except Exception as e:
                 logger.error(f"Furnace consumer error: {e}")
+                await asyncio.sleep(1)
+
+    async def _consume_furnace_crash(self) -> None:
+        """Consume CRASH_EVENT from furnace_crash stream and launch Dissect."""
+        while self._running:
+            try:
+                results = await self.redis.xreadgroup(
+                    GROUP_ORCHESTRATOR,
+                    "orchestrator-furnace-crash",
+                    {STREAM_FURNACE_CRASH: ">"},
+                    count=1,
+                    block=2000,
+                )
+                if results:
+                    for _stream, messages in results:
+                        for msg_id, data in messages:
+                            event_type = data.get("event_type", "")
+                            if event_type == CRASH_EVENT:
+                                await self._on_crash_event(data)
+                            await self.redis.xack(
+                                STREAM_FURNACE_CRASH,
+                                GROUP_ORCHESTRATOR,
+                                msg_id,
+                            )
+            except Exception as e:
+                logger.error(f"Furnace crash consumer error: {e}")
                 await asyncio.sleep(1)
 
     async def _consume_dissect(self) -> None:
@@ -332,6 +384,34 @@ class OrchestratorRuntime:
                 f"Arbiter execution failed: {e}",
             )
 
+    async def _on_crash_event(self, data: dict) -> None:
+        """Handle CRASH_EVENT from Furnace by launching Dissect to patch the error."""
+        job_id = data.get("job_id", "?")
+        logger.info(f"[job={job_id}] Crash event received. Launching Dissect.")
+        await self._set_job_status(job_id, "DISSECT_PATCHING", "Dissect")
+
+        from agents.dissect.agent import DissectAgent
+
+        dissect = DissectAgent(job_id=job_id)
+        dissect.redis = self._make_redis_client()
+
+        # Data from Redis Streams comes as flat string values; reconstruct the dict
+        crash_event = {
+            "job_id": data.get("job_id", job_id),
+            "exception_type": data.get("exception_type", "UnknownError"),
+            "exception_message": data.get("exception_message", ""),
+            "traceback": data.get("traceback", ""),
+            "script_path": data.get("script_path", ""),
+            "last_checkpoint_path": data.get("last_checkpoint_path", ""),
+            "epoch_at_crash": int(data.get("epoch_at_crash", 0)),
+            "crash_attempt_number": int(data.get("crash_attempt_number", 1)),
+        }
+        try:
+            await dissect.handle_crash(crash_event)
+        except Exception as e:
+            logger.error(f"[job={job_id}] Dissect failed: {e}")
+            await self._handle_escalate(job_id, "Dissect", f"Dissect execution failed: {e}")
+
     async def _on_arbiter_decision(self, data: dict) -> None:
         job_id = data.get("job_id", "?")
         event_type = data.get("event_type", "")
@@ -439,6 +519,15 @@ class OrchestratorRuntime:
         os.makedirs(f"outputs/{job_id}", exist_ok=True)
         with open(f"outputs/{job_id}/diagnostic_{job_id}.json", "w") as f:
             json.dump(report, f, indent=2)
+
+        # Kill training container if running (per CLAUDE.md §14 ESCALATE Resolution Path)
+        try:
+            from training.docker_manager import DockerManager
+
+            docker = DockerManager()
+            await docker.kill_container(job_id)
+        except Exception as e:
+            logger.warning(f"[job={job_id}] Failed to kill training container: {e}")
 
         await self._publish_job_failed(job_id, source, reason)
 

@@ -146,19 +146,35 @@ class DockerManager:
             return -1, str(e)
 
     async def kill_container(self, job_id: str) -> None:
-        """Stop and remove a training container."""
-        cid = self._containers.pop(job_id, None)
-        if not cid:
-            return
+        """Stop and remove a training container.
 
+        Looks up the container by internal ID cache first, then falls back to
+        the naming convention ``train-{job_id}``. This allows the orchestrator
+        to kill containers it did not launch itself.
+        """
+        cid = self._containers.pop(job_id, None)
         client = await self._get_client()
-        try:
-            container = client.containers.get(cid)
-            container.stop(timeout=5)
-            container.remove()
-            logger.info(f"[job={job_id}] Container {cid[:12]} killed and removed")
-        except Exception as e:
-            logger.warning(f"[job={job_id}] Error killing container {cid[:12]}: {e}")
+
+        container = None
+        if cid:
+            try:
+                container = client.containers.get(cid)
+            except Exception:
+                pass
+
+        if not container:
+            try:
+                container = client.containers.get(f"train-{job_id}")
+            except Exception:
+                pass
+
+        if container:
+            try:
+                container.stop(timeout=5)
+                container.remove()
+                logger.info(f"[job={job_id}] Container killed and removed")
+            except Exception as e:
+                logger.warning(f"[job={job_id}] Error killing container: {e}")
 
     async def get_status(self, job_id: str) -> str:
         """Get container status: running, exited, or stopped."""
