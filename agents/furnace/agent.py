@@ -34,11 +34,14 @@ class FurnaceAgent(BaseAgent):
     def system_prompt(self) -> str:
         return FURNACE_SYSTEM_PROMPT
 
-    async def run(self, script_path: str, use_docker: bool = True) -> None:
+    async def run(
+        self, script_path: str, use_docker: bool = True, search_space_json: str | None = None
+    ) -> None:
         self.logger.info(f"[job={self.job_id}] Furnace starting")
         if not script_path:
             raise ValueError(f"script_path required for Furnace job {self.job_id}")
 
+        self._search_space_json = search_space_json
         current_script = script_path
         crash_attempt = 0
 
@@ -86,6 +89,10 @@ class FurnaceAgent(BaseAgent):
             "OUTPUTS_DIR": "/app/outputs",
             "PYTHONUNBUFFERED": "1",
         }
+
+        search_json = getattr(self, "_search_space_json", None)
+        if search_json:
+            environment["SEARCH_SPACE_JSON"] = search_json
 
         await self.docker.launch_container(
             job_id=self.job_id,

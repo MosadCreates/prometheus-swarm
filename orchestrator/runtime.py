@@ -291,10 +291,18 @@ class OrchestratorRuntime:
         await self._set_job_status(job_id, "FURNACE_TRAINING", "Furnace")
         await self.redis.set(f"job:{job_id}:script_path", script_path)
 
+        # Read search space from Redis and pass to Furnace as serialized JSON
+        search_space_json = None
+        search_key = data.get("search_space_redis_key")
+        if search_key:
+            raw = await self.redis.get(search_key)
+            if raw:
+                search_space_json = raw
+
         furnace = FurnaceAgent(job_id=job_id)
         furnace.redis = self._make_redis_client()
         try:
-            await furnace.run(script_path=script_path)
+            await furnace.run(script_path=script_path, search_space_json=search_space_json)
         except Exception as e:
             logger.error(f"[job={job_id}] Furnace failed: {e}")
             await self._handle_escalate(
@@ -334,6 +342,40 @@ class OrchestratorRuntime:
         )
         logger.info(f"[job={job_id}] Arbiter decision: {decision}")
 
+        outcome_label = {"pass": "success", "retry": "retry", "escalate": "escalate"}[decision]
+        outcome_metric = data.get("primary_metric_value")
+
+        # Store outcome in architecture memory
+        try:
+            from memory.collections.architecture_memory import store_architecture
+
+            decision_id = await self.redis.get(f"job:{job_id}:architecture_decision_id")
+            brief = None
+            try:
+                rc = self._make_redis_client()
+                brief = await rc.get_json(f"job:{job_id}:mission_brief")
+            except Exception:
+                pass
+
+            if decision_id and brief:
+                store_architecture(
+                    decision_id=decision_id,
+                    job_id=job_id,
+                    modality=brief.get("modality", "tabular"),
+                    task_type=brief.get("task_type", "classification"),
+                    num_rows=brief.get("dataset", {}).get("num_rows", 0),
+                    class_imbalance_ratio=brief.get("data_quality", {}).get(
+                        "class_imbalance_ratio"
+                    ),
+                    model_selected=brief.get("recommended_architecture_family", "lightgbm"),
+                    imbalance_strategy=brief.get("imbalance_strategy", "none"),
+                    outcome_metric=outcome_metric,
+                    outcome_label=outcome_label,
+                )
+                logger.info(f"[job={job_id}] Architecture outcome stored: {outcome_label}")
+        except Exception as e:
+            logger.warning(f"[job={job_id}] Failed to store architecture outcome: {e}")
+
         if decision == "pass":
             await self._set_job_status(job_id, "HARBOR_DEPLOYING", "Harbor")
             harbor = HarborAgent(job_id=job_id)
@@ -350,6 +392,8 @@ class OrchestratorRuntime:
 
         elif decision == "retry":
             await self._set_job_status(job_id, "FORGE_RETRY", "Forge")
+            # Increment retry counter so Forge can deprioritize previously-tried architectures
+            await self.redis.incr(f"job:{job_id}:retry_count")
             logger.info(f"[job={job_id}] Score within 15% — retrying " f"with new architecture")
             # Re-publish MISSION_BRIEF_READY to re-trigger Forge
             # with the SAME mission brief. Scout is NOT re-run on
