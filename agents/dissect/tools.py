@@ -1,11 +1,11 @@
 """Dissect tools. Each function is independently unit-testable."""
 
+import asyncio
 import difflib
 import logging
 import os
 import shutil
-import subprocess
-import sys
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -98,24 +98,76 @@ def compute_diff(original: str, patched: str) -> str:
 
 
 async def run_sandbox_test(script_path: str, job_id: str, max_epochs: int = 3) -> tuple[bool, str]:
-    """Run patched script in a sandbox for up to max_epochs to verify it works.
+    """Run patched script in a Docker sandbox for up to max_epochs to verify it works.
+
+    Uses the same training base image and volume layout as the real Furnace training
+    container, ensuring the patch is tested in an environment identical to production.
 
     Returns:
         (passed, output)
     """
+    import docker
+    from docker.errors import DockerException
+
+    client = docker.from_env()
+    image = os.getenv("TRAINING_IMAGE_NAME", "prometheus-training-base")
+    sandbox_id = f"{job_id}-{uuid.uuid4().hex[:8]}"
+    container_name = f"prometheus-sandbox-{sandbox_id}"
+    script_name = os.path.basename(script_path)
+
+    volumes = {
+        os.path.abspath(script_path): {"bind": f"/app/{script_name}", "mode": "ro"},
+        os.path.abspath("data"): {"bind": "/app/data", "mode": "ro"},
+        os.path.abspath("outputs"): {"bind": "/app/outputs", "mode": "rw"},
+    }
+    environment = {
+        "DATA_DIR": "/app/data",
+        "OUTPUTS_DIR": "/app/outputs",
+        "PYTHONUNBUFFERED": "1",
+    }
+
+    loop = asyncio.get_event_loop()
+
     try:
-        result = subprocess.run(
-            [sys.executable, script_path],
-            capture_output=True,
-            text=True,
-            timeout=60,
+        container = await loop.run_in_executor(
+            None,
+            lambda: client.containers.run(
+                image=image,
+                command=["python", f"/app/{script_name}"],
+                name=container_name,
+                detach=True,
+                volumes=volumes,
+                environment=environment,
+                working_dir="/app",
+                stdout=True,
+                stderr=True,
+                remove=False,
+            ),
+        )
+    except DockerException as e:
+        return False, f"Failed to launch sandbox container: {e}"
+
+    try:
+        try:
+            result = await loop.run_in_executor(
+                None,
+                lambda: container.wait(timeout=60),
+            )
+            exit_code = result.get("StatusCode", -1)
+        except Exception:
+            await loop.run_in_executor(None, lambda: container.kill())
+            return True, "Timed out after 60s (OK - training past max_epochs)"
+
+        logs = await loop.run_in_executor(
+            None,
+            lambda: container.logs(stdout=True, stderr=True).decode("utf-8", errors="replace"),
         )
 
-        if result.returncode == 0:
-            return True, result.stdout
-        else:
-            return False, result.stderr or result.stdout
-    except subprocess.TimeoutExpired:
-        return True, "Timed out after 60s (OK - training past max_epochs)"
-    except Exception as e:
-        return False, str(e)
+        if exit_code == 0:
+            return True, logs
+        return False, logs
+    finally:
+        try:
+            await loop.run_in_executor(None, lambda: container.remove(force=True))
+        except Exception:
+            pass
