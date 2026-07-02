@@ -1,13 +1,22 @@
 """Forge Agent ? The Architect."""
 
+import asyncio
 import uuid
 
 from agents.base import BaseAgent
-from agents.forge.prompts import FORGE_SYSTEM_PROMPT
 from agents.forge.decision_tree import select_architecture, select_imbalance_strategy
+from agents.forge.prompts import FORGE_SYSTEM_PROMPT
 from agents.forge.tools import write_training_script, define_optuna_space
 from bus.events import TRAINING_SCRIPT_READY, STREAM_FORGE_OUTPUT
 from bus.publisher import publish
+from shared.metrics import (
+    FORGE_ARCHITECTURE_SELECTIONS,
+    FORGE_SCRIPTS_GENERATED,
+    FORGE_SCRIPTS_GENERATION_DURATION,
+    AGENT_RUNS,
+    record_heartbeat,
+    record_agent_error,
+)
 
 
 class ForgeAgent(BaseAgent):
@@ -21,22 +30,27 @@ class ForgeAgent(BaseAgent):
 
     async def run(self) -> None:
         self.logger.info(f"[job={self.job_id}] Forge starting")
+        AGENT_RUNS.labels(agent="Forge", job_id=self.job_id).inc()
+        record_heartbeat("Forge", self.job_id)
 
         brief_key = f"job:{self.job_id}:mission_brief"
         brief = await self.redis.get_json(brief_key)
         if not brief:
+            record_agent_error("Forge", self.job_id, "missing_brief")
             raise ValueError(f"Mission brief not found at {brief_key}")
 
         modality = brief.get("modality", "tabular")
         task_type = brief.get("task_type", "classification")
         dataset = brief.get("dataset", {})
         num_rows = dataset.get("num_rows", 0)
-        class_imbalance_ratio = brief.get("data_quality", {}).get("class_imbalance_ratio")
+        class_imbalance_ratio = brief.get("data_quality", {}).get("class_imbalance_ratio", None)
 
         # Query architecture memory for similar past decisions
         similar = []
         try:
-            from memory.collections.architecture_memory import query_similar_architectures
+            from memory.collections.architecture_memory import (
+                query_similar_architectures,
+            )
 
             similar = query_similar_architectures(modality, task_type, k=3)
         except Exception:
@@ -45,6 +59,8 @@ class ForgeAgent(BaseAgent):
         # Select architecture (uses memory to boost successful past choices)
         architecture = select_architecture(brief, use_memory=True, similar_architectures=similar)
         imbalance_strategy = select_imbalance_strategy(class_imbalance_ratio, brief)
+
+        FORGE_ARCHITECTURE_SELECTIONS.labels(architecture=architecture, job_id=self.job_id).inc()
 
         # On retry, try the next-best architecture if available
         retry_count_str = await self.redis.get_str(f"job:{self.job_id}:retry_count")
@@ -63,10 +79,20 @@ class ForgeAgent(BaseAgent):
                 f"switching from {architecture} to {alt}"
             )
             architecture = alt
+            FORGE_ARCHITECTURE_SELECTIONS.labels(
+                architecture=architecture, job_id=self.job_id
+            ).inc()
 
         search_space = define_optuna_space(architecture)
 
+        _start = asyncio.get_event_loop().time()
         script_path = write_training_script(brief, self.job_id)
+        _elapsed = asyncio.get_event_loop().time() - _start
+        FORGE_SCRIPTS_GENERATED.labels(architecture=architecture, job_id=self.job_id).inc()
+        FORGE_SCRIPTS_GENERATION_DURATION.labels(
+            architecture=architecture, job_id=self.job_id
+        ).observe(_elapsed)
+        record_heartbeat("Forge", self.job_id)
 
         search_key = f"job:{self.job_id}:search_space"
         await self.redis.set_json(search_key, search_space)

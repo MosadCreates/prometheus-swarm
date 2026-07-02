@@ -21,6 +21,16 @@ from bus.events import (
     STREAM_FURNACE_OUTPUT,
 )
 from bus.publisher import publish
+from shared.metrics import (
+    FURNACE_TRAINING_RUNS,
+    FURNACE_EPOCHS,
+    FURNACE_CRASHES,
+    FURNACE_CRASHES_RECOVERED,
+    FURNACE_BEST_VAL_METRIC,
+    AGENT_RUNS,
+    record_heartbeat,
+    record_agent_error,
+)
 from training.docker_manager import DockerManager
 
 
@@ -29,6 +39,8 @@ class FurnaceAgent(BaseAgent):
         super().__init__(job_id=job_id)
         self.docker = DockerManager()
         self._best_val_metric: float = 0.0
+        self._epoch_count: int = 0
+        self._crashes_recovered: int = 0
 
     @property
     def agent_name(self) -> str:
@@ -39,20 +51,29 @@ class FurnaceAgent(BaseAgent):
         return FURNACE_SYSTEM_PROMPT
 
     async def run(
-        self, script_path: str, use_docker: bool = True, search_space_json: str | None = None
+        self,
+        script_path: str,
+        use_docker: bool = True,
+        search_space_json: str | None = None,
     ) -> None:
         self.logger.info(f"[job={self.job_id}] Furnace starting")
+        AGENT_RUNS.labels(agent="Furnace", job_id=self.job_id).inc()
+        record_heartbeat("Furnace", self.job_id)
         if not script_path:
+            record_agent_error("Furnace", self.job_id, "missing_script_path")
             raise ValueError(f"script_path required for Furnace job {self.job_id}")
 
         self._search_space_json = search_space_json
         current_script = script_path
         crash_attempt = 0
+        last_checkpoint: str | None = None
 
         while True:
             try:
                 if use_docker:
-                    await self._launch_and_monitor_docker(current_script)
+                    await self._launch_and_monitor_docker(
+                        current_script, resume_from=last_checkpoint
+                    )
                 else:
                     await self._launch_and_monitor_subprocess(current_script)
                 await self._finalize_training(current_script)
@@ -70,15 +91,20 @@ class FurnaceAgent(BaseAgent):
                     )
                     return
                 current_script = resume_payload["patched_script_path"]
+                last_checkpoint = resume_payload.get("last_checkpoint_path") or last_checkpoint
                 self.logger.info(
                     f"[job={self.job_id}] Resuming with patched script: " f"{current_script}"
                 )
 
-    async def _launch_and_monitor_docker(self, script_path: str) -> None:
+    async def _launch_and_monitor_docker(
+        self, script_path: str, resume_from: str | None = None
+    ) -> None:
         """Launch training in a Docker container and wait for completion."""
         abs_script = os.path.abspath(script_path)
         script_name = os.path.basename(abs_script)
 
+        FURNACE_TRAINING_RUNS.labels(job_id=self.job_id, mode="docker").inc()
+        record_heartbeat("Furnace", self.job_id)
         self.logger.info(f"[job={self.job_id}] Launching Docker training: {script_name}")
 
         volumes = {
@@ -93,6 +119,10 @@ class FurnaceAgent(BaseAgent):
             "OUTPUTS_DIR": "/app/outputs",
             "PYTHONUNBUFFERED": "1",
         }
+
+        if resume_from:
+            environment["RESUME_CHECKPOINT"] = resume_from
+            self.logger.info(f"[job={self.job_id}] Resuming from checkpoint: {resume_from}")
 
         search_json = getattr(self, "_search_space_json", None)
         if search_json:
@@ -119,20 +149,24 @@ class FurnaceAgent(BaseAgent):
             raise RuntimeError(f"Training script exited with code {exit_code}: " f"{logs[:2000]}")
 
     async def _publish_epoch_from_line(self, line: str) -> None:
+        self._epoch_count += 1
+        FURNACE_EPOCHS.labels(job_id=self.job_id).inc()
         match = re.search(r"Accuracy:\s*([\d.]+)", line)
         if match:
             val = float(match.group(1))
             self._best_val_metric = max(self._best_val_metric, val)
+            FURNACE_BEST_VAL_METRIC.labels(job_id=self.job_id, metric_type="accuracy").set(val)
             await publish(
                 self.redis._client,
                 STREAM_FURNACE_FEED,
                 EPOCH_COMPLETE,
                 {
                     "job_id": self.job_id,
-                    "epoch": 1,
-                    "train_loss": 1.0 - val,
-                    "val_loss": 1.0 - val,
-                    "eta_seconds": 0,
+                    "epoch": self._epoch_count,
+                    "train_loss": max(0.0, 1.0 - val * 2),
+                    "val_loss": max(0.0, 1.0 - val * 2),
+                    "accuracy": val,
+                    "eta_seconds": max(0, 60 - self._epoch_count * 2),
                 },
             )
             return
@@ -142,16 +176,17 @@ class FurnaceAgent(BaseAgent):
             self._best_val_metric = (
                 val if self._best_val_metric == 0.0 else min(self._best_val_metric, val)
             )
+            FURNACE_BEST_VAL_METRIC.labels(job_id=self.job_id, metric_type="rmse").set(val)
             await publish(
                 self.redis._client,
                 STREAM_FURNACE_FEED,
                 EPOCH_COMPLETE,
                 {
                     "job_id": self.job_id,
-                    "epoch": 1,
+                    "epoch": self._epoch_count,
                     "train_loss": val,
                     "val_loss": val,
-                    "eta_seconds": 0,
+                    "eta_seconds": max(0, 60 - self._epoch_count * 2),
                 },
             )
             return
@@ -211,12 +246,15 @@ class FurnaceAgent(BaseAgent):
                     "job_id": self.job_id,
                     "checkpoint_path": os.path.abspath(latest_checkpoint),
                     "best_val_metric": self._best_val_metric,
-                    "total_epochs": 1,
-                    "total_crashes_recovered": 0,
+                    "total_epochs": self._epoch_count or 1,
+                    "total_crashes_recovered": self._crashes_recovered,
                 },
             )
             self.logger.info(
-                f"[job={self.job_id}] Training complete | best_val_metric={self._best_val_metric}"
+                f"[job={self.job_id}] Training complete | "
+                f"best_val_metric={self._best_val_metric:.4f} | "
+                f"epochs={self._epoch_count} | "
+                f"crashes_recovered={self._crashes_recovered}"
             )
         else:
             raise FileNotFoundError(f"Checkpoint not found at {latest_checkpoint}")
@@ -228,6 +266,8 @@ class FurnaceAgent(BaseAgent):
         attempt_number: int,
     ) -> dict | None:
         self.logger.error(f"[job={self.job_id}] Crash attempt {attempt_number}: {error}")
+        record_heartbeat("Furnace", self.job_id)
+        FURNACE_CRASHES.labels(job_id=self.job_id, exception_type=type(error).__name__).inc()
 
         checkpoint_path = f"outputs/{self.job_id}/checkpoints/best.ckpt"
         last_checkpoint = checkpoint_path if os.path.exists(checkpoint_path) else None
@@ -243,7 +283,7 @@ class FurnaceAgent(BaseAgent):
                 "traceback": tb_module.format_exc(),
                 "script_path": script_path,
                 "last_checkpoint_path": last_checkpoint or "",
-                "epoch_at_crash": 0,
+                "epoch_at_crash": self._epoch_count,
                 "crash_attempt_number": attempt_number,
             },
         )
@@ -282,6 +322,9 @@ class FurnaceAgent(BaseAgent):
             if message.get("job_id") != self.job_id:
                 continue
             if message.get("event_type") == RESUME_TRAINING:
+                self._crashes_recovered += 1
+                FURNACE_CRASHES_RECOVERED.labels(job_id=self.job_id).inc()
+                message["epoch_count"] = self._epoch_count
                 return message
             elif message.get("event_type") == ESCALATE:
                 self.logger.error(

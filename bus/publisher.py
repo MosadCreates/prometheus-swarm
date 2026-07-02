@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
 
+from shared.metrics import REDIS_STREAM_MESSAGES
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,5 +36,6 @@ async def publish(
             flat[k] = str(v)
 
     msg_id = await redis_client.xadd(stream_name, flat)
+    REDIS_STREAM_MESSAGES.labels(stream=stream_name, event_type=event_type).inc()
     logger.debug(f"Published {event_type} to {stream_name} [{msg_id}]")
     return msg_id

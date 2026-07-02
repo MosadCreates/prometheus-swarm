@@ -14,6 +14,13 @@ from agents.scout.tools import (
 )
 from bus.events import MISSION_BRIEF_READY, STREAM_SCOUT_OUTPUT
 from bus.publisher import publish
+from shared.metrics import (
+    SCOUT_DATASETS_PROCESSED,
+    SCOUT_ANALYSIS_DURATION,
+    AGENT_RUNS,
+    record_heartbeat,
+    record_agent_error,
+)
 
 
 class ScoutAgent(BaseAgent):
@@ -27,24 +34,36 @@ class ScoutAgent(BaseAgent):
 
     async def run(self) -> None:
         self.logger.info(f"[job={self.job_id}] Scout starting")
+        AGENT_RUNS.labels(agent="Scout", job_id=self.job_id).inc()
+        record_heartbeat("Scout", self.job_id)
 
         # In Phase 1, we bypass LLM and use deterministic tools directly
         # In Phase 2+, Scout will call LLM which calls tools
+        import time as _time
+
+        _start = _time.time()
         problem_description = self.job_data.get("problem_description", "")
         file_path = self.job_data.get("file_path", "")
         target_column = self.job_data.get("target_column")
 
         if not file_path:
+            record_agent_error("Scout", self.job_id, "missing_file_path")
             raise ValueError(f"file_path required for Scout job {self.job_id}")
 
         if not os.path.exists(file_path):
+            record_agent_error("Scout", self.job_id, "file_not_found")
             raise FileNotFoundError(f"Dataset not found: {file_path}")
 
         modality_override = self.job_data.get("modality_override")
 
         eda = run_eda(file_path, target_column)
         if "error" in eda:
+            record_agent_error("Scout", self.job_id, "eda_failed")
             raise ValueError(f"EDA failed: {eda['error']}")
+
+        _elapsed = _time.time() - _start
+        SCOUT_DATASETS_PROCESSED.labels(job_id=self.job_id, status="success").inc()
+        SCOUT_ANALYSIS_DURATION.labels(job_id=self.job_id).observe(_elapsed)
 
         brief = write_mission_brief(
             eda_results=eda,

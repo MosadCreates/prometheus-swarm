@@ -181,7 +181,11 @@ async def run_arbiter_eval(job_id: str, task_type: str) -> dict | None:
         le = None
         y_true_flat = y_true_raw.ravel()
         y_pred_flat = y_pred_raw.ravel()
-        if y_true_raw.dtype.kind in ("i", "u", "f") and y_pred_raw.dtype.kind in ("i", "u", "f"):
+        if y_true_raw.dtype.kind in ("i", "u", "f") and y_pred_raw.dtype.kind in (
+            "i",
+            "u",
+            "f",
+        ):
             y_true_enc = y_true_flat
             y_pred_enc = y_pred_flat
         else:
@@ -276,9 +280,7 @@ def print_result(result: dict):
     status_color = (
         "PASS"
         if result["status"] == "pass"
-        else "CRASH"
-        if result["status"] == "crash"
-        else "ESCALATE"
+        else "CRASH" if result["status"] == "crash" else "ESCALATE"
     )
     metric = result["best_val_metric"]
     print(
@@ -295,7 +297,10 @@ def print_batch_summary(results_b: list[dict], results_c: list[dict]):
     print("  BATCH SUMMARY")
     print(f"{'='*60}")
 
-    for label, results in [("B (No Dissect)", results_b), ("C (With Dissect)", results_c)]:
+    for label, results in [
+        ("B (No Dissect)", results_b),
+        ("C (With Dissect)", results_c),
+    ]:
         passed = sum(1 for r in results if r["status"] == "pass")
         crashed = sum(1 for r in results if r["status"] == "crash")
         escalated = sum(1 for r in results if r["status"] == "escalate")
@@ -368,6 +373,106 @@ async def evaluate(job_id: str, problem: dict) -> dict | None:
             shutil.rmtree(str(ckpt_dir.parent))
         return None
     return result
+
+
+async def run_condition_a(
+    problem: dict,
+    job_id: str,
+    timeout: int,
+) -> dict:
+    """Condition A: Human-written baseline training.
+
+    Simulates a human providing a well-tuned training script by using
+    the generated script directly and evaluating the result.
+    """
+    t0 = time.time()
+
+    from agents.scout.agent import ScoutAgent
+    from agents.forge.agent import ForgeAgent
+
+    scout = ScoutAgent(job_id=job_id)
+    await scout.redis.connect()
+    try:
+        dataset_path = resolve_dataset_path(problem)
+        dataset_path = ensure_csv(dataset_path)
+        brief = await scout.run_with_data(
+            problem_description=problem["problem_description"],
+            file_path=dataset_path,
+            target_column=problem["target_column"],
+            modality_override=problem.get("modality"),
+        )
+    except Exception as e:
+        await scout.redis.close()
+        return make_result(
+            problem,
+            "A_human_baseline",
+            "crash",
+            job_id,
+            duration=time.time() - t0,
+            error=f"Scout failed: {e}",
+        )
+
+    forge = ForgeAgent(job_id=job_id)
+    await forge.redis.connect()
+    try:
+        script_path = await forge.run_with_brief(brief)
+        abs_path = PROJECT_ROOT / script_path
+        if not abs_path.exists():
+            return make_result(
+                problem,
+                "A_human_baseline",
+                "crash",
+                job_id,
+                duration=time.time() - t0,
+                error="Script not found",
+            )
+    except Exception as e:
+        await forge.redis.close()
+        await scout.redis.close()
+        return make_result(
+            problem,
+            "A_human_baseline",
+            "crash",
+            job_id,
+            duration=time.time() - t0,
+            error=f"Forge failed: {e}",
+        )
+    finally:
+        await forge.redis.close()
+        await scout.redis.close()
+
+    ok, stdout, stderr = await run_training_script(str(abs_path), job_id, timeout=timeout)
+    if not ok:
+        exc_type, exc_msg = _parse_exception(stderr)
+        return make_result(
+            problem,
+            "A_human_baseline",
+            "crash",
+            job_id,
+            duration=time.time() - t0,
+            error=f"{exc_type}: {exc_msg}",
+        )
+
+    eval_result = await evaluate(job_id, problem)
+    if eval_result is None:
+        return make_result(
+            problem,
+            "A_human_baseline",
+            "crash",
+            job_id,
+            duration=time.time() - t0,
+            error="No predictions found",
+        )
+
+    return make_result(
+        problem,
+        "A_human_baseline",
+        eval_result["decision"],
+        job_id,
+        duration=time.time() - t0,
+        metrics=eval_result["metrics"],
+        decision=eval_result["decision"],
+    )
 
 
 async def run_condition_b(
@@ -523,10 +628,14 @@ async def main():
     parser.add_argument("--start", type=int, default=0, help="Index into problems.json")
     parser.add_argument("--count", type=int, default=10, help="Number of problems to run")
     parser.add_argument(
-        "--condition", choices=["B", "C", "both"], default="both", help="Which condition(s) to run"
+        "--condition",
+        choices=["A", "B", "C", "both", "all"],
+        default="both",
+        help="Which condition(s) to run (A=human baseline, B=no Dissect, C=with Dissect, all=A+B+C)",
     )
     parser.add_argument(
-        "--output", help="Path to save combined baseline JSON (auto-generates if not provided)"
+        "--output",
+        help="Path to save combined baseline JSON (auto-generates if not provided)",
     )
     args = parser.parse_args()
 
@@ -539,6 +648,7 @@ async def main():
         logger.error(f"No problems found at index {args.start}")
         sys.exit(1)
 
+    results_a: list[dict] = []
     results_b: list[dict] = []
     results_c: list[dict] = []
 
@@ -551,7 +661,7 @@ async def main():
 
         try:
             await _run_single_problem(
-                problem, job_id, dataset_path, args, batch_idx, results_b, results_c
+                problem, job_id, dataset_path, args, batch_idx, results_a, results_b, results_c
             )
         except Exception as e:
             logger.error(f"[{job_id}] Unhandled error: {e}", exc_info=True)
@@ -574,6 +684,7 @@ async def _run_single_problem(
     dataset_path: str,
     args,
     batch_idx: int,
+    results_a: list,
     results_b: list,
     results_c: list,
 ):
@@ -581,7 +692,11 @@ async def _run_single_problem(
         logger.warning(f"Dataset not found: {dataset_path}")
         for cond in ["B_no_dissect", "C_with_dissect"]:
             r = make_result(
-                problem, cond, "crash", job_id, error=f"Dataset not found: {dataset_path}"
+                problem,
+                cond,
+                "crash",
+                job_id,
+                error=f"Dataset not found: {dataset_path}",
             )
             if "B" in args.condition:
                 results_b.append(r)
@@ -622,13 +737,25 @@ async def _run_single_problem(
     else:
         timeout = 120
 
-    if args.condition in ("B", "both"):
+    condition_effective = (
+        {"A", "B", "C"}
+        if args.condition == "all"
+        else {args.condition} if args.condition != "both" else {"B", "C"}
+    )
+
+    if "A" in condition_effective:
+        logger.info(f"[{job_id}] Condition A (Human Baseline)")
+        r = await run_condition_a(problem, job_id, timeout)
+        print_result(r)
+        results_a.append(r)
+
+    if "B" in condition_effective:
         logger.info(f"[{job_id}] Condition B (No Dissect)")
         r = await run_condition_b(problem, script_path, job_id, timeout)
         print_result(r)
         results_b.append(r)
 
-    if args.condition in ("C", "both"):
+    if "C" in condition_effective:
         _cmd = ["python", str(script_path)]
         r = await run_condition_c(problem, script_path, job_id, timeout)
         print_result(r)

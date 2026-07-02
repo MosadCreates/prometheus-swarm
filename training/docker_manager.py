@@ -85,7 +85,7 @@ class DockerManager:
         # Default command: run the training script
         if run_cmd is None and script_path:
             script_name = os.path.basename(script_path)
-            run_cmd = ["python", f"/app/scripts/{script_name}"]
+            run_cmd = [f"/app/scripts/{script_name}"]
 
         container = client.containers.run(
             image=image,

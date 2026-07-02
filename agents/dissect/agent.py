@@ -7,12 +7,25 @@ import uuid
 
 from agents.base import BaseAgent
 from agents.dissect.prompts import DISSECT_SYSTEM_PROMPT
-from agents.dissect.taxonomy import classify_error, get_repair_strategy
-from agents.dissect.tools import apply_patch, rollback_patch, compute_diff, run_sandbox_test
+from agents.dissect.taxonomy import classify_error_async, get_repair_strategy
+from agents.dissect.tools import (
+    apply_patch,
+    rollback_patch,
+    compute_diff,
+    run_sandbox_test,
+)
 from agents.dissect.patch_log import write_patch_log
 from bus.events import RESUME_TRAINING, ESCALATE, STREAM_DISSECT_OUTPUT
 from bus.publisher import publish
 from memory.collections.patch_memory import store_patch, query_similar_patches
+from shared.metrics import (
+    DISSECT_ERROR_CLASSIFICATIONS,
+    DISSECT_PATCHES_GENERATED,
+    DISSECT_PATCH_DURATION,
+    DISSECT_OUTCOMES,
+    record_heartbeat,
+    record_agent_error,
+)
 
 
 class DissectAgent(BaseAgent):
@@ -33,14 +46,26 @@ class DissectAgent(BaseAgent):
     async def handle_crash(self, crash_event: dict) -> None:
         self.job_id = crash_event["job_id"]
         self.logger.info(f"[job={self.job_id}] Dissect handling crash")
+        record_heartbeat("Dissect", self.job_id)
 
         script_path = crash_event["script_path"]
         exception_type = crash_event["exception_type"]
         exception_message = crash_event["exception_message"]
         attempt_number = int(crash_event.get("crash_attempt_number", 1))
 
-        category, confidence, match_method = classify_error(exception_type, exception_message)
+        script_snippet = None
+        try:
+            with open(script_path, encoding="utf-8") as f:
+                script_snippet = f.read()[:2000]
+        except Exception:
+            pass
+
+        category, confidence, match_method = await classify_error_async(
+            exception_type, exception_message, script_snippet=script_snippet
+        )
         strategy = get_repair_strategy(category)
+
+        DISSECT_ERROR_CLASSIFICATIONS.labels(category=category, job_id=self.job_id).inc()
 
         self.logger.info(
             f"[job={self.job_id}] Error classified | category={category} "
@@ -133,7 +158,10 @@ class DissectAgent(BaseAgent):
         except Exception as e:
             self.logger.warning(f"[job={self.job_id}] Failed to store patch in ChromaDB: {e}")
 
+        DISSECT_PATCHES_GENERATED.labels(category=category, job_id=self.job_id).inc()
+
         if sandbox_passed:
+            DISSECT_OUTCOMES.labels(outcome="resume", job_id=self.job_id).inc()
             self.logger.info(f"[job={self.job_id}] Patch SUCCESS | patch_id={patch_id}")
             await publish(
                 self.redis._client,
@@ -167,6 +195,7 @@ class DissectAgent(BaseAgent):
                     )
                 except Exception as e:
                     self.logger.warning(f"[job={self.job_id}] Failed to store escalated patch: {e}")
+                DISSECT_OUTCOMES.labels(outcome="escalate", job_id=self.job_id).inc()
                 await self._escalate(crash_event, "3 patch attempts failed")
             else:
                 crash_event["crash_attempt_number"] = attempt_number + 1

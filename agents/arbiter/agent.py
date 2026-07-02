@@ -21,6 +21,7 @@ from bus.events import (
     STREAM_ARBITER_OUTPUT,
 )
 from bus.publisher import publish
+from shared.metrics import ARBITER_DECISIONS, record_heartbeat
 
 
 class ArbiterAgent(BaseAgent):
@@ -41,10 +42,12 @@ class ArbiterAgent(BaseAgent):
     async def on_training_complete(self, event: dict) -> None:
         self.job_id = event["job_id"]
         self.logger.info(f"[job={self.job_id}] Arbiter evaluating model")
+        record_heartbeat("Arbiter", self.job_id)
 
         checkpoint_path = event.get("checkpoint_path", "")
         task_type = await self._get_task_type()
-        crash_count = event.get("total_crashes_recovered", 0)
+        raw_crash = event.get("total_crashes_recovered", 0)
+        crash_count = int(raw_crash) if raw_crash else 0
 
         if not checkpoint_path or not os.path.exists(checkpoint_path):
             self.logger.error(f"[job={self.job_id}] Checkpoint not found: {checkpoint_path}")
@@ -58,6 +61,7 @@ class ArbiterAgent(BaseAgent):
         metrics = await self._compute_metrics(task_type)
 
         decision, reason = make_decision(task_type, metrics, crash_count)
+        ARBITER_DECISIONS.labels(job_id=self.job_id, decision=decision).inc()
         analysis = generate_failure_analysis(metrics, decision, reason)
 
         self.logger.info(f"[job={self.job_id}] Decision: {decision} | reason={reason}")

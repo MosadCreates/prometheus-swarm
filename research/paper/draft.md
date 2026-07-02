@@ -266,6 +266,38 @@ and the Mann-Whitney U test for intervention counts. Effect size is reported usi
 Cohen&rsquo;s h for pass rate differences and rank-biserial r for intervention
 differences.
 
+### 4.4 Infrastructure Validation
+
+The 50-problem benchmark was executed via a script-based runner (`run_benchmark.py`)
+that invokes each agent's core logic in-process using `subprocess.run()` for training
+execution, bypassing the Docker container orchestration, Redis Streams message bus, and
+the event-driven orchestrator runtime described in Section 2. The benchmark results
+therefore validate the correctness of the agent decision logic (Scout's EDA, Forge's
+architecture selection, Arbiter's evaluation, Dissect's error classification and patching)
+without exercising the full deployment infrastructure.
+
+To verify that the production pipeline behaves as specified, we conducted four
+validation tests on a representative Titanic classification problem:
+
+1.  **Docker training gate** (Section 2): Forge-generated LightGBM script executes
+    inside a real `prometheus-training-base` Docker container, producing a checkpoint
+    with Accuracy &gt; 0.75.
+2.  **Sandbox isolation gate** (Section 3): Dissect's `run_sandbox_test()` runs patched
+    scripts in isolated Docker containers; valid scripts pass, crashing scripts fail,
+    and concurrent jobs do not interfere.
+3.  **Orchestrator pipeline gate** (Section 4): A full job runs through the event-driven
+    OrchestratorRuntime (Scout&rarr;Forge&rarr;Furnace Docker&rarr;Arbiter&rarr;Harbor via
+    Redis Streams), producing a live model endpoint at `ENDPOINT_LIVE`.
+4.  **Crash-recovery loop gate** (Section 5): Furnace executes a deliberately buggy script
+    that raises `KeyError`; Dissect classifies the error, generates a patch, verifies
+    it in the sandbox, and publishes `RESUME_TRAINING`&mdash;all through Redis Streams.
+
+All four gates pass. This validates that the system architecture described in Section 2
+is correctly implemented on the target infrastructure (Docker, Redis, ChromaDB), while
+the benchmark results in Section 5 measure the agent-level decision quality. We
+acknowledge that end-to-end execution of all 50 problems through the full infrastructure
+pipeline remains future work (see Section 8).
+
 ## 5. Results
 
 ### 5.1 Overall Performance
@@ -435,7 +467,13 @@ combined with a structured taxonomy and vector memory.
     backends (GPT-4, Gemini) and on non-ML software engineering tasks would test the
     generality of the approach.
 
-5.  **Large-scale evaluation.** Deploying Prometheus Swarm in a production MLOps
+5.  **Full-infrastructure benchmark.** The 50-problem benchmark was executed through
+    a script-based runner that bypasses Docker orchestration and the Redis Streams
+    event bus. Re-running all 50 problems through the full OrchestratorRuntime
+    pipeline would strengthen confidence that the architecture-level validation
+    (Section 4.4) generalizes to the full benchmark.
+
+6.  **Large-scale evaluation.** Deploying Prometheus Swarm in a production MLOps
     environment with real user traffic would provide stronger evidence of practical
     impact.
 

@@ -1,7 +1,14 @@
-"""Error taxonomy: categories + repair strategies for Dissect. Matches CLAUDE.md Section 8."""
+"""Error taxonomy: categories + repair strategies for Dissect. Matches CLAUDE.md Section 8.
 
+Supports both synchronous regex-based classification and asynchronous LLM-based
+classification for novel errors that don't match known patterns.
+"""
+
+import logging
 from dataclasses import dataclass
 import re
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -77,19 +84,31 @@ TAXONOMY: list[TaxonomyEntry] = [
     TaxonomyEntry(
         category="feature_mismatch",
         exception_types=["ValueError"],
-        message_patterns=[r"number of features", r"feature_names", r"X has \d+ features"],
+        message_patterns=[
+            r"number of features",
+            r"feature_names",
+            r"X has \d+ features",
+        ],
         repair_strategy="Align feature order and count between train/test; re-run encoder on combined column set",
     ),
     TaxonomyEntry(
         category="index_error",
         exception_types=["IndexError"],
-        message_patterns=[r"index \d+ is out of bounds", r"index out of range", r"list index"],
+        message_patterns=[
+            r"index \d+ is out of bounds",
+            r"index out of range",
+            r"list index",
+        ],
         repair_strategy="Add bounds check before array access; verify label encoding produced correct indices",
     ),
     TaxonomyEntry(
         category="zero_division",
         exception_types=["ZeroDivisionError", "RuntimeWarning"],
-        message_patterns=[r"division by zero", r"divide by zero", r"invalid value encountered"],
+        message_patterns=[
+            r"division by zero",
+            r"divide by zero",
+            r"invalid value encountered",
+        ],
         repair_strategy="Add epsilon (1e-8) to denominator in metric computations; check for constant target column",
     ),
     TaxonomyEntry(
@@ -160,6 +179,76 @@ def classify_error(exception_type: str, exception_message: str) -> tuple[str, fl
                 return entry.category, entry.confidence, "regex"
 
     return "novel_error", 0.5, "llm_classification"
+
+
+async def classify_error_async(
+    exception_type: str,
+    exception_message: str,
+    script_snippet: str | None = None,
+) -> tuple[str, float, str]:
+    """Classify using regex first, falling back to LLM for novel/unmatched errors.
+
+    Returns:
+        (category, confidence, match_method) where match_method is "regex" or "llm"
+    """
+    # Try regex first
+    for entry in TAXONOMY:
+        if entry.category == "novel_error":
+            continue
+        if exception_type not in entry.exception_types:
+            continue
+        for pattern in entry.message_patterns:
+            if re.search(pattern, exception_message, re.IGNORECASE):
+                return entry.category, entry.confidence, "regex"
+
+    # Fall back to LLM classification
+    try:
+        from agents.llm_client import get_llm_response
+
+        category_names = ", ".join(e.category for e in TAXONOMY if e.category != "novel_error")
+
+        prompt = (
+            "You are an ML error classifier. Classify the following training error "
+            "into exactly ONE of these categories:\n\n"
+            f"Categories: {category_names}\n\n"
+            f"Exception type: {exception_type}\n"
+            f"Exception message: {exception_message}\n"
+        )
+        if script_snippet:
+            prompt += f"\nRelevant script context:\n{script_snippet[:2000]}\n"
+
+        prompt += (
+            "\nRespond with ONLY the category name, nothing else. "
+            "If none of the categories fit, respond with 'novel_error'."
+        )
+
+        response = await get_llm_response(
+            system_prompt="You are an ML error classifier. Respond with a single category name.",
+            user_message=prompt,
+            job_id="taxonomy",
+            agent_name="Dissect",
+        )
+
+        llm_category = response.get("text", "").strip().lower().split("\n")[0].strip()
+        llm_category = llm_category.strip("`").strip("*").strip()
+
+        # Validate the LLM returned a known category
+        valid_categories = {e.category for e in TAXONOMY}
+        if llm_category in valid_categories:
+            entry = None
+            for e in TAXONOMY:
+                if e.category == llm_category:
+                    entry = e
+                    break
+            confidence = entry.confidence if entry else 0.7
+            logger.info(f"LLM classified error as '{llm_category}' with confidence {confidence}")
+            return llm_category, confidence, "llm"
+
+        logger.info(f"LLM returned '{llm_category}' (not in taxonomy), falling back to novel_error")
+    except Exception as e:
+        logger.warning(f"LLM error classification failed: {e}")
+
+    return "novel_error", 0.5, "llm"
 
 
 def get_repair_strategy(category: str) -> str:

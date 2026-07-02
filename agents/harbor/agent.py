@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 
 from agents.base import BaseAgent
@@ -19,9 +20,12 @@ from bus.events import (
     STREAM_HARBOR_OUTPUT,
 )
 from bus.publisher import publish
+from shared.metrics import HARBOR_DEPLOYS, HARBOR_ACTIVE_DEPLOYMENTS, record_heartbeat
 
 
-def _extract_column_info(mission_brief: dict | None) -> tuple[list[str], list[str], list[str]]:
+def _extract_column_info(
+    mission_brief: dict | None,
+) -> tuple[list[str], list[str], list[str]]:
     """Extract feature_names, numeric_cols, categorical_cols from mission_brief.
 
     Returns: (feature_names, numeric_cols, categorical_cols)
@@ -70,6 +74,7 @@ class HarborAgent(BaseAgent):
     async def on_evaluation_pass(self, event: dict) -> None:
         self.job_id = event["job_id"]
         self.logger.info(f"[job={self.job_id}] Harbor deploying model")
+        record_heartbeat("Harbor", self.job_id)
 
         checkpoint_path = None
         try:
@@ -132,13 +137,25 @@ class HarborAgent(BaseAgent):
 
         build_ok, build_msg = build_docker_image(image_name, output_dir)
         if not build_ok:
+            HARBOR_DEPLOYS.labels(
+                job_id=self.job_id, framework=model_format, status="build_fail"
+            ).inc()
             self.logger.error(f"[job={self.job_id}] Docker build failed: {build_msg}")
             return
 
-        deploy_ok, deploy_msg = deploy_local_compose(image_name, container_name, host_port=8080)
+        deploy_ok, deploy_msg = deploy_local_compose(image_name, container_name, host_port=None)
         if not deploy_ok:
+            HARBOR_DEPLOYS.labels(
+                job_id=self.job_id, framework=model_format, status="deploy_fail"
+            ).inc()
             self.logger.error(f"[job={self.job_id}] Deploy failed: {deploy_msg}")
             return
+
+        HARBOR_DEPLOYS.labels(job_id=self.job_id, framework=model_format, status="success").inc()
+        HARBOR_ACTIVE_DEPLOYMENTS.labels(job_id=self.job_id).inc()
+
+        port_match = re.search(r"port (\d+)", deploy_msg)
+        deployed_port = int(port_match.group(1)) if port_match else 8080
 
         drift_config = configure_drift_monitor(
             job_id=self.job_id,
@@ -152,7 +169,7 @@ class HarborAgent(BaseAgent):
 
             asyncio.create_task(start_drift_monitor_loop(self.redis._client, drift_config))
 
-        endpoint_url = "http://localhost:8080"
+        endpoint_url = f"http://localhost:{deployed_port}"
 
         self.logger.info(f"[job={self.job_id}] Model live at {endpoint_url}")
 

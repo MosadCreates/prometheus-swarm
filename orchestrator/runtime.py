@@ -35,11 +35,19 @@ from bus.events import (
     STREAM_FORGE_OUTPUT,
     STREAM_FURNACE_OUTPUT,
     STREAM_FURNACE_CRASH,
+    STREAM_FURNACE_FEED,
     STREAM_DISSECT_OUTPUT,
     STREAM_ARBITER_OUTPUT,
     STREAM_HARBOR_OUTPUT,
     STREAM_ORCHESTRATOR_OUT,
     GROUP_ORCHESTRATOR,
+    GROUP_FORGE,
+    GROUP_FURNACE,
+    GROUP_DISSECT,
+    GROUP_ARBITER,
+    GROUP_HARBOR,
+    GROUP_SCOUT,
+    GROUP_FRONTEND,
 )
 
 load_dotenv()
@@ -55,6 +63,7 @@ class OrchestratorRuntime:
     def __init__(self):
         self.redis: aioredis.Redis | None = None
         self._running = False
+        self.health_monitor = None
 
     async def initialize(self) -> None:
         """Initialize Redis connection and ensure all consumer groups exist."""
@@ -69,6 +78,17 @@ class OrchestratorRuntime:
         await self._ensure_consumer_groups()
         await self._register_all_tools()
 
+        # Start metrics server
+        from shared.metrics import start_metrics_server
+
+        start_metrics_server()
+
+        # Start health monitor
+        from shared.health_monitor import HealthMonitor
+
+        self.health_monitor = HealthMonitor(redis_client=self.redis)
+        await self.health_monitor.start()
+
     def _make_redis_client(self) -> RedisClient:
         rc = RedisClient()
         rc._client = self.redis
@@ -77,13 +97,14 @@ class OrchestratorRuntime:
     async def _ensure_consumer_groups(self) -> None:
         """Create all required consumer groups if they don't exist."""
         streams_groups = {
-            STREAM_FURNACE_OUTPUT: [GROUP_ORCHESTRATOR, "arbiter_consumers"],
-            STREAM_FURNACE_CRASH: [GROUP_ORCHESTRATOR, "dissect_consumers"],
-            STREAM_DISSECT_OUTPUT: [GROUP_ORCHESTRATOR, "furnace_consumers"],
-            STREAM_ARBITER_OUTPUT: [GROUP_ORCHESTRATOR, "harbor_consumers"],
-            STREAM_HARBOR_OUTPUT: [GROUP_ORCHESTRATOR, "scout_consumers"],
-            STREAM_SCOUT_OUTPUT: [GROUP_ORCHESTRATOR],
-            STREAM_FORGE_OUTPUT: [GROUP_ORCHESTRATOR],
+            STREAM_FURNACE_OUTPUT: [GROUP_ORCHESTRATOR, GROUP_ARBITER],
+            STREAM_FURNACE_CRASH: [GROUP_ORCHESTRATOR, GROUP_DISSECT],
+            STREAM_FURNACE_FEED: [GROUP_ORCHESTRATOR, GROUP_FRONTEND],
+            STREAM_DISSECT_OUTPUT: [GROUP_ORCHESTRATOR, GROUP_FURNACE],
+            STREAM_ARBITER_OUTPUT: [GROUP_ORCHESTRATOR, GROUP_HARBOR],
+            STREAM_HARBOR_OUTPUT: [GROUP_ORCHESTRATOR, GROUP_SCOUT],
+            STREAM_SCOUT_OUTPUT: [GROUP_ORCHESTRATOR, GROUP_FORGE],
+            STREAM_FORGE_OUTPUT: [GROUP_ORCHESTRATOR, GROUP_FURNACE],
         }
 
         for stream, groups in streams_groups.items():
@@ -137,6 +158,8 @@ class OrchestratorRuntime:
 
     async def stop(self) -> None:
         self._running = False
+        if self.health_monitor:
+            await self.health_monitor.stop()
         logger.info("Orchestrator stopping...")
 
     # ------------------------------------------------------------------

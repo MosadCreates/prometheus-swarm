@@ -227,6 +227,9 @@ async def test_furnace_dissect_crash_recovery():
         # --- Verify patch_log_queue has a success entry for this patch ---
         patch_id_to_find = resume_event.get("patch_id", "")
         found_match = False
+        patch_log_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "../../research/patch_log.jsonl")
+        )
         for _ in range(10):
             result = await redis.blpop("patch_log_queue", timeout=3)
             if result is None:
@@ -238,8 +241,20 @@ async def test_furnace_dissect_crash_recovery():
                     log_entry.get("patch_outcome") == "success"
                 ), f"Expected patch_outcome=success, got: {log_entry.get('patch_outcome')}"
                 found_match = True
+                os.makedirs(os.path.dirname(patch_log_path), exist_ok=True)
+                with open(patch_log_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(log_entry, separators=(",", ":")) + "\n")
                 break
         assert found_match, f"No patch_log entry found matching patch_id={patch_id_to_find}"
+
+        # Drain any remaining entries in the queue to patch_log.jsonl
+        while True:
+            result = await redis.blpop("patch_log_queue", timeout=1)
+            if result is None:
+                break
+            _list_key, log_entry_raw = result
+            with open(patch_log_path, "a", encoding="utf-8") as f:
+                f.write(log_entry_raw + "\n")
 
     finally:
         if furnace_task:

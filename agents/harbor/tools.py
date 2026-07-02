@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import shutil
+import socket
 import subprocess
 from datetime import datetime, timezone
 from typing import Any
@@ -126,7 +127,10 @@ def _convert_estimator_to_onnx(
 
         initial_types = [("input", FloatTensorType([None, n_features]))]
         return convert_lightgbm(
-            estimator, initial_types=initial_types, name="model", target_opset=target_opset
+            estimator,
+            initial_types=initial_types,
+            name="model",
+            target_opset=target_opset,
         )
 
     if "xgboost" in module.lower() or "XGB" in class_name:
@@ -134,7 +138,10 @@ def _convert_estimator_to_onnx(
 
         initial_types = [("input", FloatTensorType([None, n_features]))]
         return convert_xgboost(
-            estimator, initial_types=initial_types, name="model", target_opset=target_opset
+            estimator,
+            initial_types=initial_types,
+            name="model",
+            target_opset=target_opset,
         )
 
     from skl2onnx import convert_sklearn
@@ -143,7 +150,10 @@ def _convert_estimator_to_onnx(
     initial_types = [("input", FloatTensorType([None, n_features]))]
     options = {id(estimator): {"zipmap": False}} if hasattr(estimator, "classes_") else None
     return convert_sklearn(
-        estimator, initial_types=initial_types, target_opset=target_opset, options=options
+        estimator,
+        initial_types=initial_types,
+        target_opset=target_opset,
+        options=options,
     )
 
 
@@ -330,12 +340,41 @@ def build_docker_image(image_name: str, app_dir: str) -> tuple[bool, str]:
         return False, f"Docker build error: {e}"
 
 
+_PORT_LOCK: dict[int, str] = {}
+_PORT_BASE = 8080
+_PORT_MAX_RETRIES = 100
+
+
+def _find_available_port(start: int = _PORT_BASE) -> int:
+    """Find an available port starting from `start`."""
+    for port in range(start, start + _PORT_MAX_RETRIES):
+        if port in _PORT_LOCK:
+            continue
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(("127.0.0.1", port)) != 0:
+                _PORT_LOCK[port] = ""
+                return port
+    raise RuntimeError("No available port found")
+
+
+def _release_port(port: int) -> None:
+    _PORT_LOCK.pop(port, None)
+
+
 def deploy_local_compose(
     image_name: str,
     container_name: str,
-    host_port: int = 8080,
+    host_port: int | None = None,
 ) -> tuple[bool, str]:
-    """Deploy a model serving container via Docker Compose."""
+    """Deploy a model serving container via Docker Compose.
+
+    If host_port is None, automatically finds an available port.
+    """
+    auto_allocated = False
+    if host_port is None:
+        host_port = _find_available_port()
+        auto_allocated = True
+
     try:
         result = subprocess.run(
             [
@@ -357,10 +396,16 @@ def deploy_local_compose(
 
         if result.returncode == 0:
             container_id = result.stdout.strip()[:12]
+            if auto_allocated:
+                _PORT_LOCK[host_port] = container_name
             return True, f"Container {container_id} running at port {host_port}"
         else:
+            if auto_allocated:
+                _release_port(host_port)
             return False, f"Deploy failed: {result.stderr}"
     except Exception as e:
+        if auto_allocated:
+            _release_port(host_port)
         return False, f"Deploy error: {e}"
 
 
