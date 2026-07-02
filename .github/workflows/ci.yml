@@ -32,7 +32,7 @@ jobs:
     needs: lint
     services:
       redis:
-        image: redis:${{ env.REDIS_VERSION }}
+        image: redis:7
         ports:
           - 6379:6379
         options: >-
