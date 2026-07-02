@@ -1,0 +1,15 @@
+[
+  {
+    "problem_id": "TC04",
+    "condition": "B_no_dissect",
+    "status": "crash",
+    "job_id": "bench-tc04-d10dca",
+    "best_val_metric": 0.0,
+    "decision": "",
+    "duration_seconds": 3.17,
+    "crash_count": 0,
+    "human_interventions": 1,
+    "architecture": "lightgbm",
+    "error": "KeyError: 'default'"
+  }
+]

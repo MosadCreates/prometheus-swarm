@@ -1,0 +1,15 @@
+[
+  {
+    "problem_id": "TX04",
+    "condition": "B_no_dissect",
+    "status": "crash",
+    "job_id": "bench-tx04-9e7fd5",
+    "best_val_metric": 0.0,
+    "decision": "",
+    "duration_seconds": 600.27,
+    "crash_count": 0,
+    "human_interventions": 1,
+    "architecture": "distilbert",
+    "error": "RuntimeError: TIMEOUT after 600s"
+  }
+]

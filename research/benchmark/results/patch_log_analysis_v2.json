@@ -1,0 +1,101 @@
+{
+  "metadata": {
+    "source": "research/patch_log.jsonl",
+    "created_at": "2026-07-02T20:39:09.043055+00:00",
+    "expected_vs_actual": {
+      "expected_entries": 111,
+      "actual_entries": 111,
+      "match": true
+    }
+  },
+  "total_entries": 111,
+  "by_outcome": {
+    "success": 33,
+    "rollback": 60,
+    "escalated": 18
+  },
+  "by_category": {
+    "convergence_failure": {
+      "attempts": 8,
+      "successes": 8,
+      "rollbacks": 0,
+      "escalated": 0,
+      "success_rate": 1.0,
+      "avg_confidence": 0.9,
+      "avg_lines_changed": 143.88
+    },
+    "dtype_mismatch": {
+      "attempts": 18,
+      "successes": 4,
+      "rollbacks": 11,
+      "escalated": 3,
+      "success_rate": 0.2222,
+      "avg_confidence": 0.9,
+      "avg_lines_changed": 31.72
+    },
+    "empty_dataset": {
+      "attempts": 4,
+      "successes": 0,
+      "rollbacks": 3,
+      "escalated": 1,
+      "success_rate": 0.0,
+      "avg_confidence": 0.9,
+      "avg_lines_changed": 90.75
+    },
+    "import_error": {
+      "attempts": 3,
+      "successes": 3,
+      "rollbacks": 0,
+      "escalated": 0,
+      "success_rate": 1.0,
+      "avg_confidence": 0.9,
+      "avg_lines_changed": 87.0
+    },
+    "missing_column": {
+      "attempts": 53,
+      "successes": 13,
+      "rollbacks": 31,
+      "escalated": 9,
+      "success_rate": 0.2453,
+      "avg_confidence": 0.9,
+      "avg_lines_changed": 46.25
+    },
+    "novel_error": {
+      "attempts": 5,
+      "successes": 5,
+      "rollbacks": 0,
+      "escalated": 0,
+      "success_rate": 1.0,
+      "avg_confidence": 0.5,
+      "avg_lines_changed": 75.2
+    },
+    "permission_error": {
+      "attempts": 4,
+      "successes": 0,
+      "rollbacks": 3,
+      "escalated": 1,
+      "success_rate": 0.0,
+      "avg_confidence": 0.9,
+      "avg_lines_changed": 112.75
+    },
+    "pickle_version_mismatch": {
+      "attempts": 16,
+      "successes": 0,
+      "rollbacks": 12,
+      "escalated": 4,
+      "success_rate": 0.0,
+      "avg_confidence": 0.9,
+      "avg_lines_changed": 70.38
+    }
+  },
+  "attempt_distribution": {
+    "1": 51,
+    "2": 22,
+    "3": 38
+  },
+  "sandbox_pass_rate": 0.2973,
+  "sandbox_fail_rate": 0.7027,
+  "avg_lines_changed_on_success": 78.76,
+  "dominant_error_category": "missing_column",
+  "most_successful_category": "convergence_failure"
+}

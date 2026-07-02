@@ -1336,5 +1336,8 @@
     "improvement_pp": 0.22,
     "avg_metric_b": 330.792761,
     "avg_metric_c": 185.624083
-  }
+  },
+  "deprecated": true,
+  "superseded_by": "baseline_v2.json",
+  "deprecation_note": "This file used subprocess execution without real Docker. v2 is the authoritative baseline."
 }

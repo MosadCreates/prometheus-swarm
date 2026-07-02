@@ -195,8 +195,7 @@ async def run_arbiter_eval(job_id: str, task_type: str) -> dict | None:
                 y_pred_enc = le.transform(y_pred_flat.astype(str))
             except ValueError:
                 logger.warning(
-                    f"[{job_id}] y_pred contains labels unseen during fit; "
-                    f"fitting combined encoder"
+                    f"[{job_id}] y_pred contains labels unseen during fit; fitting combined encoder"
                 )
                 from sklearn.preprocessing import LabelEncoder as LE2
 
@@ -264,16 +263,95 @@ def save_results_batch(condition: str, results: list[dict], batch_idx: int):
     logger.info(f"Saved {len(results)} results -> {path}")
 
 
+HF_DATASET_MAP = {
+    "TX01": ("imdb", "text", "label"),
+    "TX02": ("ag_news", "text", "label"),
+    "TX03": ("hate_speech18", "text", "label"),
+    "TX05": ("amazon_polarity", "text", "label"),
+    "TX10": ("papluca/language-identification", "text", "labels"),
+}
+
+KERAS_DATASET_MAP = {
+    "IC01": ("fashion_mnist", 28, 28, 1),
+    "IC02": ("mnist", 28, 28, 1),
+    "IC03": ("cifar10", 32, 32, 3),
+}
+
+
+async def ensure_dataset_available(problem: dict) -> str | None:
+    """Ensure dataset is available locally. Downloads if needed. Returns local path or None."""
+    pid = problem["id"]
+    resolved = resolve_dataset_path(problem)
+
+    if Path(resolved).exists():
+        return resolved
+
+    source = problem["dataset"]["source"]
+
+    if source == "huggingface":
+        try:
+            from datasets import load_dataset
+
+            hf_info = HF_DATASET_MAP.get(pid)
+            if not hf_info:
+                logger.warning(f"[{pid}] No HuggingFace mapping for {pid}")
+                return None
+            hf_name, text_col, label_col = hf_info
+            logger.info(f"[{pid}] Downloading {hf_name} from HuggingFace...")
+            ds = load_dataset(hf_name, split="train")
+            df = ds.to_pandas()
+            csv_path = Path(resolved)
+            csv_path.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(csv_path, index=False, encoding="utf-8")
+            logger.info(f"[{pid}] Saved {len(df)} rows to {csv_path}")
+            return str(csv_path)
+        except Exception as e:
+            logger.warning(f"[{pid}] HuggingFace download failed: {e}")
+            return None
+
+    elif source == "sklearn":
+        try:
+            import sklearn.datasets as skd
+
+            loader_map = {}
+            for p in load_problems():
+                if p["dataset"]["source"] == "sklearn":
+                    nd = p["dataset"]["name"].lower().replace(" ", "_")
+                    loader_map[p["id"]] = nd
+            ds_name = loader_map.get(pid)
+            if not ds_name:
+                return None
+            loader_fn = getattr(skd, f"load_{ds_name}", None)
+            if not loader_fn:
+                return None
+            data = loader_fn(as_frame=True)
+            df = data.frame
+            csv_path = Path(resolved)
+            csv_path.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(csv_path, index=False)
+            logger.info(f"[{pid}] Generated sklearn dataset -> {csv_path} ({len(df)} rows)")
+            return str(csv_path)
+        except Exception as e:
+            logger.warning(f"[{pid}] sklearn dataset generation failed: {e}")
+            return None
+
+    elif source in ("kaggle", "UCI", "custom", "arxiv", "tensorflow", "keras"):
+        logger.warning(f"[{pid}] Source '{source}' requires manual download to {resolved}")
+        return None
+
+    return None
+
+
 def print_problem_header(problem: dict, idx: int, total: int):
     print()
-    print(f"{'='*60}")
-    print(f"  [{idx+1}/{total}] {problem['id']}: {problem['problem_description'][:70]}")
+    print(f"{'=' * 60}")
+    print(f"  [{idx + 1}/{total}] {problem['id']}: {problem['problem_description'][:70]}")
     print(
         f"  Dataset: {problem['dataset']['name']} | "
         f"{problem['task_type']} | {problem['modality']} | "
         f"{problem['difficulty']}"
     )
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def print_result(result: dict):
@@ -293,9 +371,9 @@ def print_result(result: dict):
 
 def print_batch_summary(results_b: list[dict], results_c: list[dict]):
     print()
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print("  BATCH SUMMARY")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     for label, results in [
         ("B (No Dissect)", results_b),
@@ -316,7 +394,7 @@ def print_batch_summary(results_b: list[dict], results_c: list[dict]):
         print(f"    Avg time:   {avg_time:.1f}s")
         print(f"    Interventions: {interventions}")
 
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
 
 async def run_scout_phase(job_id: str, problem: dict) -> dict | None:
@@ -695,6 +773,24 @@ async def _run_single_problem(
     results_b: list,
     results_c: list,
 ):
+    local_path = await ensure_dataset_available(problem)
+    if local_path is None:
+        logger.warning(f"[{problem['id']}] Dataset not available locally, skipping")
+        for cond in ["B_no_dissect", "C_with_dissect"]:
+            r = make_result(
+                problem,
+                cond,
+                "escalate",
+                job_id,
+                error=f"Dataset unavailable - source={problem['dataset']['source']} file={dataset_path}",
+            )
+            if "B" in args.condition:
+                results_b.append(r)
+            if "C" in args.condition:
+                results_c.append(r)
+        return
+    dataset_path = local_path
+
     if not Path(dataset_path).exists():
         logger.warning(f"Dataset not found: {dataset_path}")
         for cond in ["B_no_dissect", "C_with_dissect"]:

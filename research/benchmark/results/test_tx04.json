@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-07-02T21:06:18Z",
+  "metadata": {
+    "git_commit": "b03e6f0",
+    "platform": "Windows",
+    "condition": "both",
+    "problems_file": "research\\benchmark\\problems.json"
+  },
+  "condition_b": {
+    "total_problems": 2,
+    "passed": 0,
+    "crashed": 2,
+    "escalated": 0,
+    "avg_metric": 0.0,
+    "avg_duration_seconds": 0.0,
+    "total_human_interventions": 2,
+    "results": [
+      {
+        "problem_id": "TX04",
+        "condition": "B_no_dissect",
+        "status": "crash",
+        "job_id": "bench-tx04-37f3ca",
+        "best_val_metric": 0.0,
+        "decision": "",
+        "duration_seconds": 0.0,
+        "crash_count": 0,
+        "human_interventions": 1,
+        "architecture": "distilbert",
+        "error": "Benchmark error: Error 22 connecting to localhost:6379. 22."
+      },
+      {
+        "problem_id": "TX04",
+        "condition": "C_with_dissect",
+        "status": "crash",
+        "job_id": "bench-tx04-37f3ca",
+        "best_val_metric": 0.0,
+        "decision": "",
+        "duration_seconds": 0.0,
+        "crash_count": 0,
+        "human_interventions": 1,
+        "architecture": "distilbert",
+        "error": "Benchmark error: Error 22 connecting to localhost:6379. 22."
+      }
+    ]
+  },
+  "condition_c": {},
+  "comparison": {
+    "pass_rate_b": 0.0,
+    "pass_rate_c": 0.0,
+    "improvement_pp": 0.0
+  }
+}

@@ -1,0 +1,1288 @@
+{
+  "metadata": {
+    "version": "baseline_v2",
+    "date": "2026-07-02",
+    "commit": "b03e6f09d9eb9260c444d578d1dbec086e8c527c",
+    "platform": "Windows 11, Python 3.11, Docker Desktop",
+    "execution_method": "real_orchestrator_docker",
+    "note": "v2 uses full OrchestratorRuntime with Docker containers. v1 used subprocess and is invalid for publication.",
+    "anthropic_model": "claude-sonnet-4-6",
+    "training_image": "prometheus-training-base",
+    "total_api_cost_usd": 4.44,
+    "total_dissect_patch_attempts": 111,
+    "supersedes": "baseline_v1.json",
+    "known_limitations": [
+      "Text (TX01-TX10) and Image (IC01-IC08) failed due to dataset loading infrastructure issues.",
+      "Condition A (human baseline) not collected - deferred to future work.",
+      "API cost not tracked per-job in patch_log.jsonl - estimated from avg call cost."
+    ]
+  },
+  "summary": {
+    "condition_b": {
+      "label": "No Dissect",
+      "execution": "real Docker containers, no crash recovery",
+      "passed": 12,
+      "crashed": 36,
+      "escalated": 1,
+      "retried": 1,
+      "total": 50,
+      "pass_rate": 0.24,
+      "interventions_needed": 38
+    },
+    "condition_c": {
+      "label": "With Dissect",
+      "execution": "real Docker containers, full Furnace-Dissect WAIT/RESUME loop",
+      "passed": 18,
+      "crashed": 3,
+      "escalated": 28,
+      "retried": 1,
+      "total": 50,
+      "pass_rate": 0.36,
+      "interventions_needed": 32,
+      "improvement_pp": 6
+    }
+  },
+  "by_modality": {
+    "tabular_classification": {
+      "problems": 20,
+      "condition_b_passed": 5,
+      "condition_b_pass_rate": 0.25,
+      "condition_c_passed": 11,
+      "condition_c_pass_rate": 0.55,
+      "improvement_pp": 6,
+      "note": "Primary valid comparison domain"
+    },
+    "tabular_regression": {
+      "problems": 12,
+      "condition_b_passed": 7,
+      "condition_b_pass_rate": 0.5833,
+      "condition_c_passed": 7,
+      "condition_c_pass_rate": 0.5833,
+      "improvement_pp": 0,
+      "note": "Dissect provides no benefit - failures are metric-below-threshold, not runtime crashes"
+    },
+    "text": {
+      "problems": 10,
+      "condition_b_passed": 0,
+      "condition_b_pass_rate": 0.0,
+      "condition_c_passed": 0,
+      "condition_c_pass_rate": 0.0,
+      "failure_reason": "Dataset infrastructure issue in benchmark harness.",
+      "excluded_from_primary_analysis": true
+    },
+    "image": {
+      "problems": 8,
+      "condition_b_passed": 0,
+      "condition_b_pass_rate": 0.0,
+      "condition_c_passed": 0,
+      "condition_c_pass_rate": 0.0,
+      "failure_reason": "Dataset infrastructure issue in benchmark harness.",
+      "excluded_from_primary_analysis": true
+    }
+  },
+  "dissect_analysis": {
+    "total_patch_attempts": 111,
+    "successful_sandbox_passes": 33,
+    "rollback_sandbox_failures": 60,
+    "escalated_after_3_attempts": 18,
+    "patch_success_rate": 0.297,
+    "problems_rescued_by_dissect": 6,
+    "note": "33 sandbox passes, 60 rollbacks (patch failed sandbox, rolled back), 18 escalated (3 consecutive failures)"
+  },
+  "comparison_to_v1": {
+    "note": "baseline_v1.json used subprocess execution without real Docker. v2 is authoritative.",
+    "condition_b_pass_rate_v1": 0.26,
+    "condition_b_pass_rate_v2": 0.24,
+    "condition_c_pass_rate_v1": 0.48,
+    "condition_c_pass_rate_v2": 0.36,
+    "explanation": "Lower v2 rates are expected. Subprocess execution bypassed Docker container isolation."
+  },
+  "problems": [
+    {
+      "problem_id": "TC01",
+      "name": "Titanic",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "pass",
+        "metric_value": 0.8588159588159587,
+        "time_seconds": 2.63,
+        "crash_type": null,
+        "intervention_needed": false
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 0.8588159588159587,
+        "time_seconds": 2.59,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TC02",
+      "name": "Iris",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 2.49,
+        "crash_type": "TypeError: '>' not supported between instances of 'str' and 'float'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 111.23,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TC03",
+      "name": "Pima Indians Diabetes",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.39,
+        "crash_type": "KeyError: 'Outcome'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 0.834689230979941,
+        "time_seconds": 126.27,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 1,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TC04",
+      "name": "Default of Credit Card Clients",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.26,
+        "crash_type": "KeyError: 'default'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 0.7834929658300389,
+        "time_seconds": 36.3,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 1,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TC05",
+      "name": "Breast Cancer Wisconsin",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.13,
+        "crash_type": "KeyError: 'diagnosis'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 116.88,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TC06",
+      "name": "Bank Marketing",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.65,
+        "crash_type": "KeyError: 'y'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 113.47,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TC07",
+      "name": "HR Analytics",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.35,
+        "crash_type": "KeyError: 'Attrition'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 116.87,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TC08",
+      "name": "Loan Prediction",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.21,
+        "crash_type": "KeyError: 'Loan_Status'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 0.9746835443037974,
+        "time_seconds": 83.71,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 1,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TC09",
+      "name": "Wine",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "pass",
+        "metric_value": 1.0,
+        "time_seconds": 2.73,
+        "crash_type": null,
+        "intervention_needed": false
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 1.0,
+        "time_seconds": 2.81,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TC10",
+      "name": "Heart Disease Cleveland",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.22,
+        "crash_type": "KeyError: 'target'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 0.7281958263939078,
+        "time_seconds": 45.91,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 1,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TC11",
+      "name": "Credit Card Fraud",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "hard",
+      "condition_b": {
+        "status": "pass",
+        "metric_value": 0.7931093019650178,
+        "time_seconds": 4.49,
+        "crash_type": null,
+        "intervention_needed": false
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 0.7931093019650178,
+        "time_seconds": 4.57,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TC12",
+      "name": "Telco Customer Churn",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 2.75,
+        "crash_type": "TypeError: '>' not supported between instances of 'str' and 'float'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 120.65,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TC13",
+      "name": "Mushroom",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.25,
+        "crash_type": "KeyError: 'class'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 62.75,
+        "crash_type": "No predictions found",
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 1,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TC14",
+      "name": "Adult Income",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.32,
+        "crash_type": "KeyError: 'income'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 41.24,
+        "crash_type": "No predictions found",
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 1,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TC15",
+      "name": "Glass Identification",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.32,
+        "crash_type": "KeyError: 'Type'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 1.0,
+        "time_seconds": 40.61,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 1,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TC16",
+      "name": "Parkinsons",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "pass",
+        "metric_value": 0.8928571428571428,
+        "time_seconds": 2.5,
+        "crash_type": null,
+        "intervention_needed": false
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 0.8928571428571428,
+        "time_seconds": 2.56,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TC17",
+      "name": "Voter Turnout",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "pass",
+        "metric_value": 0.9087713475348501,
+        "time_seconds": 2.66,
+        "crash_type": null,
+        "intervention_needed": false
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 0.9087713475348501,
+        "time_seconds": 2.72,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TC18",
+      "name": "Energy Efficiency",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.14,
+        "crash_type": "KeyError: 'rating'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 0.960823091773791,
+        "time_seconds": 37.2,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 1,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TC19",
+      "name": "Student Performance",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.15,
+        "crash_type": "KeyError: 'pass'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 112.31,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TC20",
+      "name": "Manufacturing Defects",
+      "modality": "tabular",
+      "task_type": "classification",
+      "difficulty": "hard",
+      "condition_b": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 2.55,
+        "crash_type": null,
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 2.48,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TR01",
+      "name": "California Housing",
+      "modality": "tabular",
+      "task_type": "regression",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "pass",
+        "metric_value": 0.46351720797890145,
+        "time_seconds": 2.78,
+        "crash_type": null,
+        "intervention_needed": false
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 0.46351720797890145,
+        "time_seconds": 2.74,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TR02",
+      "name": "Boston Housing",
+      "modality": "tabular",
+      "task_type": "regression",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "pass",
+        "metric_value": 56.57308248374223,
+        "time_seconds": 2.55,
+        "crash_type": null,
+        "intervention_needed": false
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 56.57308248374223,
+        "time_seconds": 2.49,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TR03",
+      "name": "Wine Quality Red",
+      "modality": "tabular",
+      "task_type": "regression",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "pass",
+        "metric_value": 0.6928203230275509,
+        "time_seconds": 3.26,
+        "crash_type": null,
+        "intervention_needed": false
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 0.6928203230275509,
+        "time_seconds": 3.35,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TR04",
+      "name": "Appliances Energy",
+      "modality": "tabular",
+      "task_type": "regression",
+      "difficulty": "hard",
+      "condition_b": {
+        "status": "retry",
+        "metric_value": 91.91479485453506,
+        "time_seconds": 2.95,
+        "crash_type": null,
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "retry",
+        "metric_value": 91.91479485453506,
+        "time_seconds": 3.04,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TR05",
+      "name": "Bike Sharing",
+      "modality": "tabular",
+      "task_type": "regression",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "pass",
+        "metric_value": 3.2322573777573056,
+        "time_seconds": 2.93,
+        "crash_type": null,
+        "intervention_needed": false
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 3.2322573777573056,
+        "time_seconds": 2.69,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TR06",
+      "name": "Stock Price",
+      "modality": "tabular",
+      "task_type": "regression",
+      "difficulty": "hard",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 25.19,
+        "crash_type": "TypeError: '>' not supported between instances of 'str' and 'float'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 137.58,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TR07",
+      "name": "CO2 Emissions",
+      "modality": "tabular",
+      "task_type": "regression",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "pass",
+        "metric_value": 15.543102551229099,
+        "time_seconds": 2.8,
+        "crash_type": null,
+        "intervention_needed": false
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 15.543102551229099,
+        "time_seconds": 2.81,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TR08",
+      "name": "Auto MPG",
+      "modality": "tabular",
+      "task_type": "regression",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "pass",
+        "metric_value": 2.225463806107758,
+        "time_seconds": 2.64,
+        "crash_type": null,
+        "intervention_needed": false
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 2.225463806107758,
+        "time_seconds": 2.66,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TR09",
+      "name": "NYC Taxi Duration",
+      "modality": "tabular",
+      "task_type": "regression",
+      "difficulty": "hard",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.14,
+        "crash_type": "ModuleNotFoundError: No module named 'pytorch_tabnet'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 299.27,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 3,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TR10",
+      "name": "Medical Insurance",
+      "modality": "tabular",
+      "task_type": "regression",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "pass",
+        "metric_value": 4546.107607546178,
+        "time_seconds": 2.74,
+        "crash_type": null,
+        "intervention_needed": false
+      },
+      "condition_c": {
+        "status": "pass",
+        "metric_value": 4546.107607546178,
+        "time_seconds": 2.74,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": false
+      }
+    },
+    {
+      "problem_id": "TR11",
+      "name": "Concrete Strength",
+      "modality": "tabular",
+      "task_type": "regression",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.13,
+        "crash_type": "KeyError: 'strength'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 117.8,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TR12",
+      "name": "Air Quality",
+      "modality": "tabular",
+      "task_type": "regression",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 1.21,
+        "crash_type": "KeyError: 'PM2.5'",
+        "intervention_needed": true
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 116.49,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true
+      }
+    },
+    {
+      "problem_id": "TX01",
+      "name": "IMDB Reviews",
+      "modality": "text",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 3.54,
+        "crash_type": "KeyError: 'sentiment'",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 780.9,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 2,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "TX02",
+      "name": "AG News",
+      "modality": "text",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 3.86,
+        "crash_type": "KeyError: 'category'",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 1510.72,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 3,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "TX03",
+      "name": "Hate Speech",
+      "modality": "text",
+      "task_type": "classification",
+      "difficulty": "hard",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 3.25,
+        "crash_type": "KeyError: 'label'",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 1246.13,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 2,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "TX04",
+      "name": "SMS Spam",
+      "modality": "text",
+      "task_type": "classification",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 600.03,
+        "crash_type": "RuntimeError: TIMEOUT after 600s",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 799.82,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 1,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "TX05",
+      "name": "Amazon Reviews",
+      "modality": "text",
+      "task_type": "classification",
+      "difficulty": "hard",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 3.14,
+        "crash_type": "KeyError: 'rating'",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 99.68,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "TX06",
+      "name": "Jigsaw Toxic",
+      "modality": "text",
+      "task_type": "classification",
+      "difficulty": "hard",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 600.08,
+        "crash_type": "RuntimeError: TIMEOUT after 600s",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 1604.31,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 3,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "TX07",
+      "name": "Email Classification",
+      "modality": "text",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 12.14,
+        "crash_type": "RuntimeError: expected target dtype to be Long or Byte, but got Int",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 35.46,
+        "crash_type": "No predictions found",
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 1,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "TX08",
+      "name": "Paper Abstracts",
+      "modality": "text",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 5.47,
+        "crash_type": "RuntimeError: expected target dtype to be Long or Byte, but got Int",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": 0.6535529232649979,
+        "time_seconds": 290.58,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 1,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "TX09",
+      "name": "Fake Reviews",
+      "modality": "text",
+      "task_type": "classification",
+      "difficulty": "hard",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 6.91,
+        "crash_type": "RuntimeError: expected target dtype to be Long or Byte, but got Int",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 1564.02,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 3,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "TX10",
+      "name": "Language Detection",
+      "modality": "text",
+      "task_type": "classification",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 2.73,
+        "crash_type": "KeyError: 'language'",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 1937.38,
+        "crash_type": null,
+        "dissect_attempted": true,
+        "dissect_patch_attempts": 3,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "IC01",
+      "name": "Fashion MNIST",
+      "modality": "image",
+      "task_type": "classification",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 4.41,
+        "crash_type": "AttributeError: 'int' object has no attribute 'seek'",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 130.48,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "IC02",
+      "name": "MNIST",
+      "modality": "image",
+      "task_type": "classification",
+      "difficulty": "easy",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 4.1,
+        "crash_type": "AttributeError: 'int' object has no attribute 'seek'",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 191.98,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "IC03",
+      "name": "CIFAR-10",
+      "modality": "image",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 4.21,
+        "crash_type": "AttributeError: 'int' object has no attribute 'seek'",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 105.5,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "IC04",
+      "name": "Brain MRI",
+      "modality": "image",
+      "task_type": "classification",
+      "difficulty": "hard",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 4.3,
+        "crash_type": "ValueError: With n_samples=1, test_size=0.2 and train_size=None, the resulting train set will be empty. Adjust any of the aforementioned parameters.",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 116.95,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "IC05",
+      "name": "Chest X-Ray",
+      "modality": "image",
+      "task_type": "classification",
+      "difficulty": "hard",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 3.87,
+        "crash_type": "FileNotFoundError: [Errno 2] No such file or directory: 'versions\\\\2\\\\chest_xray\\\\__MACOSX\\\\chest_xray\\\\test\\\\NORMAL\\\\._NORMAL2-IM-0120-0001.jpeg'",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 135.61,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "IC06",
+      "name": "German Traffic Signs",
+      "modality": "image",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 3.92,
+        "crash_type": "FileNotFoundError: [Errno 2] No such file or directory: 'Meta/17.png'",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 117.33,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "IC07",
+      "name": "Flowers",
+      "modality": "image",
+      "task_type": "classification",
+      "difficulty": "medium",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 4.18,
+        "crash_type": "AttributeError: 'int' object has no attribute 'seek'",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 98.27,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    },
+    {
+      "problem_id": "IC08",
+      "name": "Diabetic Retinopathy",
+      "modality": "image",
+      "task_type": "classification",
+      "difficulty": "hard",
+      "condition_b": {
+        "status": "crash",
+        "metric_value": null,
+        "time_seconds": 4.07,
+        "crash_type": "FileNotFoundError: [Errno 2] No such file or directory: '565f3404f9b2'",
+        "intervention_needed": true,
+        "note": "Dataset infrastructure issue"
+      },
+      "condition_c": {
+        "status": "escalate",
+        "metric_value": null,
+        "time_seconds": 142.76,
+        "crash_type": null,
+        "dissect_attempted": false,
+        "dissect_patch_attempts": 0,
+        "intervention_needed": true,
+        "note": "Same infrastructure issue as Condition B"
+      }
+    }
+  ]
+}

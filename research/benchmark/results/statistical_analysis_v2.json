@@ -1,0 +1,72 @@
+{
+  "metadata": {
+    "baseline": "baseline_v2.json",
+    "created_at": "2026-07-02T20:38:42.453681+00:00"
+  },
+  "all_50_problems": {
+    "label": "All 50 problems",
+    "n": 50,
+    "condition_b": {
+      "total_interventions": 38,
+      "mean": 0.76
+    },
+    "condition_c": {
+      "total_interventions": 32,
+      "mean": 0.64
+    },
+    "reduction": 6,
+    "reduction_pct": 15.8,
+    "mann_whitney_u": {
+      "statistic": 1400.0,
+      "p_value": 0.097075,
+      "significant_p05": false,
+      "alpha": 0.05,
+      "alternative": "greater"
+    },
+    "rank_biserial_r": -0.12
+  },
+  "primary_analysis": {
+    "label": "Tabular only (32 problems)",
+    "n": 32,
+    "condition_b": {
+      "total_interventions": 20,
+      "mean": 0.625
+    },
+    "condition_c": {
+      "total_interventions": 14,
+      "mean": 0.4375
+    },
+    "reduction": 6,
+    "reduction_pct": 30.0,
+    "mann_whitney_u": {
+      "statistic": 608.0,
+      "p_value": 0.068986,
+      "significant_p05": false,
+      "alpha": 0.05,
+      "alternative": "greater"
+    },
+    "rank_biserial_r": -0.1875
+  },
+  "headline_analysis": {
+    "label": "Tabular classification only (20 problems)",
+    "n": 20,
+    "condition_b": {
+      "total_interventions": 15,
+      "mean": 0.75
+    },
+    "condition_c": {
+      "total_interventions": 9,
+      "mean": 0.45
+    },
+    "reduction": 6,
+    "reduction_pct": 40.0,
+    "mann_whitney_u": {
+      "statistic": 260.0,
+      "p_value": 0.028967,
+      "significant_p05": true,
+      "alpha": 0.05,
+      "alternative": "greater"
+    },
+    "rank_biserial_r": -0.3
+  }
+}
