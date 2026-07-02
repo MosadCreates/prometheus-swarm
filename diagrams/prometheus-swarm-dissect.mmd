@@ -1,0 +1,177 @@
+graph TD
+  subgraph ENTRY["Entry Point"]
+    CRASH["CRASH_EVENT from Furnace<br/>exception_type + traceback"]
+  end
+
+  subgraph STEP1["Step 1: Parse"]
+    P1["parse_stack_trace()<br/>Extracts from traceback:"]
+    P1A["file path & line number"]
+    P1B["function name"]
+    P1C["exception type & message"]
+    P1D["failing line of code"]
+    CRASH --> P1
+    P1 --> P1A
+    P1 --> P1B
+    P1 --> P1C
+    P1 --> P1D
+  end
+
+  subgraph STEP2["Step 2: Classify"]
+    C2["classify_error()<br/>regex decision tree"]
+    C2A["21 taxonomy categories<br/>exception_types + message_patterns"]
+    C2B["Match? → return (category,<br/>confidence, 'regex')"]
+    C2C["No match? → LLM fallback<br/>classify_error_async()<br/>Claude Sonnet + few-shot"]
+    C2D["LLM confidence < 0.6?<br/>→ novel_error category"]
+
+    P1C --> C2
+    C2 --> C2A
+    C2A --> C2B
+    C2A --> C2C
+    C2C --> C2D
+  end
+
+  subgraph TAXONOMY["21-Category Taxonomy"]
+    T1["shape_mismatch<br/>ValueError: X has N features"]
+    T2["sparse_matrix<br/>TypeError: SMOTE + sparse"]
+    T3["oom<br/>MemoryError"]
+    T4["cuda_oom<br/>RuntimeError: CUDA OOM"]
+    T5["missing_column ⭐<br/>KeyError: most common<br/>(53/111 attempts)"]
+    T6["dtype_mismatch<br/>ValueError: string→float"]
+    T7["convergence_failure<br/>RuntimeWarning"]
+    T8["import_error<br/>ModuleNotFoundError"]
+    T9["nan_propagation<br/>ValueError: NaN"]
+    T10["checkpoint_corruption<br/>UnpicklingError"]
+    T11["feature_mismatch<br/>ValueError: # features"]
+    T12["index_error<br/>IndexError"]
+    T13["zero_division<br/>ZeroDivisionError"]
+    T14["empty_dataset<br/>ValueError: 0 rows"]
+    T15["invalid_axis<br/>ValueError: axis"]
+    T16["optimizer_divergence<br/>loss inf/nan"]
+    T17["encoding_error<br/>UnicodeDecodeError"]
+    T18["permission_error<br/>PermissionError"]
+    T19["label_mismatch<br/>ValueError: class/label"]
+    T20["pickle_version_mismatch<br/>UnpicklingError"]
+    T21["novel_error<br/>catch-all, LLM confidence"]
+  end
+
+  C2B --> TAXONOMY
+  C2D --> TAXONOMY
+
+  subgraph STEP3["Step 3: Retrieve"]
+    R3["query_similar_patches()"]
+    R3A["Embed error text with<br/>sentence-transformers<br/>all-MiniLM-L6-v2"]
+    R3B["Query ChromaDB<br/>patch_memory collection<br/>top-K=3, where=category"]
+    R3C["Return similar patches<br/>with similarity scores<br/>and outcomes (success/fail)"]
+
+    C2B --> R3
+    C2D --> R3
+    R3 --> R3A
+    R3A --> R3B
+    R3B --> R3C
+  end
+
+  subgraph STEP4["Step 4: Generate"]
+    G4["_build_prompt()"]
+    G4A["LLM Prompt includes:"]
+    G4B["- Full error message"]
+    G4C["- Failing script code"]
+    G4D["- Taxonomy category +<br/>repair_strategy"]
+    G4E["- K=3 similar patches"]
+    G4F["Claude Sonnet returns diff"]
+    G4G["_clean_code_fences()<br/>strips markdown fences"]
+
+    R3C --> G4
+    G4 --> G4A
+    G4A --> G4B
+    G4A --> G4C
+    G4A --> G4D
+    G4A --> G4E
+    G4A --> G4F
+    G4F --> G4G
+  end
+
+  subgraph STEP5["Step 5: Test"]
+    T5A["apply_patch()"]
+    T5B["Creates .bak backup"]
+    T5C["Writes patched script"]
+    T5D["run_sandbox_test()"]
+    T5E["Launch Docker container<br/>prometheus-training-base<br/>60s timeout, max 3 epochs"]
+    T5F{"Sandbox<br/>passes?"}
+    T5G["Yes → patch works"]
+    T5H["No → rollback_patch()<br/>restore from .bak"]
+
+    G4G --> T5A
+    T5A --> T5B
+    T5A --> T5C
+    T5C --> T5D
+    T5D --> T5E
+    T5E --> T5F
+    T5F -->|"pass"| T5G
+    T5F -->|"fail"| T5H
+  end
+
+  subgraph STEP6["Step 6: Deploy or Escalate"]
+    D6A["compute_diff()<br/>unified diff via difflib"]
+    D6B["Log to patch_log_queue<br/>(Redis RPUSH)"]
+    D6C["Store patch in ChromaDB<br/>patch_memory (outcome)"]
+    D6D["Publish RESUME_TRAINING<br/>on dissect_output stream"]
+    D6E["Furnace reads RESUME_TRAINING<br/>resumes training from checkpoint"]
+    D6F["On 3 consecutive failures<br/>→ publish ESCALATE"]
+    D6G["→ diagnostic report<br/>→ kill training container<br/>→ JOB_FAILED"]
+
+    T5G --> D6A
+    D6A --> D6B
+    D6B --> D6C
+    D6C --> D6D
+    D6D --> D6E
+    T5H -->|"attempt < 3"| G4
+    T5H -->|"attempt >= 3"| D6F
+    D6F --> D6G
+  end
+
+  subgraph LOG["Patch Log Schema"]
+    LOG1["PatchLogEntry JSON:"]
+    LOG2["patch_id, job_id, timestamp"]
+    LOG3["exception_type, message"]
+    LOG4["taxonomy_category"]
+    LOG5["repair_strategy_used"]
+    LOG6["retrieved_similar_patches[]"]
+    LOG7["diff_applied, lines_changed"]
+    LOG8["sandbox_test_result"]
+    LOG9["patch_outcome<br/>(success|rollback|escalated)"]
+    LOG10["confidence_score"]
+    LOG11["attempt_number"]
+
+    LOG1 --> LOG2
+    LOG1 --> LOG3
+    LOG1 --> LOG4
+    LOG1 --> LOG5
+    LOG1 --> LOG6
+    LOG1 --> LOG7
+    LOG1 --> LOG8
+    LOG1 --> LOG9
+    LOG1 --> LOG10
+    LOG1 --> LOG11
+  end
+
+  D6B --> LOG
+
+  subgraph STATS["Benchmark Patch Stats (v2)"]
+    S1["Total attempts: 111"]
+    S2["Success: 33 (29.7%)"]
+    S3["Rollback: 60 (54.1%)"]
+    S4["Escalated: 18 (16.2%)"]
+    S5["Avg lines changed: 78.8"]
+    S6["Top category: missing_column<br/>53 attempts, 24.5% success"]
+  end
+
+  style ENTRY fill:#f9d4d4
+  style STEP1 fill:#d4f1f9
+  style STEP2 fill:#d4f1f9
+  style TAXONOMY fill:#f0f0f0
+  style STEP3 fill:#d4f1f9
+  style STEP4 fill:#d4f1f9
+  style STEP5 fill:#d4f1f9
+  style STEP6 fill:#d4f1f9
+  style LOG fill:#f9f3d4
+  style STATS fill:#d4f9d4

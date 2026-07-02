@@ -1,0 +1,89 @@
+graph LR
+  subgraph PIPELINE["Event-Driven Agent Pipeline"]
+    JOB("Job Submitted") --> SCT{Scout<br/>Perceiver}
+    SCT -->|"writes MissionBrief<br/>to Redis job:* keys"| FGE{Forge<br/>Architect}
+    FGE -->|"selects architecture,<br/>generates training script"| FUR{Furnace<br/>Trainer}
+    FUR -->|"launches Docker,<br/>monitors training"| ARB{Arbiter<br/>Critic}
+    ARB -->|"loads checkpoint,<br/>computes metrics"| HRB{Harbor<br/>Deployer}
+    HRB -->|"ONNX serialize,<br/>build Docker, deploy"| END>Live Endpoint]
+  end
+
+  subgraph EVENTS["Event Types (12)"]
+    MBR[("MISSION_BRIEF_READY")]
+    TSR[("TRAINING_SCRIPT_READY")]
+    EPO[("EPOCH_COMPLETE")]
+    TCO[("TRAINING_COMPLETE")]
+    CRE[("CRASH_EVENT")]
+    RES[("RESUME_TRAINING")]
+    EPA[("EVALUATION_PASS")]
+    ERT[("EVALUATION_RETRY")]
+    ESC[("ESCALATE")]
+    JFL[("JOB_FAILED")]
+    ELI[("ENDPOINT_LIVE")]
+    DAL[("DRIFT_ALERT")]
+  end
+
+  subgraph STREAMS["Streams & Consumer Groups"]
+    SCT_OUT["scout_output<br/>→ forge_consumers"]
+    FGE_OUT["forge_output<br/>→ furnace_consumers"]
+    FUR_FEED["furnace_feed<br/>→ frontend_consumers"]
+    FUR_OUT["furnace_output<br/>→ arbiter_consumers"]
+    FUR_CRASH["furnace_crash<br/>→ dissect_consumers"]
+    DIS_OUT["dissect_output<br/>→ furnace_consumers"]
+    ARB_OUT["arbiter_output<br/>→ harbor_consumers"]
+    HRB_OUT["harbor_output<br/>→ scout_consumers"]
+  end
+
+  subgraph FLOW["Control Flow"]
+    SCT -->|publishes| MBR
+    MBR --> SCT_OUT
+
+    FGE -->|reads| SCT_OUT
+    FGE -->|publishes| TSR
+    TSR --> FGE_OUT
+
+    FUR -->|reads| FGE_OUT
+    FUR -->|streams| EPO
+    EPO --> FUR_FEED
+    FUR -->|publishes| TCO
+    TCO --> FUR_OUT
+
+    FUR -->|on crash, publishes| CRE
+    CRE --> FUR_CRASH
+
+    FUR_CRASH --> DIS
+    DIS -->|publishes| RES
+    RES --> DIS_OUT
+    DIS_OUT --> FUR
+    DIS -->|"on 3 failures,<br/>publishes"| ESC
+
+    ARB -->|reads| FUR_OUT
+    ARB -->|publishes| EPA
+    ARB -->|publishes| ERT
+    ERT -.->|"re-routes to Forge<br/>(architecture retry)"| FGE
+
+    EPA --> ARB_OUT
+    HRB -->|reads| ARB_OUT
+    HRB -->|publishes| ELI
+    ELI --> HRB_OUT
+
+    HRB -->|"drift detected,<br/>publishes"| DAL
+    DAL -.->|"triggers retrain<br/>(relaunch Scout)"| SCT
+  end
+
+  subgraph CONDITIONS["Benchmark Conditions"]
+    CB["Condition B (No Dissect)<br/>crash → immediate ESCALATE"]
+    CC["Condition C (With Dissect)<br/>crash → Dissect loop<br/>up to 3 patch attempts"]
+  end
+
+  subgraph RETRY["Retry Loop"]
+    ARB -- "EVALUATION_RETRY" --> FGE
+    FGE -- "alternate architecture<br/>(LightGBM→XGBoost,<br/>TabNet→LightGBM, etc.)" --> FUR
+  end
+
+  style PIPELINE fill:#e8d4f9
+  style EVENTS fill:#f9d4d4
+  style STREAMS fill:#f9e0d4
+  style FLOW fill:#d4f1f9
+  style CONDITIONS fill:#d4f9d4
+  style RETRY fill:#f9f3d4
