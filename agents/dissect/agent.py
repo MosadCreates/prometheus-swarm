@@ -21,10 +21,8 @@ from memory.collections.patch_memory import store_patch, query_similar_patches
 from shared.metrics import (
     DISSECT_ERROR_CLASSIFICATIONS,
     DISSECT_PATCHES_GENERATED,
-    DISSECT_PATCH_DURATION,
     DISSECT_OUTCOMES,
     record_heartbeat,
-    record_agent_error,
 )
 
 

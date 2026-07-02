@@ -661,7 +661,14 @@ async def main():
 
         try:
             await _run_single_problem(
-                problem, job_id, dataset_path, args, batch_idx, results_a, results_b, results_c
+                problem,
+                job_id,
+                dataset_path,
+                args,
+                batch_idx,
+                results_a,
+                results_b,
+                results_c,
             )
         except Exception as e:
             logger.error(f"[{job_id}] Unhandled error: {e}", exc_info=True)

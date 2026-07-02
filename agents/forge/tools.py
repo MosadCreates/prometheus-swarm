@@ -84,9 +84,9 @@ def _write_xgboost_script(mission_brief: dict, job_id: str, scripts_dir: str = "
     data_filename = os.path.basename(file_path)
     target_line = f'target = df.pop("{target}")' if target else "target = df.iloc[:, -1]"
     eval_metrics = (
-        'from sklearn.metrics import roc_auc_score, f1_score, accuracy_score\nprint(f"Accuracy: {accuracy_score(y_test, y_pred):.4f}")'
+        'y_pred_class = (y_pred > 0.5).astype(int)\nprint(f"Accuracy: {accuracy_score(y_test, y_pred_class):.4f}")'
         if is_classification
-        else 'from sklearn.metrics import mean_squared_error\nrmse = float(np.sqrt(mean_squared_error(y_test, y_pred)))\nprint(f"RMSE: {rmse:.4f}")'
+        else 'rmse = float(np.sqrt(mean_squared_error(y_test, y_pred)))\nprint(f"RMSE: {rmse:.4f}")'
     )
     direction = '"maximize"' if is_classification else '"minimize"'
 
@@ -101,15 +101,17 @@ import os
 import json
 import pickle
 import warnings
-warnings.filterwarnings("ignore")
 
 import numpy as np
 import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.metrics import accuracy_score, mean_squared_error, roc_auc_score, f1_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
-from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 import xgboost as xgb
+
+warnings.filterwarnings("ignore")
 
 _search_space_json = os.getenv("SEARCH_SPACE_JSON")
 _use_optuna = bool(_search_space_json)
@@ -151,7 +153,6 @@ if _use_optuna:
             _model = Pipeline([("preprocessor", preprocessor), ("estimator", xgb.XGBClassifier(**params))])
             _model.fit(X_train, y_train)
             _y_pred = _model.predict(X_test)
-            from sklearn.metrics import accuracy_score
             return accuracy_score(y_test, _y_pred)
     else:
         def _objective(trial):
@@ -166,7 +167,6 @@ if _use_optuna:
             _model = Pipeline([("preprocessor", preprocessor), ("estimator", xgb.XGBRegressor(**params))])
             _model.fit(X_train, y_train)
             _y_pred = _model.predict(X_test)
-            from sklearn.metrics import mean_squared_error
             return float(mean_squared_error(y_test, _y_pred))
 
     _n_trials = int(os.getenv("OPTUNA_TRIALS", "10"))
@@ -235,17 +235,19 @@ import os
 import json
 import pickle
 import warnings
-warnings.filterwarnings("ignore")
 
 import numpy as np
 import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.metrics import accuracy_score, mean_squared_error, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, OrdinalEncoder, StandardScaler
-from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from pytorch_tabnet.tab_model import TabNetClassifier, TabNetRegressor
 
 import torch
+
+warnings.filterwarnings("ignore")
 
 _data_dir = os.getenv("DATA_DIR", "./data")
 df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"))
@@ -298,7 +300,6 @@ if {is_classification}:
     )
     y_pred = model.predict(X_test)
     y_prob = model.predict_proba(X_test)
-    from sklearn.metrics import accuracy_score, roc_auc_score
     acc = accuracy_score(y_test, y_pred)
     print(f"Accuracy: {{acc:.4f}}")
 else:
@@ -321,7 +322,6 @@ else:
         num_workers=0,
     )
     y_pred = model.predict(X_test).flatten()
-    from sklearn.metrics import mean_squared_error
     rmse = float(np.sqrt(mean_squared_error(y_test, y_pred)))
     print(f"RMSE: {{rmse:.4f}}")
 
@@ -356,9 +356,9 @@ def _write_lightgbm_script(mission_brief: dict, job_id: str, scripts_dir: str = 
 
     target_line = f'target = df.pop("{target}")' if target else "target = df.iloc[:, -1]"
     eval_metrics = (
-        'from sklearn.metrics import roc_auc_score, f1_score, accuracy_score\nprint(f"Accuracy: {accuracy_score(y_test, y_pred):.4f}")'
+        'y_pred_class = (y_pred > 0.5).astype(int)\nprint(f"Accuracy: {accuracy_score(y_test, y_pred_class):.4f}")'
         if is_classification
-        else 'from sklearn.metrics import mean_squared_error\nrmse = float(np.sqrt(mean_squared_error(y_test, y_pred)))\nprint(f"RMSE: {rmse:.4f}")'
+        else 'rmse = float(np.sqrt(mean_squared_error(y_test, y_pred)))\nprint(f"RMSE: {rmse:.4f}")'
     )
     direction = '"maximize"' if is_classification else '"minimize"'
 
@@ -373,15 +373,17 @@ import os
 import json
 import pickle
 import warnings
-warnings.filterwarnings("ignore")
 
 import numpy as np
 import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.metrics import accuracy_score, mean_squared_error, roc_auc_score, f1_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
-from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 import lightgbm as lgb
+
+warnings.filterwarnings("ignore")
 
 _search_space_json = os.getenv("SEARCH_SPACE_JSON")
 _use_optuna = bool(_search_space_json)
@@ -419,11 +421,10 @@ if _use_optuna:
                 elif _spec["type"] == "float":
                     params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
             params["random_state"] = 42
-            params["verbose"] = -1
+            params["verbosity"] = -1
             _model = Pipeline([("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))])
             _model.fit(X_train, y_train)
             _y_pred = _model.predict(X_test)
-            from sklearn.metrics import accuracy_score
             return accuracy_score(y_test, _y_pred)
     else:
         def _objective(trial):
@@ -434,11 +435,10 @@ if _use_optuna:
                 elif _spec["type"] == "float":
                     params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
             params["random_state"] = 42
-            params["verbose"] = -1
+            params["verbosity"] = -1
             _model = Pipeline([("preprocessor", preprocessor), ("estimator", lgb.LGBMRegressor(**params))])
             _model.fit(X_train, y_train)
             _y_pred = _model.predict(X_test)
-            from sklearn.metrics import mean_squared_error
             return float(mean_squared_error(y_test, _y_pred))
 
     _n_trials = int(os.getenv("OPTUNA_TRIALS", "10"))

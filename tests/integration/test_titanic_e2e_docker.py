@@ -4,13 +4,9 @@ Requires: Docker running, prometheus-training-base image built, Redis running.
 This test is the definitive proof that the system can train a real model.
 """
 
-import asyncio
-import json
 import os
 import subprocess
-import sys
 import pytest
-import redis.asyncio as aioredis
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.timeout(300)]
 

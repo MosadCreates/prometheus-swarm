@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from agents.llm_client import get_llm_response
 from memory.redis_client import RedisClient
-from shared.metrics import record_agent_llm, record_heartbeat, record_agent_error
+from shared.metrics import record_agent_llm
 
 # Claude Sonnet pricing per 1M tokens (as of 2026)
 _COST_PER_1M_INPUT = 3.00

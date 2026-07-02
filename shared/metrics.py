@@ -4,11 +4,8 @@ All agents should import and use these metrics. The HTTP server
 exposes /metrics on port 9090 for Prometheus scraping.
 """
 
-import atexit
 import logging
 import os
-import threading
-from typing import Any
 
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 

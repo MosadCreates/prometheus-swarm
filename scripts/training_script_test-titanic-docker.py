@@ -10,21 +10,21 @@ import json
 import pickle
 import warnings
 
-warnings.filterwarnings("ignore")
-
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
 from sklearn.compose import ColumnTransformer
+from sklearn.metrics import accuracy_score, mean_squared_error
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OrdinalEncoder
 from sklearn.pipeline import Pipeline
 import lightgbm as lgb
+
+warnings.filterwarnings("ignore")
 
 _search_space_json = os.getenv("SEARCH_SPACE_JSON")
 _use_optuna = bool(_search_space_json)
 if _use_optuna:
     import optuna
-
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")
@@ -35,25 +35,20 @@ for col in ["Name", "Ticket", "Cabin"]:
     if col in df.columns:
         df.drop(columns=[col], inplace=True)
 
-X_train, X_test, y_train, y_test = train_test_split(df, target, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(
+    df, target, test_size=0.2, random_state=42
+)
 
 numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolist()
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
-preprocessor = ColumnTransformer(
-    [
-        ("num", "passthrough", numeric_cols),
-        (
-            "cat",
-            OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1),
-            categorical_cols,
-        ),
-    ]
-)
+preprocessor = ColumnTransformer([
+    ("num", "passthrough", numeric_cols),
+    ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), categorical_cols),
+])
 
 if _use_optuna:
     if True:
-
         def _objective(trial):
             params = {}
             for _name, _spec in _search_space.items():
@@ -62,21 +57,12 @@ if _use_optuna:
                 elif _spec["type"] == "float":
                     params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
             params["random_state"] = 42
-            params["verbose"] = -1
-            _model = Pipeline(
-                [
-                    ("preprocessor", preprocessor),
-                    ("estimator", lgb.LGBMClassifier(**params)),
-                ]
-            )
+            params["verbosity"] = -1
+            _model = Pipeline([("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))])
             _model.fit(X_train, y_train)
             _y_pred = _model.predict(X_test)
-            from sklearn.metrics import accuracy_score
-
             return accuracy_score(y_test, _y_pred)
-
     else:
-
         def _objective(trial):
             params = {}
             for _name, _spec in _search_space.items():
@@ -85,17 +71,10 @@ if _use_optuna:
                 elif _spec["type"] == "float":
                     params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
             params["random_state"] = 42
-            params["verbose"] = -1
-            _model = Pipeline(
-                [
-                    ("preprocessor", preprocessor),
-                    ("estimator", lgb.LGBMRegressor(**params)),
-                ]
-            )
+            params["verbosity"] = -1
+            _model = Pipeline([("preprocessor", preprocessor), ("estimator", lgb.LGBMRegressor(**params))])
             _model.fit(X_train, y_train)
             _y_pred = _model.predict(X_test)
-            from sklearn.metrics import mean_squared_error
-
             return float(mean_squared_error(y_test, _y_pred))
 
     _n_trials = int(os.getenv("OPTUNA_TRIALS", "10"))
@@ -112,18 +91,15 @@ if True:
 else:
     estimator = lgb.LGBMRegressor(**best_params)
 
-model = Pipeline(
-    [
-        ("preprocessor", preprocessor),
-        ("estimator", estimator),
-    ]
-)
+model = Pipeline([
+    ("preprocessor", preprocessor),
+    ("estimator", estimator),
+])
 model.fit(X_train, y_train)
 
 y_pred = model.predict(X_test)
-from sklearn.metrics import roc_auc_score, f1_score, accuracy_score
-
-print(f"Accuracy: {accuracy_score(y_test, y_pred):.4f}")
+y_pred_class = (y_pred > 0.5).astype(int)
+print(f"Accuracy: {accuracy_score(y_test, y_pred_class):.4f}")
 
 _outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
 output_dir = os.path.join(_outputs_dir, "test-titanic-docker", "checkpoints")

@@ -8,3 +8,13 @@ description = "Autonomous multi-agent ML pipeline system"
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501"]
+
+[tool.black]
+line-length = 100

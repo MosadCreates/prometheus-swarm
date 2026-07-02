@@ -9,7 +9,6 @@ import asyncio
 import json
 import os
 import subprocess
-import sys
 
 import pytest
 import redis.asyncio as aioredis
@@ -138,7 +137,6 @@ async def test_orchestrator_titanic_end_to_end():
     from bus.consumer import ensure_consumer_group
     from orchestrator.runtime import OrchestratorRuntime
     from agents.scout.agent import ScoutAgent
-    from memory.redis_client import RedisClient
 
     redis = aioredis.Redis(host="localhost", port=6379, decode_responses=True)
     await redis.ping()
