@@ -5,11 +5,22 @@ import { useEffect, useState } from "react";
 interface Job {
   id: string;
   problem_description?: string;
-  architecture_decision_id?: string;
   status?: string;
-  current_agent?: string;
-  api_cost?: string;
-  file_path?: string;
+}
+
+const STATUS_STYLES: Record<string, { dot: string; label: string }> = {
+  completed: { dot: "#10b981", label: "Completed" },
+  COMPLETED: { dot: "#10b981", label: "Completed" },
+  running: { dot: "#f59e0b", label: "Running" },
+  QUEUED: { dot: "#94a3b8", label: "Queued" },
+  ESCALATED: { dot: "#f43f5e", label: "Escalated" },
+  failed: { dot: "#f43f5e", label: "Failed" },
+  escalated: { dot: "#f43f5e", label: "Escalated" },
+};
+
+function getStatusStyle(s?: string) {
+  if (!s) return { dot: "#94a3b8", label: "Unknown" };
+  return STATUS_STYLES[s] || { dot: "#94a3b8", label: s };
 }
 
 export default function JobsPage() {
@@ -23,80 +34,49 @@ export default function JobsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const statusColor = (s?: string) => {
-    if (!s) return "#64748b";
-    if (s === "completed") return "#22c55e";
-    if (s === "running") return "#f59e0b";
-    if (s === "failed") return "#ef4444";
-    return "#64748b";
-  };
-
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "16px" }}>
-      <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>
-        Job History
-      </h1>
+    <div className="max-w-4xl mx-auto px-6 py-8">
+      <h1 className="font-display text-lg text-[#1C1B19] mb-8">Job History</h1>
 
       {loading ? (
-        <p style={{ color: "#64748b" }}>Loading...</p>
+        <div className="flex items-center justify-center py-16">
+          <span className="w-5 h-5 rounded-full border-2 border-[#E8E5DF] border-t-[#C96442] animate-spin" />
+        </div>
       ) : jobs.length === 0 ? (
-        <p style={{ color: "#64748b" }}>No jobs found in Redis.</p>
+        <div className="text-center py-16 text-sm text-[#8B8982]">
+          No jobs found.
+        </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {jobs.map((job) => (
-            <a
-              key={job.id}
-              href={`/jobs/${encodeURIComponent(job.id)}`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "10px 14px",
-                borderRadius: 6,
-                background: "#14141f",
-                border: "1px solid #1e1e2e",
-                textDecoration: "none",
-                fontSize: 13,
-              }}
-            >
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: statusColor(job.status),
-                  display: "inline-block",
-                  flexShrink: 0,
-                }}
-              />
-              <span
-                style={{
-                  color: "#94a3b8",
-                  minWidth: 140,
-                  fontSize: 11,
-                  fontFamily: "monospace",
-                }}
-              >
-                {job.id.slice(0, 22)}
-              </span>
-              <span style={{ color: "#e0e0e0", flex: 1 }}>
-                {job.problem_description?.slice(0, 80) || "(no description)"}
-              </span>
-              {job.status && (
-                <span
-                  style={{
-                    color: statusColor(job.status),
-                    fontSize: 11,
-                    fontWeight: 600,
-                    minWidth: 70,
-                    textAlign: "right",
-                  }}
+        <div className="bg-white border border-[#E8E5DF] rounded-xl overflow-hidden shadow-sm">
+          <div className="divide-y divide-[#E8E5DF]">
+            {jobs.map((job) => {
+              const ss = getStatusStyle(job.status);
+              return (
+                <a
+                  key={job.id}
+                  href={`/jobs/${encodeURIComponent(job.id)}`}
+                  className="flex items-center gap-4 px-5 py-3.5 hover:bg-[#F7F6F3] transition-colors no-underline"
                 >
-                  {job.status}
-                </span>
-              )}
-            </a>
-          ))}
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: ss.dot }} />
+                  <span className="text-xs font-mono text-[#8B8982] min-w-[140px]">
+                    {job.id.slice(0, 22)}
+                  </span>
+                  <span className="text-sm text-[#1C1B19] flex-1 truncate">
+                    {job.problem_description?.slice(0, 80) || "(no description)"}
+                  </span>
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0"
+                    style={{
+                      background: ss.dot + "18",
+                      color: ss.dot,
+                    }}
+                  >
+                    {ss.label}
+                  </span>
+                </a>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

@@ -1,0 +1,112 @@
+:root {
+  /* ── Primary Accent (One blue, used everywhere) ── */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-foreground: #ffffff;
+
+  /* ── Semantic Colors (Minimal — purpose only) ── */
+  --color-success: #16a34a;
+  --color-success-hover: #15803d;
+  --color-success-foreground: #ffffff;
+  --color-warning: #d97706;
+  --color-warning-hover: #b45309;
+  --color-warning-foreground: #ffffff;
+  --color-error: #dc2626;
+  --color-error-hover: #b91c1c;
+  --color-error-foreground: #ffffff;
+
+  /* ── Neutrals (Light) — 90% of the interface ── */
+  --color-bg: #f5f6f8;
+  --color-surface: #f0f1f3;
+  --color-surface-elevated: #ffffff;
+  --color-border: #e2e4e9;
+  --color-border-light: #eef0f2;
+  --color-text-primary: #111318;
+  --color-text-secondary: #6b6f7a;
+  --color-text-muted: #9498a3;
+  --color-text-disabled: #c5c8d0;
+  --color-overlay: rgba(0, 0, 0, 0.35);
+
+  /* ── Agent Colors (Six distinct, kept for system identity) ── */
+  --color-agent-scout: #2563eb;
+  --color-agent-forge: #7c3aed;
+  --color-agent-furnace: #dc2626;
+  --color-agent-dissect: #059669;
+  --color-agent-arbiter: #d97706;
+  --color-agent-harbor: #0891b2;
+
+  /* ── Typography ── */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --text-display: 48px; --text-display-line: 1.1;
+  --text-h1: 36px; --text-h1-line: 1.2;
+  --text-h2: 30px; --text-h2-line: 1.25;
+  --text-h3: 24px; --text-h3-line: 1.3;
+  --text-h4: 20px; --text-h4-line: 1.35;
+  --text-body: 16px; --text-body-line: 1.5;
+  --text-small: 14px; --text-small-line: 1.5;
+  --text-caption: 12px; --text-caption-line: 1.45;
+  --text-label: 13px; --text-label-line: 1.4;
+
+  --font-normal: 400; --font-medium: 500; --font-semibold: 600; --font-bold: 700;
+
+  /* ── Spacing ── */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+  --space-12: 48px; --space-16: 64px; --space-20: 80px; --space-24: 96px;
+
+  /* ── Border Radius ── */
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px; --radius-xl: 20px; --radius-full: 9999px;
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.03);
+  --shadow-xl: 0 16px 24px rgba(0, 0, 0, 0.07), 0 4px 8px rgba(0, 0, 0, 0.04);
+
+  /* ── Animation ── */
+  --duration-fast: 100ms; --duration-normal: 200ms; --duration-slow: 300ms;
+  --easing-in: cubic-bezier(0.4, 0, 1, 1);
+  --easing-out: cubic-bezier(0, 0, 0.2, 1);
+  --easing-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Layout ── */
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 56px;
+  --header-height: 56px;
+  --content-max-width: 1440px;
+  --content-padding: 32px;
+}
+
+[data-theme="dark"] {
+  --color-primary: #3b82f6;
+  --color-primary-hover: #60a5fa;
+  --color-primary-foreground: #ffffff;
+
+  --color-success: #22c55e;
+  --color-success-hover: #4ade80;
+  --color-success-foreground: #ffffff;
+  --color-warning: #f59e0b;
+  --color-warning-hover: #fbbf24;
+  --color-warning-foreground: #ffffff;
+  --color-error: #ef4444;
+  --color-error-hover: #f87171;
+  --color-error-foreground: #ffffff;
+
+  --color-bg: #0b0d12;
+  --color-surface: #13151c;
+  --color-surface-elevated: #1a1d26;
+  --color-border: #262933;
+  --color-border-light: #1c1f28;
+  --color-text-primary: #f0f2f5;
+  --color-text-secondary: #9094a6;
+  --color-text-muted: #5d6278;
+  --color-text-disabled: #3d4154;
+  --color-overlay: rgba(0, 0, 0, 0.65);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 16px 24px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+}

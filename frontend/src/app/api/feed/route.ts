@@ -24,7 +24,9 @@ interface StreamEvent {
   data: Record<string, string>;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const filterJobId = searchParams.get("job_id");
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -35,7 +37,7 @@ export async function GET() {
 
       try {
         await redis.connect();
-        console.log("SSE: Connected to Redis");
+        console.log(`SSE: Connected to Redis (filter=${filterJobId || "all"})`);
 
         controller.enqueue(encoder.encode("data: {\"status\":\"connected\"}\n\n"));
 
@@ -54,6 +56,8 @@ export async function GET() {
                 const streamName = result.name;
                 for (const msg of result.messages) {
                   ids[streamName] = msg.id;
+
+                  if (filterJobId && msg.message?.job_id !== filterJobId) continue;
 
                   const event: StreamEvent = {
                     stream: streamName,

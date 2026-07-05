@@ -10,6 +10,12 @@ interface DriftEvent {
   timestamp: string;
 }
 
+function psiColor(psi: number): string {
+  if (psi > 0.2) return "#f43f5e";
+  if (psi > 0.1) return "#f59e0b";
+  return "#10b981";
+}
+
 export default function DriftPage() {
   const [events, setEvents] = useState<DriftEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -17,158 +23,98 @@ export default function DriftPage() {
   useEffect(() => {
     fetch("/api/drift")
       .then((r) => r.json())
-      .then((d) => {
-        setEvents(d.driftEvents || []);
-      })
+      .then((d) => setEvents(d.driftEvents || []))
       .finally(() => setLoading(false));
   }, []);
 
-  const psiColor = (psi: number) => {
-    if (psi > 0.2) return "#ef4444";
-    if (psi > 0.1) return "#f59e0b";
-    return "#22c55e";
-  };
+  const hasActiveDrift = events.some((e) => e.psi > 0.2);
+  const totalFeatures = new Set(events.map((e) => e.feature)).size;
 
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "16px" }}>
-      <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 16 }}>
-        PSI Drift Monitor
-      </h1>
+    <div className="max-w-4xl mx-auto px-6 py-8">
+      <h1 className="font-display text-lg text-[#1C1B19] mb-8">PSI Drift Monitor</h1>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: 12,
-          marginBottom: 24,
-        }}
-      >
-        <div
-          style={{
-            padding: 16,
-            borderRadius: 6,
-            background: "#14141f",
-            border: "1px solid #1e1e2e",
-            textAlign: "center",
-          }}
-        >
-          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>Status</div>
-          <div style={{ fontSize: 14, color: events.length > 0 && events.some((e) => e.psi > 0.2) ? "#ef4444" : "#22c55e", fontWeight: 600 }}>
-            {events.length > 0 && events.some((e) => e.psi > 0.2) ? "Drift Detected" : "Stable"}
+      <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="bg-white border border-[#E8E5DF] rounded-xl p-5 text-center shadow-sm">
+          <div className="text-[10px] font-semibold text-[#8B8982] uppercase tracking-wider mb-2">
+            Status
+          </div>
+          <div className="text-sm font-semibold" style={{ color: hasActiveDrift ? "#f43f5e" : "#10b981" }}>
+            {hasActiveDrift ? "Drift Detected" : "Stable"}
           </div>
         </div>
-        <div
-          style={{
-            padding: 16,
-            borderRadius: 6,
-            background: "#14141f",
-            border: "1px solid #1e1e2e",
-            textAlign: "center",
-          }}
-        >
-          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>Total Alerts</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: "#e0e0e0" }}>{events.length}</div>
-        </div>
-        <div
-          style={{
-            padding: 16,
-            borderRadius: 6,
-            background: "#14141f",
-            border: "1px solid #1e1e2e",
-            textAlign: "center",
-          }}
-        >
-          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>Monitored Features</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: "#e0e0e0" }}>
-            {new Set(events.map((e) => e.feature)).size}
+        <div className="bg-white border border-[#E8E5DF] rounded-xl p-5 text-center shadow-sm">
+          <div className="text-[10px] font-semibold text-[#8B8982] uppercase tracking-wider mb-2">
+            Total Alerts
           </div>
+          <div className="text-2xl font-bold text-[#1C1B19]">{events.length}</div>
+        </div>
+        <div className="bg-white border border-[#E8E5DF] rounded-xl p-5 text-center shadow-sm">
+          <div className="text-[10px] font-semibold text-[#8B8982] uppercase tracking-wider mb-2">
+            Monitored Features
+          </div>
+          <div className="text-2xl font-bold text-[#1C1B19]">{totalFeatures}</div>
         </div>
       </div>
 
-      <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
-        Alert History
-      </h2>
+      <h2 className="text-sm font-semibold text-[#1C1B19] mb-4">Alert History</h2>
 
       {loading ? (
-        <p style={{ color: "#64748b" }}>Loading...</p>
+        <div className="flex items-center justify-center py-16">
+          <span className="w-5 h-5 rounded-full border-2 border-[#E8E5DF] border-t-[#C96442] animate-spin" />
+        </div>
       ) : events.length === 0 ? (
-        <p style={{ color: "#64748b" }}>No drift alerts recorded yet.</p>
+        <div className="bg-white border border-[#E8E5DF] rounded-xl p-10 text-center shadow-sm">
+          <p className="text-sm text-[#8B8982]">No drift alerts recorded yet.</p>
+        </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {events.map((evt) => {
-            const barWidth = Math.min(evt.psi * 100, 100);
-            return (
-              <div
-                key={evt.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "8px 12px",
-                  borderRadius: 4,
-                  background: "#14141f",
-                  border: "1px solid #1e1e2e",
-                  fontSize: 12,
-                }}
-              >
-                <span style={{ color: "#64748b", minWidth: 80, fontSize: 11 }}>
-                  {evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : ""}
-                </span>
-                <span style={{ color: "#94a3b8", minWidth: 100, fontFamily: "monospace" }}>
-                  {evt.job_id.slice(0, 8)}
-                </span>
-                <span style={{ color: "#e0e0e0", minWidth: 80 }}>{evt.feature}</span>
-                <div
-                  style={{
-                    flex: 1,
-                    height: 8,
-                    borderRadius: 4,
-                    background: "#1e1e2e",
-                    position: "relative",
-                  }}
-                >
-                  <div
+        <div className="bg-white border border-[#E8E5DF] rounded-xl overflow-hidden shadow-sm">
+          <div className="divide-y divide-[#E8E5DF]">
+            {events.map((evt) => {
+              const barWidth = Math.min(evt.psi * 100, 100);
+              return (
+                <div key={evt.id} className="flex items-center gap-4 px-5 py-3 text-xs">
+                  <span className="text-[#8B8982] font-mono text-[10px] min-w-[70px] shrink-0">
+                    {evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : ""}
+                  </span>
+                  <span className="text-[#8B8982] font-mono text-[10px] min-w-[80px] shrink-0">
+                    {evt.job_id.slice(0, 8)}
+                  </span>
+                  <span className="text-[#1C1B19] min-w-[80px] shrink-0">
+                    {evt.feature}
+                  </span>
+                  <div className="flex-1 h-2 rounded-full bg-[#F0EDE8] overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-300"
+                      style={{
+                        width: `${Math.max(barWidth, 2)}%`,
+                        background: psiColor(evt.psi),
+                      }}
+                    />
+                  </div>
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold min-w-[55px] text-center shrink-0"
                     style={{
-                      width: `${barWidth}%`,
-                      height: "100%",
-                      borderRadius: 4,
-                      background: psiColor(evt.psi),
-                      transition: "width 0.3s",
+                      background: psiColor(evt.psi) + "18",
+                      color: psiColor(evt.psi),
                     }}
-                  />
+                  >
+                    {evt.psi.toFixed(3)}
+                  </span>
                 </div>
-                <span
-                  style={{
-                    color: psiColor(evt.psi),
-                    fontWeight: 600,
-                    minWidth: 50,
-                    textAlign: "right",
-                  }}
-                >
-                  {evt.psi.toFixed(3)}
-                </span>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 
-      <div
-        style={{
-          marginTop: 24,
-          padding: 12,
-          borderRadius: 6,
-          background: "#14141f",
-          border: "1px solid #1e1e2e",
-          fontSize: 12,
-          color: "#64748b",
-          lineHeight: 1.6,
-        }}
-      >
-        <strong style={{ color: "#94a3b8" }}>PSI Thresholds</strong>
+      <div className="mt-6 p-4 bg-white border border-[#E8E5DF] rounded-xl text-xs text-[#8B8982] leading-relaxed shadow-sm">
+        <strong className="text-[#1C1B19]">PSI Thresholds</strong>
         <br />
-        PSI &lt; 0.1: No drift (green) &mdash; 0.1 &ndash; 0.2: Moderate drift (amber) &mdash; &gt; 0.2:
-        Significant drift (red) &mdash; triggers automatic retrain via Scout.
+        <span className="text-[#10b981]">&lt; 0.1</span> No drift &mdash;
+        <span className="text-[#f59e0b]"> 0.1 &ndash; 0.2</span> Moderate drift &mdash;
+        <span className="text-[#f43f5e]"> &gt; 0.2</span> Significant drift &mdash;
+        triggers automatic retrain via Scout.
       </div>
     </div>
   );
