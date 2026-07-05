@@ -28,20 +28,18 @@ interface Activity {
 
 export function ActivityFeed({ items }: { items: Activity[] }) {
   return (
-    <div className="flex flex-col">
+    <div className="divide-y divide-[var(--color-border)]">
       {items.map((item, i) => {
         const Icon = iconMap[item.type] || Rocket;
         const color = colorMap[item.type] || 'var(--color-text-muted)';
         return (
-          <div key={item.id} className="flex gap-3 py-2.5 border-b border-[var(--color-border-light)] last:border-0">
-            <div className="w-7 h-7 rounded-[var(--radius-md)] flex items-center justify-center shrink-0" style={{ backgroundColor: color + '15' }}>
-              <Icon className="w-3.5 h-3.5" style={{ color }} />
-            </div>
+          <div key={item.id} className="flex gap-3 px-4 py-3 hover:bg-[var(--color-surface)] transition-colors">
+            <Icon className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color }} />
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-[var(--color-text-primary)] truncate">{item.title}</p>
-              <p className="text-xs text-[var(--color-text-secondary)] truncate">{item.description}</p>
+              <p className="text-xs text-[var(--color-text-primary)] truncate">{item.title}</p>
+              <p className="text-[10px] font-mono text-[var(--color-text-secondary)] truncate">{item.description}</p>
             </div>
-            <span className="text-[11px] text-[var(--color-text-muted)] shrink-0">{item.time}</span>
+            <span className="text-[10px] font-mono text-[var(--color-text-muted)] shrink-0">{item.time}</span>
           </div>
         );
       })}

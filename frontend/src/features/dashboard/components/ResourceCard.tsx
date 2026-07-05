@@ -17,9 +17,9 @@ interface Resource {
 export function ResourceCard({ resource }: { resource: Resource }) {
   const Icon = iconMap[resource.type] || BookOpen;
   return (
-    <div className="flex items-center gap-2.5 p-2.5 rounded-[var(--radius-md)] hover:bg-[var(--color-border-light)] transition-colors cursor-pointer">
-      <Icon className="w-4 h-4 text-[var(--color-text-muted)] shrink-0" />
-      <span className="text-sm text-[var(--color-text-primary)] truncate">{resource.name}</span>
+    <div className="flex items-center gap-2.5 px-4 py-3 hover:bg-[var(--color-surface)] transition-colors cursor-pointer">
+      <Icon className="w-3.5 h-3.5 text-[var(--color-text-muted)] shrink-0" />
+      <span className="text-xs text-[var(--color-text-primary)] truncate">{resource.name}</span>
     </div>
   );
 }

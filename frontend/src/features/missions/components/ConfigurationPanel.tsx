@@ -66,8 +66,8 @@ export function ConfigurationPanel() {
                 onClick={() => toggleOutput(o.value)}
                 className={`text-xs px-2.5 py-1 rounded-[var(--radius-sm)] border transition-all ${
                   selected
-                    ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]/20'
-                    : 'bg-transparent text-[var(--color-text-muted)] border-[var(--color-border)] hover:border-[var(--color-primary)]/30'
+                    ? 'bg-[var(--color-cyan)]/10 text-[var(--color-cyan)] border-[var(--color-cyan)]/20'
+                    : 'bg-transparent text-[var(--color-text-muted)] border-[var(--color-border)] hover:border-[var(--color-cyan)]/30'
                 }`}
               >
                 {o.label}

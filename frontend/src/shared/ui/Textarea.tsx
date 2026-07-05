@@ -25,15 +25,15 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           className={cn(
             'w-full rounded-[var(--radius-md)] border bg-[var(--color-bg)] px-3 py-2.5 text-sm text-[var(--color-text-primary)]',
             'placeholder:text-[var(--color-text-muted)]',
-            'border-[var(--color-border)] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20',
+            'border-[var(--color-border)] focus:border-[var(--color-cyan)] focus:ring-2 focus:ring-[var(--color-cyan)]/20',
             'transition-all duration-[var(--duration-normal)] resize-y min-h-[80px]',
             'disabled:pointer-events-none disabled:opacity-50',
-            error && 'border-[var(--color-error)]',
+            error && 'border-[var(--color-alert)]',
             className,
           )}
           {...props}
         />
-        {error && <p className="text-[var(--text-caption)] text-[var(--color-error)]">{error}</p>}
+        {error && <p className="text-[var(--text-caption)] text-[var(--color-alert)]">{error}</p>}
       </div>
     );
   },

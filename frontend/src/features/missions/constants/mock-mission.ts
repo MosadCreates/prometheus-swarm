@@ -61,8 +61,8 @@ export const mockResources = {
 
 export const agentStatusColor: Record<string, string> = {
   waiting: 'var(--color-text-muted)',
-  running: 'var(--color-primary)',
-  completed: 'var(--color-success)',
-  failed: 'var(--color-error)',
+  running: 'var(--color-accent)',
+  completed: 'var(--color-cyan)',
+  failed: 'var(--color-alert)',
   thinking: 'var(--color-warning)',
 };

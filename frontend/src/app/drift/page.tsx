@@ -10,10 +10,12 @@ interface DriftEvent {
   timestamp: string;
 }
 
-function psiColor(psi: number): string {
-  if (psi > 0.2) return "#f43f5e";
-  if (psi > 0.1) return "#f59e0b";
-  return "#10b981";
+function psiGradient(psi: number): string {
+  const pct = Math.min(psi / 0.3, 1);
+  const r = Math.round(22 + (229 - 22) * pct);
+  const g = Math.round(195 + (72 - 195) * pct);
+  const b = Math.round(199 + (77 - 199) * pct);
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 export default function DriftPage() {
@@ -28,92 +30,100 @@ export default function DriftPage() {
   }, []);
 
   const hasActiveDrift = events.some((e) => e.psi > 0.2);
-  const totalFeatures = new Set(events.map((e) => e.feature)).size;
+
+  // Aggregate by feature, take max PSI, sort descending
+  const featureMap = new Map<string, DriftEvent>();
+  for (const evt of events) {
+    const existing = featureMap.get(evt.feature);
+    if (!existing || evt.psi > existing.psi) {
+      featureMap.set(evt.feature, evt);
+    }
+  }
+  const features = Array.from(featureMap.values()).sort((a, b) => b.psi - a.psi);
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">
-      <h1 className="font-display text-lg text-[#1C1B19] mb-8">PSI Drift Monitor</h1>
+      <h1 className="text-sm font-semibold text-[var(--color-text-primary)] mb-6">PSI Drift Monitor</h1>
 
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        <div className="bg-white border border-[#E8E5DF] rounded-xl p-5 text-center shadow-sm">
-          <div className="text-[10px] font-semibold text-[#8B8982] uppercase tracking-wider mb-2">
-            Status
-          </div>
-          <div className="text-sm font-semibold" style={{ color: hasActiveDrift ? "#f43f5e" : "#10b981" }}>
-            {hasActiveDrift ? "Drift Detected" : "Stable"}
-          </div>
-        </div>
-        <div className="bg-white border border-[#E8E5DF] rounded-xl p-5 text-center shadow-sm">
-          <div className="text-[10px] font-semibold text-[#8B8982] uppercase tracking-wider mb-2">
-            Total Alerts
-          </div>
-          <div className="text-2xl font-bold text-[#1C1B19]">{events.length}</div>
-        </div>
-        <div className="bg-white border border-[#E8E5DF] rounded-xl p-5 text-center shadow-sm">
-          <div className="text-[10px] font-semibold text-[#8B8982] uppercase tracking-wider mb-2">
-            Monitored Features
-          </div>
-          <div className="text-2xl font-bold text-[#1C1B19]">{totalFeatures}</div>
-        </div>
+      {/* Status strip */}
+      <div className="flex items-center gap-3 px-4 py-3 border border-[var(--color-border)] bg-[var(--color-surface)] mb-6">
+        <span
+          className="w-2 h-2 rounded-full"
+          style={{ backgroundColor: hasActiveDrift ? "var(--color-alert)" : "var(--color-cyan)" }}
+        />
+        <span
+          className="text-xs font-mono font-semibold"
+          style={{ color: hasActiveDrift ? "var(--color-alert)" : "var(--color-cyan)" }}
+        >
+          {hasActiveDrift ? "Drift Detected" : "Stable"}
+        </span>
+        <span className="text-[10px] font-mono text-[var(--color-text-muted)]">
+          {events.length} alerts · {features.length} features
+        </span>
       </div>
 
-      <h2 className="text-sm font-semibold text-[#1C1B19] mb-4">Alert History</h2>
-
-      {loading ? (
+      {/* Loading */}
+      {loading && (
         <div className="flex items-center justify-center py-16">
-          <span className="w-5 h-5 rounded-full border-2 border-[#E8E5DF] border-t-[#C96442] animate-spin" />
+          <span className="w-4 h-4 rounded-full border border-[var(--color-border)] border-t-[var(--color-accent)] animate-spin" />
         </div>
-      ) : events.length === 0 ? (
-        <div className="bg-white border border-[#E8E5DF] rounded-xl p-10 text-center shadow-sm">
-          <p className="text-sm text-[#8B8982]">No drift alerts recorded yet.</p>
+      )}
+
+      {/* Empty */}
+      {!loading && features.length === 0 && (
+        <div className="text-center py-16 text-xs text-[var(--color-text-muted)] font-mono">
+          No drift data recorded yet.
         </div>
-      ) : (
-        <div className="bg-white border border-[#E8E5DF] rounded-xl overflow-hidden shadow-sm">
-          <div className="divide-y divide-[#E8E5DF]">
-            {events.map((evt) => {
-              const barWidth = Math.min(evt.psi * 100, 100);
-              return (
-                <div key={evt.id} className="flex items-center gap-4 px-5 py-3 text-xs">
-                  <span className="text-[#8B8982] font-mono text-[10px] min-w-[70px] shrink-0">
-                    {evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : ""}
-                  </span>
-                  <span className="text-[#8B8982] font-mono text-[10px] min-w-[80px] shrink-0">
-                    {evt.job_id.slice(0, 8)}
-                  </span>
-                  <span className="text-[#1C1B19] min-w-[80px] shrink-0">
-                    {evt.feature}
-                  </span>
-                  <div className="flex-1 h-2 rounded-full bg-[#F0EDE8] overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-300"
-                      style={{
-                        width: `${Math.max(barWidth, 2)}%`,
-                        background: psiColor(evt.psi),
-                      }}
-                    />
-                  </div>
-                  <span
-                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold min-w-[55px] text-center shrink-0"
+      )}
+
+      {/* Feature gauges */}
+      {!loading && features.length > 0 && (
+        <div className="border border-[var(--color-border)]">
+          {/* Header */}
+          <div className="flex items-center gap-4 px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+            <span className="text-[10px] font-mono text-[var(--color-text-muted)] w-[120px] uppercase tracking-wider">Feature</span>
+            <span className="text-[10px] font-mono text-[var(--color-text-muted)] flex-1 uppercase tracking-wider">PSI Gauge</span>
+            <span className="text-[10px] font-mono text-[var(--color-text-muted)] w-[80px] uppercase tracking-wider text-right">PSI Value</span>
+          </div>
+
+          {/* Rows */}
+          <div className="divide-y divide-[var(--color-border)]">
+            {features.map((evt) => (
+              <div key={evt.feature} className="flex items-center gap-4 px-4 py-3 hover:bg-[var(--color-surface)] transition-colors">
+                <span className="text-xs text-[var(--color-text-primary)] font-mono w-[120px] shrink-0 truncate">
+                  {evt.feature}
+                </span>
+
+                {/* Gauge bar — green → amber → red gradient */}
+                <div className="flex-1 h-2 rounded-[var(--radius-sm)] bg-[var(--color-border)] overflow-hidden">
+                  <div
+                    className="h-full rounded-[var(--radius-sm)] transition-all duration-300"
                     style={{
-                      background: psiColor(evt.psi) + "18",
-                      color: psiColor(evt.psi),
+                      width: `${Math.min(evt.psi * 100, 100)}%`,
+                      backgroundColor: psiGradient(evt.psi),
                     }}
-                  >
-                    {evt.psi.toFixed(3)}
-                  </span>
+                  />
                 </div>
-              );
-            })}
+
+                <span
+                  className="text-xs font-mono font-semibold w-[80px] shrink-0 text-right"
+                  style={{ color: psiGradient(evt.psi) }}
+                >
+                  {evt.psi.toFixed(3)}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      <div className="mt-6 p-4 bg-white border border-[#E8E5DF] rounded-xl text-xs text-[#8B8982] leading-relaxed shadow-sm">
-        <strong className="text-[#1C1B19]">PSI Thresholds</strong>
+      {/* Threshold legend */}
+      <div className="mt-6 px-4 py-3 border border-[var(--color-border)] bg-[var(--color-surface)] text-[10px] font-mono text-[var(--color-text-muted)] leading-relaxed">
+        <strong className="text-[var(--color-text-primary)]">PSI Thresholds</strong>
         <br />
-        <span className="text-[#10b981]">&lt; 0.1</span> No drift &mdash;
-        <span className="text-[#f59e0b]"> 0.1 &ndash; 0.2</span> Moderate drift &mdash;
-        <span className="text-[#f43f5e]"> &gt; 0.2</span> Significant drift &mdash;
+        <span style={{ color: "#3fd3c7" }}>&lt; 0.1</span> No drift &mdash;
+        <span style={{ color: "#e8a33d" }}> 0.1 &ndash; 0.2</span> Moderate &mdash;
+        <span style={{ color: "#e5484d" }}> &gt; 0.2</span> Significant &mdash;
         triggers automatic retrain via Scout.
       </div>
     </div>

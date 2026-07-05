@@ -36,7 +36,7 @@ export function LaunchDialog({ open, onClose, prompt }: LaunchDialogProps) {
             <button onClick={handleClose} className="h-9 px-4 rounded-[var(--radius-md)] border border-[var(--color-border)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-border-light)] transition-colors">
               Cancel
             </button>
-            <button onClick={handleLaunch} className="inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary-hover)] transition-colors">
+            <button onClick={handleLaunch} className="inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] bg-[var(--color-cyan)] text-white text-sm font-medium hover:bg-[var(--color-cyan-hover)] transition-colors">
               <Rocket className="w-4 h-4" />
               Launch Mission
             </button>
@@ -44,8 +44,8 @@ export function LaunchDialog({ open, onClose, prompt }: LaunchDialogProps) {
         </div>
       ) : (
         <div className="flex flex-col items-center gap-4 py-4">
-          <div className="w-12 h-12 rounded-full bg-[var(--color-success)]/10 flex items-center justify-center">
-            <CheckCircle className="w-6 h-6 text-[var(--color-success)]" />
+          <div className="w-12 h-12 rounded-full bg-[var(--color-cyan)]/10 flex items-center justify-center">
+            <CheckCircle className="w-6 h-6 text-[var(--color-cyan)]" />
           </div>
           <div className="text-center">
             <p className="text-sm font-medium text-[var(--color-text-primary)]">Mission launched successfully</p>

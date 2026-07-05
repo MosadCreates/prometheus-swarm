@@ -28,7 +28,7 @@ export default function NewMissionPage() {
           <button
             onClick={() => setShowLaunch(true)}
             disabled={!prompt.trim()}
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary-hover)] disabled:opacity-40 disabled:pointer-events-none transition-all"
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] bg-[var(--color-cyan)] text-white text-sm font-medium hover:bg-[var(--color-cyan-hover)] disabled:opacity-40 disabled:pointer-events-none transition-all"
           >
             <Rocket className="w-4 h-4" />
             Launch

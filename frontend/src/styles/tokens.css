@@ -1,43 +1,45 @@
 :root {
-  /* ── Primary Accent (One blue, used everywhere) ── */
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
-  --color-primary-foreground: #ffffff;
+  /* ── Base colors ── */
+  --color-bg: #0b0d10;
+  --color-surface: #14181d;
+  --color-surface-elevated: #1a1e26;
+  --color-border: #242a31;
+  --color-border-light: #1c1f26;
 
-  /* ── Semantic Colors (Minimal — purpose only) ── */
-  --color-success: #16a34a;
-  --color-success-hover: #15803d;
-  --color-success-foreground: #ffffff;
-  --color-warning: #d97706;
-  --color-warning-hover: #b45309;
-  --color-warning-foreground: #ffffff;
-  --color-error: #dc2626;
-  --color-error-hover: #b91c1c;
-  --color-error-foreground: #ffffff;
+  /* ── Accent — molten, used for active/hot states only ── */
+  --color-accent: #ff6b35;
+  --color-accent-hover: #e85a24;
+  --color-accent-foreground: #ffffff;
 
-  /* ── Neutrals (Light) — 90% of the interface ── */
-  --color-bg: #f5f6f8;
-  --color-surface: #f0f1f3;
-  --color-surface-elevated: #ffffff;
-  --color-border: #e2e4e9;
-  --color-border-light: #eef0f2;
-  --color-text-primary: #111318;
-  --color-text-secondary: #6b6f7a;
-  --color-text-muted: #9498a3;
-  --color-text-disabled: #c5c8d0;
-  --color-overlay: rgba(0, 0, 0, 0.35);
+  /* ── Signal colors ── */
+  --color-cyan: #3fd3c7;
+  --color-cyan-hover: #35bfb4;
+  --color-cyan-foreground: #0b0d10;
+  --color-warning: #e8a33d;
+  --color-warning-hover: #d4922e;
+  --color-warning-foreground: #0b0d10;
+  --color-alert: #e5484d;
+  --color-alert-hover: #d1363b;
+  --color-alert-foreground: #ffffff;
 
-  /* ── Agent Colors (Six distinct, kept for system identity) ── */
-  --color-agent-scout: #2563eb;
-  --color-agent-forge: #7c3aed;
-  --color-agent-furnace: #dc2626;
-  --color-agent-dissect: #059669;
-  --color-agent-arbiter: #d97706;
-  --color-agent-harbor: #0891b2;
+  /* ── Text ── */
+  --color-text-primary: #e8ecef;
+  --color-text-secondary: #8a939c;
+  --color-text-muted: #5a636e;
+  --color-text-disabled: #3a434e;
+  --color-overlay: rgba(0, 0, 0, 0.7);
+
+  /* ── Pipeline gradient (cool → warm, 6 stages) ── */
+  --color-agent-scout: #38bdf8;
+  --color-agent-forge: #6366f1;
+  --color-agent-furnace: #ff6b35;
+  --color-agent-dissect: #22c55e;
+  --color-agent-arbiter: #e8a33d;
+  --color-agent-harbor: #e85b5b;
 
   /* ── Typography ── */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 
   --text-display: 48px; --text-display-line: 1.1;
   --text-h1: 36px; --text-h1-line: 1.2;
@@ -56,14 +58,12 @@
   --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
   --space-12: 48px; --space-16: 64px; --space-20: 80px; --space-24: 96px;
 
-  /* ── Border Radius ── */
-  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px; --radius-xl: 20px; --radius-full: 9999px;
-
-  /* ── Shadows ── */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.03);
-  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.03);
-  --shadow-xl: 0 16px 24px rgba(0, 0, 0, 0.07), 0 4px 8px rgba(0, 0, 0, 0.04);
+  /* ── Border radius (instrument-panel hairline, minimal) ── */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-full: 9999px;
 
   /* ── Animation ── */
   --duration-fast: 100ms; --duration-normal: 200ms; --duration-slow: 300ms;
@@ -73,40 +73,8 @@
 
   /* ── Layout ── */
   --sidebar-width: 240px;
-  --sidebar-collapsed-width: 56px;
-  --header-height: 56px;
+  --sidebar-collapsed-width: 72px;
+  --header-height: 48px;
   --content-max-width: 1440px;
   --content-padding: 32px;
-}
-
-[data-theme="dark"] {
-  --color-primary: #3b82f6;
-  --color-primary-hover: #60a5fa;
-  --color-primary-foreground: #ffffff;
-
-  --color-success: #22c55e;
-  --color-success-hover: #4ade80;
-  --color-success-foreground: #ffffff;
-  --color-warning: #f59e0b;
-  --color-warning-hover: #fbbf24;
-  --color-warning-foreground: #ffffff;
-  --color-error: #ef4444;
-  --color-error-hover: #f87171;
-  --color-error-foreground: #ffffff;
-
-  --color-bg: #0b0d12;
-  --color-surface: #13151c;
-  --color-surface-elevated: #1a1d26;
-  --color-border: #262933;
-  --color-border-light: #1c1f28;
-  --color-text-primary: #f0f2f5;
-  --color-text-secondary: #9094a6;
-  --color-text-muted: #5d6278;
-  --color-text-disabled: #3d4154;
-  --color-overlay: rgba(0, 0, 0, 0.65);
-
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
-  --shadow-xl: 0 16px 24px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
 }

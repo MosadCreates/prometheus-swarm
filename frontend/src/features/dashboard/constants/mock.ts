@@ -45,15 +45,15 @@ export const mockResources = [
 ];
 
 export const projectStatusStyles: Record<string, string> = {
-  active: 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]',
-  completed: 'bg-[var(--color-success)]/10 text-[var(--color-success)]',
+  active: 'bg-[var(--color-cyan)]/10 text-[var(--color-cyan)]',
+  completed: 'bg-[var(--color-cyan)]/10 text-[var(--color-cyan)]',
   draft: 'bg-[var(--color-warning)]/10 text-[var(--color-warning)]',
   archived: 'bg-[var(--color-text-muted)]/10 text-[var(--color-text-muted)]',
 };
 
 export const missionStatusStyles: Record<string, string> = {
-  running: 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]',
+  running: 'bg-[var(--color-cyan)]/10 text-[var(--color-cyan)]',
   queued: 'bg-[var(--color-text-muted)]/10 text-[var(--color-text-muted)]',
-  completed: 'bg-[var(--color-success)]/10 text-[var(--color-success)]',
-  failed: 'bg-[var(--color-error)]/10 text-[var(--color-error)]',
+  completed: 'bg-[var(--color-cyan)]/10 text-[var(--color-cyan)]',
+  failed: 'bg-[var(--color-alert)]/10 text-[var(--color-alert)]',
 };

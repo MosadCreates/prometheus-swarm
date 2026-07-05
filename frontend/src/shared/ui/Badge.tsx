@@ -3,11 +3,12 @@ import { cn } from '@/shared/utils/cn';
 
 const variants = {
   default: 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border border-[var(--color-border)]',
-  primary: 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]',
-  success: 'bg-[var(--color-success)]/10 text-[var(--color-success)]',
+  primary: 'bg-[var(--color-cyan)]/10 text-[var(--color-cyan)]',
+  success: 'bg-[var(--color-cyan)]/10 text-[var(--color-cyan)]',
   warning: 'bg-[var(--color-warning)]/10 text-[var(--color-warning)]',
-  error: 'bg-[var(--color-error)]/10 text-[var(--color-error)]',
-  info: 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]',
+  error: 'bg-[var(--color-alert)]/10 text-[var(--color-alert)]',
+  info: 'bg-[var(--color-agent-scout)]/10 text-[var(--color-agent-scout)]',
+  accent: 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]',
 };
 
 const sizes = {

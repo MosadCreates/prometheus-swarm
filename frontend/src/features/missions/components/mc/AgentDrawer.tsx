@@ -75,11 +75,11 @@ export function AgentDrawer({ agent, onClose }: { agent: Agent | null; onClose: 
             <h4 className="text-xs font-semibold text-[var(--color-text-primary)] mb-2 uppercase tracking-wider">Recent Activity</h4>
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)]" />
                 Initializing...
               </div>
               <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-cyan)]" />
                 Ready
               </div>
             </div>

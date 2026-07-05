@@ -25,7 +25,7 @@ export default function SettingsPage() {
                 className={cn(
                   'flex items-center gap-2.5 px-3 py-2 rounded-[var(--radius-md)] text-sm transition-all text-left',
                   s.active
-                    ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium'
+                    ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)] font-medium'
                     : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-border-light)]',
                 )}
               >

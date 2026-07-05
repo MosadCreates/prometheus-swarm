@@ -24,11 +24,11 @@ export default function OrchestratorBanner() {
   if (alive !== false) return null;
 
   return (
-    <div className="bg-[var(--color-warning)]/10 border-b border-[var(--color-warning)]/20 px-6 py-2 text-xs text-[var(--color-warning)] flex items-center gap-2 fixed top-14 left-0 right-0 z-40">
+    <div className="bg-[var(--color-warning)]/10 border-b border-[var(--color-border)] px-6 py-2 text-xs text-[var(--color-warning)] flex items-center gap-2 fixed z-40" style={{ top: 'var(--header-height)', left: 0, right: 0 }}>
       <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-warning)]" />
       <span className="font-semibold">Orchestrator not running</span>
-      <span className="text-[var(--color-warning)]/60">&mdash;</span>
-      <span className="text-[var(--color-warning)]/80">Run <code className="bg-[var(--color-warning)]/15 border border-[var(--color-warning)]/20 px-1.5 py-0.5 rounded text-[11px] font-mono">.\start.ps1</code> to start the agent pipeline</span>
+      <span className="text-[var(--color-warning)]/50">&mdash;</span>
+      <span className="text-[var(--color-warning)]/70">Run <code className="bg-[var(--color-warning)]/10 border border-[var(--color-border)] px-1.5 py-0.5 rounded text-[11px] font-mono">.\start.ps1</code> to start the agent pipeline</span>
     </div>
   );
 }

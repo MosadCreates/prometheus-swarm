@@ -27,7 +27,7 @@ export default function Home() {
     <div className="max-w-3xl mx-auto px-6">
       <section className="pt-32 pb-16">
         <div className="flex items-center gap-2 mb-6">
-          <span className="w-2 h-2 rounded-full bg-[var(--color-primary)]" />
+          <span className="w-2 h-2 rounded-full bg-[var(--color-accent)]" />
           <span className="text-xs font-medium text-[var(--color-text-muted)] tracking-widest uppercase">
             Prometheus Swarm
           </span>
@@ -45,7 +45,7 @@ export default function Home() {
         <div className="flex items-center gap-3">
           {!loading && (
             <Link href={user ? "/dashboard" : "/login"} className="btn-accent">
-              {user ? "Dashboard" : "Get started"}
+              {user ? "Dashboard" : "New Problem"}
             </Link>
           )}
           <Link href="/feed" className="btn-outline">
@@ -108,16 +108,16 @@ export default function Home() {
         </p>
         <div className="relative pl-8">
           <div className="absolute left-[7px] top-2 bottom-0 w-px bg-[var(--color-border)]" />
-          {[
-            { phase: "Phase 0", title: "Foundation", date: "2026 Q1", desc: "Redis, Docker, Claude API, ChromaDB. Four infrastructure components communicating via message bus." },
-            { phase: "Phase 1", title: "Scout + Forge + Furnace", date: "2026 Q2", desc: "Titanic end-to-end: raw problem description to trained LightGBM model." },
-            { phase: "Phase 2", title: "Dissect + Arbiter + Harbor", date: "2026 Q2", desc: "Error recovery, evaluation, and deployment. Auto-patches 5 injected errors." },
-            { phase: "Phase 3", title: "Memory + Hardening", date: "2026 Q3", desc: "ChromaDB long-term memory. Dissect learns from history. All 108 tests passing." },
-            { phase: "Phase 4", title: "Research Experiment", date: "2026 Q3", desc: "50-problem benchmark. Mann-Whitney U test. Paper submission to MSR / ASE 2026." },
-          ].map((item) => (
+            {[
+    { phase: "Phase 0", title: "Foundation", date: "2026 Q1", desc: "Redis, Docker, Claude API, ChromaDB. Four infrastructure components communicating via message bus." },
+    { phase: "Phase 1", title: "Scout + Forge + Furnace", date: "2026 Q2", desc: "Titanic end-to-end: raw problem description to trained LightGBM model." },
+    { phase: "Phase 2", title: "Dissect + Arbiter + Harbor", date: "2026 Q2", desc: "Error recovery, evaluation, and deployment. Auto-patches 5 injected errors." },
+    { phase: "Phase 3", title: "Memory + Hardening", date: "2026 Q3", desc: "ChromaDB long-term memory. Dissect learns from history. All 108 tests passing." },
+    { phase: "Phase 4", title: "Research Experiment", date: "2026 Q3", desc: "50-problem benchmark. Mann-Whitney U test. Paper submission to MSR / ASE 2026." },
+  ].map((item) => (
             <div key={item.phase} className="relative pb-10 last:pb-0">
-              <div className="absolute -left-8 top-1.5 w-[15px] h-[15px] rounded-full border-2 border-[var(--color-primary)] bg-[var(--color-bg)]" />
-              <div className="text-xs text-[var(--color-primary)] font-semibold mb-1 tracking-wider uppercase">{item.phase}</div>
+              <div className="absolute -left-8 top-1.5 w-[15px] h-[15px] rounded-full border-2 border-[var(--color-accent)] bg-[var(--color-bg)]" />
+              <div className="text-xs text-[var(--color-accent)] font-semibold mb-1 tracking-wider uppercase">{item.phase}</div>
               <div className="text-sm font-semibold text-[var(--color-text-primary)] mb-0.5">
                 {item.title}
                 <span className="text-[var(--color-text-muted)] font-normal ml-2 text-xs">{item.date}</span>

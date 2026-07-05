@@ -19,7 +19,7 @@ export function ContextPanel({ data }: { data: ContextData }) {
           <FolderKanban className="w-3 h-3" /> Project
         </h3>
         <div className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] bg-[var(--color-surface)] border border-[var(--color-border)]">
-          <div className="w-2 h-2 rounded-sm bg-[var(--color-primary)]" />
+          <div className="w-2 h-2 rounded-sm bg-[var(--color-cyan)]" />
           <span className="text-sm text-[var(--color-text-primary)] font-medium">{data.name}</span>
         </div>
       </div>
@@ -36,7 +36,7 @@ export function ContextPanel({ data }: { data: ContextData }) {
               {f}
             </div>
           ))}
-          <button className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] text-xs text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 transition-colors">
+          <button className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-md)] text-xs text-[var(--color-cyan)] hover:bg-[var(--color-cyan)]/5 transition-colors">
             <Plus className="w-3.5 h-3.5" /> Add file
           </button>
         </div>
@@ -49,7 +49,7 @@ export function ContextPanel({ data }: { data: ContextData }) {
         </h3>
         <div className="flex flex-wrap gap-1.5">
           {data.datasets.map((d) => (
-            <span key={d} className="text-xs px-2 py-1 rounded-[var(--radius-sm)] bg-[var(--color-primary)]/5 text-[var(--color-primary)] border border-[var(--color-primary)]/10">
+            <span key={d} className="text-xs px-2 py-1 rounded-[var(--radius-sm)] bg-[var(--color-cyan)]/5 text-[var(--color-cyan)] border border-[var(--color-cyan)]/10">
               {d}
             </span>
           ))}

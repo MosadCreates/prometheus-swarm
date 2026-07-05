@@ -68,7 +68,7 @@ export default function MissionControlPage() {
                     onClick={() => setFilter(a)}
                     className={`text-[11px] px-2 py-0.5 rounded-[var(--radius-sm)] transition-colors ${
                       filter === a
-                        ? 'bg-[var(--color-primary)] text-white'
+                        ? 'bg-[var(--color-accent)] text-white'
                         : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-border-light)]'
                     }`}
                   >
@@ -100,9 +100,9 @@ export default function MissionControlPage() {
             <div className="px-4 py-3 border-b border-[var(--color-border)]">
               <h3 className="text-xs font-semibold text-[var(--color-text-primary)] mb-3 uppercase tracking-wider">Resources</h3>
               <div className="space-y-2">
-                <ResourceBar label="CPU" value={mockResources.cpu} color="var(--color-primary)" />
+                <ResourceBar label="CPU" value={mockResources.cpu} color="var(--color-accent)" />
                 <ResourceBar label="GPU" value={mockResources.gpu} color="var(--color-warning)" />
-                <ResourceBar label="Memory" value={mockResources.memory} color="var(--color-success)" />
+                <ResourceBar label="Memory" value={mockResources.memory} color="var(--color-cyan)" />
                 <ResourceBar label="Storage" value={mockResources.storage} color="var(--color-text-muted)" />
               </div>
             </div>

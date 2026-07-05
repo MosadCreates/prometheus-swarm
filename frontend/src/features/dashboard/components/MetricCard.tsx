@@ -13,16 +13,16 @@ interface MetricCardProps {
 export function MetricCard({ label, value, change, index = 0 }: MetricCardProps) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.06, duration: 0.3 }}
-      className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-elevated)] p-5"
+      transition={{ delay: index * 0.04, duration: 0.2 }}
+      className="bg-[var(--color-bg)] p-4"
     >
-      <p className="text-xs text-[var(--color-text-muted)] mb-1">{label}</p>
+      <p className="text-[10px] font-mono text-[var(--color-text-muted)] mb-1">{label}</p>
       <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-semibold text-[var(--color-text-primary)]">{value}</span>
+        <span className="text-lg font-mono font-semibold text-[var(--color-text-primary)]">{value}</span>
         {change && (
-          <span className={cn('text-xs font-medium', change.startsWith('+') ? 'text-[var(--color-success)]' : 'text-[var(--color-error)]')}>
+          <span className={cn('text-[10px] font-mono font-medium', change.startsWith('+') ? 'text-[var(--color-cyan)]' : 'text-[var(--color-alert)]')}>
             {change}
           </span>
         )}

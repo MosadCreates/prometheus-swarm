@@ -13,10 +13,10 @@ interface MissionHeaderProps {
 }
 
 const statusStyles: Record<string, string> = {
-  running: 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]',
+  running: 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]',
   queued: 'bg-[var(--color-text-muted)]/10 text-[var(--color-text-muted)]',
-  completed: 'bg-[var(--color-success)]/10 text-[var(--color-success)]',
-  failed: 'bg-[var(--color-error)]/10 text-[var(--color-error)]',
+  completed: 'bg-[var(--color-cyan)]/10 text-[var(--color-cyan)]',
+  failed: 'bg-[var(--color-alert)]/10 text-[var(--color-alert)]',
 };
 
 export function MissionHeader({ name, project, status, progress, runtime, started, eta }: MissionHeaderProps) {
@@ -43,9 +43,9 @@ export function MissionHeader({ name, project, status, progress, runtime, starte
         <div
           className={cn(
             'h-full rounded-full transition-all duration-500',
-            status === 'completed' && 'bg-[var(--color-success)]',
-            status === 'running' && 'bg-[var(--color-primary)]',
-            status === 'failed' && 'bg-[var(--color-error)]',
+            status === 'completed' && 'bg-[var(--color-cyan)]',
+            status === 'running' && 'bg-[var(--color-accent)]',
+            status === 'failed' && 'bg-[var(--color-alert)]',
           )}
           style={{ width: `${progress}%` }}
         />

@@ -6,76 +6,72 @@ import { mockMetrics, mockQuickActions, mockProjects, mockMissions, mockActivity
 export default function DashboardPage() {
   return (
     <div className="p-6 lg:p-8 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">Workspace</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
+          <h1 className="text-sm font-semibold text-[var(--color-text-primary)]">Workspace</h1>
+          <p className="text-[10px] font-mono text-[var(--color-text-muted)] mt-0.5">
             {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        <a href="/missions" className="inline-flex items-center gap-2 h-9 px-4 rounded-[var(--radius-md)] bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary-hover)] transition-colors no-underline">
-          <span>New Mission</span>
-          <kbd className="text-[10px] opacity-70 bg-white/20 px-1.5 py-0.5 rounded">N</kbd>
+        <a href="/submit" className="inline-flex items-center gap-2 h-8 px-3 rounded-[var(--radius-sm)] bg-[var(--color-accent)] text-white text-[11px] font-mono font-medium hover:bg-[var(--color-accent-hover)] transition-colors no-underline">
+          New Problem
         </a>
       </div>
 
-      {/* Workspace Summary */}
-      <section className="mb-8">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-3">Overview</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <section className="mb-6">
+        <h2 className="text-[10px] font-mono text-[var(--color-text-muted)] uppercase tracking-wider mb-3">Overview</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-[var(--color-border)]">
           {mockMetrics.map((metric, i) => (
             <MetricCard key={metric.label} {...metric} index={i} />
           ))}
         </div>
       </section>
 
-      {/* Quick Actions */}
-      <section className="mb-8">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-3">Quick Actions</h2>
+      <section className="mb-6">
+        <h2 className="text-[10px] font-mono text-[var(--color-text-muted)] uppercase tracking-wider mb-3">Quick Actions</h2>
         <QuickActions actions={mockQuickActions} />
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* Active Missions */}
-        <section>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-3">Active Missions</h2>
-          <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-px bg-[var(--color-border)] mb-6 border border-[var(--color-border)]">
+        <div className="bg-[var(--color-bg)]">
+          <div className="px-4 py-3 border-b border-[var(--color-border)]">
+            <h2 className="text-[10px] font-mono text-[var(--color-text-muted)] uppercase tracking-wider">Active Missions</h2>
+          </div>
+          <div className="divide-y divide-[var(--color-border)]">
             {mockMissions.slice(0, 3).map((m) => (
               <MissionCard key={m.id} mission={m} />
             ))}
           </div>
-        </section>
-
-        {/* Recent Activity */}
-        <section>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-3">Recent Activity</h2>
-          <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-elevated)] p-4">
-            <ActivityFeed items={mockActivity} />
+        </div>
+        <div className="bg-[var(--color-bg)]">
+          <div className="px-4 py-3 border-b border-[var(--color-border)]">
+            <h2 className="text-[10px] font-mono text-[var(--color-text-muted)] uppercase tracking-wider">Recent Activity</h2>
           </div>
-        </section>
+          <ActivityFeed items={mockActivity} />
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Projects */}
-        <section className="lg:col-span-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-3">Recent Projects</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-px bg-[var(--color-border)] border border-[var(--color-border)]">
+        <div className="lg:col-span-2 bg-[var(--color-bg)]">
+          <div className="px-4 py-3 border-b border-[var(--color-border)]">
+            <h2 className="text-[10px] font-mono text-[var(--color-text-muted)] uppercase tracking-wider">Recent Projects</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-[var(--color-border)]">
             {mockProjects.map((p) => (
               <ProjectCard key={p.id} project={p} />
             ))}
           </div>
-        </section>
-
-        {/* Pinned Resources */}
-        <section>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-3">Pinned</h2>
-          <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface-elevated)] p-3">
+        </div>
+        <div className="bg-[var(--color-bg)]">
+          <div className="px-4 py-3 border-b border-[var(--color-border)]">
+            <h2 className="text-[10px] font-mono text-[var(--color-text-muted)] uppercase tracking-wider">Pinned</h2>
+          </div>
+          <div className="divide-y divide-[var(--color-border)]">
             {mockResources.map((r) => (
               <ResourceCard key={r.id} resource={r} />
             ))}
           </div>
-        </section>
+        </div>
       </div>
     </div>
   );

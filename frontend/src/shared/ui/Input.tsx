@@ -26,10 +26,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           className={cn(
             'h-10 w-full rounded-[var(--radius-md)] border bg-[var(--color-bg)] px-3 text-sm text-[var(--color-text-primary)]',
             'placeholder:text-[var(--color-text-muted)]',
-            'border-[var(--color-border)] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20',
+            'border-[var(--color-border)] focus:border-[var(--color-cyan)] focus:ring-2 focus:ring-[var(--color-cyan)]/20',
             'transition-all duration-[var(--duration-normal)]',
             'disabled:pointer-events-none disabled:opacity-50',
-            error && 'border-[var(--color-error)] focus:border-[var(--color-error)] focus:ring-[var(--color-error)]/20',
+            error && 'border-[var(--color-alert)] focus:border-[var(--color-alert)] focus:ring-[var(--color-alert)]/20',
             className,
           )}
           {...props}
@@ -38,7 +38,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <p className="text-[var(--text-caption)] text-[var(--color-text-muted)]">{description}</p>
         )}
         {error && (
-          <p className="text-[var(--text-caption)] text-[var(--color-error)]">{error}</p>
+          <p className="text-[var(--text-caption)] text-[var(--color-alert)]">{error}</p>
         )}
       </div>
     );

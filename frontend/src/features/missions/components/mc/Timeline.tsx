@@ -19,8 +19,8 @@ export function MissionTimeline({ stages }: { stages: Stage[] }) {
               <div
                 className={cn(
                   'w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-all',
-                  stage.completed && 'bg-[var(--color-success)] text-white',
-                  stage.active && 'bg-[var(--color-primary)] text-white ring-2 ring-[var(--color-primary)]/20',
+                  stage.completed && 'bg-[var(--color-cyan)] text-white',
+                  stage.active && 'bg-[var(--color-accent)] text-white ring-2 ring-[var(--color-accent)]/20',
                   !stage.completed && !stage.active && 'bg-[var(--color-border)] text-[var(--color-text-muted)]',
                 )}
               >
@@ -29,8 +29,8 @@ export function MissionTimeline({ stages }: { stages: Stage[] }) {
               <span
                 className={cn(
                   'text-xs whitespace-nowrap',
-                  stage.completed && 'text-[var(--color-success)] font-medium',
-                  stage.active && 'text-[var(--color-primary)] font-medium',
+                  stage.completed && 'text-[var(--color-cyan)] font-medium',
+                  stage.active && 'text-[var(--color-accent)] font-medium',
                   !stage.completed && !stage.active && 'text-[var(--color-text-muted)]',
                 )}
               >
@@ -38,7 +38,7 @@ export function MissionTimeline({ stages }: { stages: Stage[] }) {
               </span>
             </div>
             {i < stages.length - 1 && (
-              <div className={cn('flex-1 h-px mx-2', stage.completed ? 'bg-[var(--color-success)]' : 'bg-[var(--color-border)]')} />
+              <div className={cn('flex-1 h-px mx-2', stage.completed ? 'bg-[var(--color-cyan)]' : 'bg-[var(--color-border)]')} />
             )}
           </div>
         ))}

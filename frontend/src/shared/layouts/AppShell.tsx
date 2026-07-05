@@ -11,7 +11,7 @@ interface AppShellProps {
 
 export function AppShell({ children, className }: AppShellProps) {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-[var(--color-bg)]">
       <Sidebar />
       <div
         className={cn(
@@ -20,9 +20,7 @@ export function AppShell({ children, className }: AppShellProps) {
           className,
         )}
       >
-        <main className="flex-1">
-          {children}
-        </main>
+        <main className="flex-1">{children}</main>
       </div>
     </div>
   );

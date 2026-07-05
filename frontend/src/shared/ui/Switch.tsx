@@ -23,8 +23,8 @@ export function Switch({ checked, onChange, label, disabled }: SwitchProps) {
         onClick={() => onChange(!checked)}
         className={cn(
           'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-[var(--duration-normal)]',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2',
-          checked ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-cyan)] focus-visible:ring-offset-2',
+          checked ? 'bg-[var(--color-cyan)]' : 'bg-[var(--color-border)]',
           disabled && 'pointer-events-none opacity-50',
         )}
       >

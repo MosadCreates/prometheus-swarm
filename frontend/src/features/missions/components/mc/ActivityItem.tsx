@@ -14,8 +14,8 @@ interface Event {
 }
 
 const statusDots: Record<string, string> = {
-  completed: 'bg-[var(--color-success)]',
-  running: 'bg-[var(--color-primary)] animate-pulse',
+  completed: 'bg-[var(--color-cyan)]',
+  running: 'bg-[var(--color-accent)] animate-pulse',
   thinking: 'bg-[var(--color-warning)] animate-pulse',
 };
 
