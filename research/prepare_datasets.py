@@ -338,7 +338,6 @@ def generate_image_dataset(pid: str, info: dict):
     """Generate a proper image dataset with image files + CSV."""
     import numpy as np
 
-    target_col = info["target_col"]
     csv_name = info.get("csv_name", f"{pid.lower()}_{info['dataset'].lower()}.csv")
     csv_path = DATA_DIR / csv_name
     img_dir = _ensure_dir(IMAGES_DIR / pid)

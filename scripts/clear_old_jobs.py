@@ -27,7 +27,7 @@ streams = [
 for s in streams:
     try:
         r.delete(s)
-    except:
+    except Exception:
         pass
 
 print("Cleared old jobs and streams. Only Titanic job remains.")

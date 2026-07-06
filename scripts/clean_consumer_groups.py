@@ -28,6 +28,6 @@ for s in streams:
         try:
             r.xgroup_destroy(s, g)
             cleaned += 1
-        except:
+        except Exception:
             pass
 print(f"Cleaned {cleaned} consumer groups")
