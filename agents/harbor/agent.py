@@ -122,13 +122,30 @@ class HarborAgent(BaseAgent):
             self.logger.warning(f"[job={self.job_id}] ONNX fallback to pickle: {onnx_result}")
             model_format = "pickle"
 
+        # Use the preprocess config's column lists (from the actual Pipeline)
+        # instead of the mission brief column lists (which may include unused columns)
+        _numeric_cols = numeric_cols
+        _categorical_cols = categorical_cols
+        _feature_names = feature_names
+        if onnx_success:
+            config_path = onnx_path.replace(".onnx", "_preprocess.json")
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path) as _f:
+                        _preprocess = json.load(_f)
+                    _numeric_cols = _preprocess.get("numeric_cols") or numeric_cols
+                    _categorical_cols = _preprocess.get("categorical_cols") or categorical_cols
+                    _feature_names = list(_numeric_cols) + list(_categorical_cols)
+                except Exception:
+                    pass
+
         generate_fastapi_app(
             model_path=os.path.abspath(model_path),
             output_dir=output_dir,
             model_format=model_format,
-            feature_names=feature_names or None,
-            numeric_cols=numeric_cols or None,
-            categorical_cols=categorical_cols or None,
+            feature_names=_feature_names or None,
+            numeric_cols=_numeric_cols or None,
+            categorical_cols=_categorical_cols or None,
         )
 
         safe_id = self.job_id[:8].strip("-").strip("_")

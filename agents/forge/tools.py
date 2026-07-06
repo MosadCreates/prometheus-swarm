@@ -82,7 +82,25 @@ def _write_xgboost_script(mission_brief: dict, job_id: str, scripts_dir: str = "
     file_path = mission_brief["dataset"]["file_path"]
     is_classification = task_type == "classification"
     data_filename = os.path.basename(file_path)
-    target_line = f'target = df.pop("{target}")' if target else "target = df.iloc[:, -1]"
+    if target:
+        target_line = f'target = df.pop("{target}")'
+    else:
+        target_line = (
+            '_target_names = ["target","label","y","Survived","survived","class","outcome","result","answer","class_label"]\n'
+            "_target_col = None\n"
+            "for _c in _target_names:\n"
+            "    if _c in df.columns:\n"
+            "        _target_col = _c\n"
+            "        break\n"
+            "if _target_col is None:\n"
+            '    for _c in df.select_dtypes(include=["int64","float64"]).columns:\n'
+            "        if set(df[_c].dropna().unique()).issubset({0, 1}):\n"
+            "            _target_col = _c\n"
+            "            break\n"
+            "if _target_col is None:\n"
+            "    _target_col = df.columns[-1]\n"
+            "target = df.pop(_target_col)"
+        )
     eval_metrics = (
         'y_pred_class = (y_pred > 0.5).astype(int)\nprint(f"Accuracy: {accuracy_score(y_test, y_pred_class):.4f}")'
         if is_classification
@@ -126,6 +144,15 @@ df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"))
 for col in ["Name", "Ticket", "Cabin"]:
     if col in df.columns:
         df.drop(columns=[col], inplace=True)
+
+mask = target.notna()
+df = df[mask]
+target = target[mask]
+
+for _c in df.select_dtypes(include=["int64", "float64"]).columns:
+    df[_c] = df[_c].fillna(df[_c].median())
+for _c in df.select_dtypes(include=["object"]).columns:
+    df[_c] = df[_c].fillna(df[_c].mode().iloc[0] if not df[_c].mode().empty else "MISSING")
 
 X_train, X_test, y_train, y_test = train_test_split(
     df, target, test_size=0.2, random_state=42
@@ -222,8 +249,25 @@ def _write_tabnet_script(mission_brief: dict, job_id: str, scripts_dir: str = ".
     file_path = mission_brief["dataset"]["file_path"]
     is_classification = task_type == "classification"
     data_filename = os.path.basename(file_path)
-    target_line = f'target = df.pop("{target}")' if target else "target = df.iloc[:, -1]"
-
+    if target:
+        target_line = f'target = df.pop("{target}")'
+    else:
+        target_line = (
+            '_target_names = ["target","label","y","Survived","survived","class","outcome","result","answer","class_label"]\n'
+            "_target_col = None\n"
+            "for _c in _target_names:\n"
+            "    if _c in df.columns:\n"
+            "        _target_col = _c\n"
+            "        break\n"
+            "if _target_col is None:\n"
+            '    for _c in df.select_dtypes(include=["int64","float64"]).columns:\n'
+            "        if set(df[_c].dropna().unique()).issubset({0, 1}):\n"
+            "            _target_col = _c\n"
+            "            break\n"
+            "if _target_col is None:\n"
+            "    _target_col = df.columns[-1]\n"
+            "target = df.pop(_target_col)"
+        )
     script = f'''"""
 Training script for job {job_id}
 Architecture: tabnet
@@ -256,6 +300,15 @@ df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"))
 for col in ["Name", "Ticket", "Cabin"]:
     if col in df.columns:
         df.drop(columns=[col], inplace=True)
+
+mask = target.notna()
+df = df[mask]
+target = target[mask]
+
+for _c in df.select_dtypes(include=["int64", "float64"]).columns:
+    df[_c] = df[_c].fillna(df[_c].median())
+for _c in df.select_dtypes(include=["object"]).columns:
+    df[_c] = df[_c].fillna(df[_c].mode().iloc[0] if not df[_c].mode().empty else "MISSING")
 
 X_train, X_test, y_train, y_test = train_test_split(
     df, target, test_size=0.2, random_state=42
@@ -354,7 +407,25 @@ def _write_lightgbm_script(mission_brief: dict, job_id: str, scripts_dir: str = 
     is_classification = task_type == "classification"
     data_filename = os.path.basename(file_path)
 
-    target_line = f'target = df.pop("{target}")' if target else "target = df.iloc[:, -1]"
+    if target:
+        target_line = f'target = df.pop("{target}")'
+    else:
+        target_line = (
+            '_target_names = ["target","label","y","Survived","survived","class","outcome","result","answer","class_label"]\n'
+            "_target_col = None\n"
+            "for _c in _target_names:\n"
+            "    if _c in df.columns:\n"
+            "        _target_col = _c\n"
+            "        break\n"
+            "if _target_col is None:\n"
+            '    for _c in df.select_dtypes(include=["int64","float64"]).columns:\n'
+            "        if set(df[_c].dropna().unique()).issubset({0, 1}):\n"
+            "            _target_col = _c\n"
+            "            break\n"
+            "if _target_col is None:\n"
+            "    _target_col = df.columns[-1]\n"
+            "target = df.pop(_target_col)"
+        )
     eval_metrics = (
         'y_pred_class = (y_pred > 0.5).astype(int)\nprint(f"Accuracy: {accuracy_score(y_test, y_pred_class):.4f}")'
         if is_classification
@@ -398,6 +469,15 @@ df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"))
 for col in ["Name", "Ticket", "Cabin"]:
     if col in df.columns:
         df.drop(columns=[col], inplace=True)
+
+mask = target.notna()
+df = df[mask]
+target = target[mask]
+
+for _c in df.select_dtypes(include=["int64", "float64"]).columns:
+    df[_c] = df[_c].fillna(df[_c].median())
+for _c in df.select_dtypes(include=["object"]).columns:
+    df[_c] = df[_c].fillna(df[_c].mode().iloc[0] if not df[_c].mode().empty else "MISSING")
 
 X_train, X_test, y_train, y_test = train_test_split(
     df, target, test_size=0.2, random_state=42

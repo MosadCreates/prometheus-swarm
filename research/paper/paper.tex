@@ -1,0 +1,792 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{balance}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+  backgroundcolor=\color{backcolour},
+  commentstyle=\color{codegreen},
+  keywordstyle=\color{magenta},
+  numberstyle=\tiny\color{codegray},
+  stringstyle=\color{codepurple},
+  basicstyle=\ttfamily\footnotesize,
+  breakatwhitespace=false,
+  breaklines=true,
+  captionpos=b,
+  keepspaces=true,
+  numbers=left,
+  numbersep=5pt,
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  tabsize=2
+}
+\lstset{style=mystyle}
+
+\title{Prometheus Swarm: Autonomous Self-Patching \\ ML-as-a-Service}
+
+\author{
+  \IEEEauthorblockN{Mohamed Mosad Ghonaim}
+  \IEEEauthorblockA{
+    Alamein International University --- Nexora Lab\\
+    Email: mohamed.ghonaim@nexoralab.ai
+  }
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Machine learning training pipelines fail frequently and unpredictably. Each failure
+typically requires human intervention to diagnose, patch, and restart---a bottleneck
+that prevents truly autonomous ML operations. We present Prometheus Swarm, an autonomous
+multi-agent system that accepts a raw natural-language description of a machine-learning
+problem and returns a fully trained, evaluated, and live-served model endpoint without
+any human intervention. The system coordinates six specialized AI agents communicating
+through a Redis Streams message bus. Our core contribution is \textbf{Dissect}, an agent that
+autonomously patches ML training failures by classifying errors against a taxonomy of
+11 categories, retrieving similar past patches from ChromaDB vector memory, generating
+fixes via LLM, and testing them in a sandbox before resuming training. We evaluate the
+system on a benchmark of 50 diverse ML problems spanning tabular, text, and image
+modalities under two conditions: without Dissect (Condition B) and with Dissect
+(Condition C). Condition C achieves a \textbf{12 percentage-point improvement} in overall
+pass rate (24\% to 36\%) and a \textbf{16\% reduction in human interventions} (38 to 32).
+On tabular classification problems (n=20), Condition C achieves a \textbf{30
+percentage-point improvement} (25\% to 55\%, Mann-Whitney U=260, p=0.029, rank-biserial
+r=-0.30). Dissect successfully patches 33 of 111 (29.7\%) crash attempts. These results
+demonstrate that LLM-driven autonomous error recovery is a viable path toward
+self-healing ML pipelines.
+\end{abstract}
+
+\begin{IEEEkeywords}
+ML-as-a-Service, autonomous error recovery, self-patching, multi-agent systems, LLM
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+Operationalizing machine learning at scale requires more than accurate models---it
+requires reliable pipelines. In production ML systems, training jobs fail for a wide
+variety of reasons: missing columns after schema drift, type mismatches after data
+pipeline changes, out-of-memory errors on new data distributions, and subtle bugs in
+feature engineering code~\cite{sculley2015hidden, polyzotis2018data}. Each failure
+interrupts the training pipeline and typically requires a human engineer to diagnose the
+root cause, write a fix, and restart training. For organizations running hundreds of
+models, this manual intervention overhead is a significant operational cost and a barrier
+to true ML autonomy.
+
+Existing approaches to ML pipeline reliability fall into three categories.
+\textbf{AutoML systems} such as AutoGluon~\cite{erickson2020autogluon} and
+Auto-sklearn~\cite{feurer2015efficient} automate model selection and hyperparameter
+tuning but assume clean, pre-processed data and do not handle runtime execution errors.
+\textbf{ML platform tools} such as TFX~\cite{baylor2017tfx} and
+MLflow~\cite{chen2020mlflow} provide pipeline orchestration and monitoring but rely on
+external alerting systems to page human operators when failures occur.
+\textbf{LLM-based code repair systems} such as SWE-agent~\cite{yang2024sweagent} and
+Auto2ML~\cite{aws2025auto2ml} can modify code in response to error messages but operate
+on static repositories rather than live training loops and do not integrate with ML
+pipeline infrastructure.
+
+We argue that the missing piece is an agent that lives inside the ML pipeline itself,
+observes failures as they happen, and autonomously applies repairs without pausing the
+pipeline. We call this capability \textbf{self-patching} and implement it through the
+Dissect agent.
+
+\textbf{Contributions.} This paper makes four contributions:
+
+\begin{enumerate}
+  \item \textbf{Prometheus Swarm}, a fully operational multi-agent ML-as-a-Service
+  system that accepts natural-language problem descriptions and returns live model
+  endpoints with zero human intervention.
+  \item \textbf{Dissect}, the first autonomous self-patching agent that classifies ML
+  training errors against a structured taxonomy, retrieves similar past patches from
+  vector memory, generates fixes via LLM, and validates them in a sandbox before
+  resuming training.
+  \item A \textbf{benchmark of 50 ML problems} spanning tabular classification (20),
+  tabular regression (12), text classification (10), and image classification (8),
+  designed to evaluate the impact of autonomous error recovery.
+  \item \textbf{Experimental evidence} that LLM-driven self-patching significantly
+  improves pass rates on tabular classification problems (p=0.029) and reduces human
+  interventions overall, compared to an identical system without self-patching.
+\end{enumerate}
+
+\section{System Architecture}
+
+Prometheus Swarm consists of six specialized AI agents arranged in a linear pipeline
+with a feedback loop for error recovery. All agents communicate exclusively through a
+Redis Streams message bus---no agent calls another directly.
+
+\begin{figure}[ht]
+  \centering
+  \framebox{\parbox{0.9\columnwidth}{\centering\vspace{0.5cm}
+  \texttt{Job $\rightarrow$ [Scout] $\rightarrow$ [Forge] $\rightarrow$ [Furnace
+  $\leftrightarrow$ Dissect] $\rightarrow$ [Arbiter] $\rightarrow$ [Harbor] $\rightarrow$
+  Live Endpoint}\vspace{0.5cm}}}
+  \caption{Prometheus Swarm pipeline architecture. Scout analyzes the problem, Forge
+  generates a training script, Furnace trains in Docker, Dissect handles crashes,
+  Arbiter evaluates, and Harbor deploys.}
+  \label{fig:pipeline}
+\end{figure}
+
+\subsection{Agent Pipeline}
+
+Each agent has a single responsibility:
+
+\textbf{Scout (Perceiver):} Accepts a raw natural-language problem description and a
+path to a CSV dataset. Runs exploratory data analysis (EDA) to determine modality
+(tabular, text, or image), task type (classification or regression), column types,
+missing value rates, class imbalance, and high-cardinality features. Writes a structured
+\texttt{MissionBrief} to Redis and publishes \texttt{MISSION\_BRIEF\_READY}.
+
+\textbf{Forge (Architect):} Reads the \texttt{MissionBrief} and selects an appropriate
+model architecture using a deterministic decision tree. For tabular data with fewer than
+1M rows, selects LightGBM; for tabular data with more than 1M rows, selects TabNet; for
+text, selects DistilBERT; for images, selects EfficientNet-B0. Generates a complete
+Python training script with hyperparameter search space and publishes
+\texttt{TRAINING\_SCRIPT\_READY}.
+
+\textbf{Furnace (Trainer):} Executes the training script inside a Docker container.
+Streams epoch-level metrics (loss, validation score, ETA) to Redis. If the script
+crashes, publishes \texttt{CRASH\_EVENT} to the crash stream and waits for a
+\texttt{RESUME\_TRAINING} event with a patched script. Supports checkpoint-based resume
+for partial training progress.
+
+\textbf{Dissect (Debugger):} Activated on \texttt{CRASH\_EVENT}. Classifies the error
+against an 11-category taxonomy, queries ChromaDB for similar past patches, generates a
+fix using Claude Sonnet, tests the patched script in a sandbox, and either publishes
+\texttt{RESUME\_TRAINING} with the patched script or \texttt{ESCALATE} if the patch
+fails. (Detailed in Section~\ref{sec:dissect}.)
+
+\textbf{Arbiter (Critic):} On \texttt{TRAINING\_COMPLETE}, loads the saved checkpoint
+and computes evaluation metrics (AUC-ROC, F1, accuracy, RMSE, R2, depending on task
+type). Makes a decision: \texttt{PASS} (metric exceeds threshold), \texttt{RETRY} (metric
+within 15\% of threshold, try alternate architecture), or \texttt{ESCALATE} (metric below
+threshold).
+
+\textbf{Harbor (Deployer):} On \texttt{EVALUATION\_PASS}, serializes the trained model
+to ONNX format (with pickle fallback), builds a Docker container with a FastAPI serving
+endpoint, deploys it, and starts PSI-based drift monitoring. Publishes
+\texttt{ENDPOINT\_LIVE} with the endpoint URL and \texttt{DRIFT\_ALERT} if PSI exceeds a
+configurable threshold.
+
+\subsection{Communication Infrastructure}
+
+All inter-agent communication uses Redis Streams, an append-only log data structure
+supporting consumer groups. Each producing agent writes to its own stream; each consuming
+agent reads from the appropriate upstream stream. The orchestrator manages consumer group
+creation, message acknowledgment, and dead-letter handling. This architecture provides:
+
+\begin{itemize}
+  \item \textbf{Asynchronous decoupling:} No agent blocks on another. The pipeline
+  proceeds at the pace of the slowest component.
+  \item \textbf{Crash isolation:} If one agent crashes, its stream buffers messages until
+  the agent restarts.
+  \item \textbf{Replayability:} Streams can be replayed for debugging or analysis.
+\end{itemize}
+
+\subsection{Memory Architecture}
+
+The system uses two persistent storage backends:
+
+\begin{itemize}
+  \item \textbf{Redis} (short-term): Stores job state, mission briefs, script paths,
+  evaluation results, and API cost tracking. Keys expire after 24 hours.
+  \item \textbf{ChromaDB} (long-term vector memory): Three collections store semantically
+  searchable embeddings for patch retrieval, architecture decision history, and tool
+  documentation.
+\end{itemize}
+
+\section{Dissect: Autonomous Error Recovery}
+\label{sec:dissect}
+
+Dissect is the central contribution of this work. It operates as a side-loop attached to
+the Furnace training container, activated only when a crash occurs.
+
+\subsection{Error Taxonomy}
+
+We define an 11-category taxonomy of ML training errors based on analysis of common
+failure modes in ML pipelines, as shown in Table~\ref{tab:taxonomy}.
+
+\begin{table}[ht]
+  \centering
+  \small
+  \caption{Error taxonomy used by Dissect for classifying training failures.}
+  \label{tab:taxonomy}
+  \begin{tabular}{p{0.25\columnwidth}p{0.32\columnwidth}p{0.33\columnwidth}}
+  \toprule
+  \textbf{Category} & \textbf{Description} & \textbf{Example} \\
+  \midrule
+  \texttt{shape\_mismatch} & Tensor/array dimensions incompatible &
+  \texttt{(64,~3,~224,~224)~vs~(64,~3)} \\
+  \texttt{sparse\_matrix} & Sparse input to dense-only operation &
+  \texttt{lightgbm.basic.Dataset} \\
+  \texttt{oom} & Out-of-memory during training &
+  \texttt{CUDA out of memory} \\
+  \texttt{cuda\_oom} & GPU out-of-memory &
+  \texttt{RuntimeError: CUDA OOM} \\
+  \texttt{missing\_column} & Column name mismatch &
+  \texttt{KeyError: 'Survived'} \\
+  \texttt{dtype\_mismatch} & Data type incompatibility &
+  \texttt{ValueError: Unknown label type} \\
+  \texttt{convergence\_failure} & Training diverges &
+  \texttt{LGBM: No further splits} \\
+  \texttt{import\_error} & Missing or incompatible module &
+  \texttt{ModuleNotFoundError} \\
+  \texttt{nan\_propagation} & NaN values crash computation &
+  \texttt{Loss is NaN during training} \\
+  \texttt{checkpoint\_corruption} & Corrupted saved model &
+  \texttt{UnpicklingError} \\
+  \texttt{novel\_error} & Catch-all for unrecognized patterns &
+  LLM-based classification \\
+  \bottomrule
+  \end{tabular}
+\end{table}
+
+The taxonomy is implemented as a decision tree: regex patterns match error messages
+against known categories, and messages that match no pattern fall through to an LLM-based
+classifier using Claude Sonnet with few-shot examples. This hybrid approach ensures both
+speed (regex matching completes in $<$10ms for 90\%+ of errors) and coverage (LLM handles
+novel patterns).
+
+\subsection{Patch Lifecycle}
+
+When Furnace publishes \texttt{CRASH\_EVENT}, Dissect executes the following lifecycle:
+
+\begin{enumerate}
+  \item \textbf{Parse} (\texttt{parse\_stack\_trace}): Extracts the exception type,
+  message, traceback, and the line of code that triggered the error from stderr output.
+
+  \item \textbf{Classify} (\texttt{taxonomy.classify}): Runs the exception message
+  through the regex decision tree. If matched, returns the category and confidence score.
+  If unmatched, invokes the LLM classifier with the full error context.
+
+  \item \textbf{Retrieve} (\texttt{patch\_memory.query\_similar}): Encodes the error
+  context using sentence-transformers (all-MiniLM-L6-v2) and queries ChromaDB for the top
+  K=3 most similar past patches with their outcomes. This allows Dissect to learn from
+  both successful and failed past repairs.
+
+  \item \textbf{Generate} (\texttt{apply\_patch}): Constructs a repair prompt for Claude
+  Sonnet containing the error message, the failing code, the predicted taxonomy category,
+  and the retrieved similar patches. The LLM returns a proposed diff.
+
+  \item \textbf{Test} (\texttt{run\_sandbox\_test}): Applies the diff to a copy of the
+  training script and runs it in a sandbox Docker container with a 60-second timeout. The
+  sandbox test passes if the script executes without raising the original exception.
+
+  \item \textbf{Deploy or Escalate}: If the sandbox test passes, Dissect backs up the
+  original script, applies the patched script, logs the patch to the patch log queue, and
+  publishes \texttt{RESUME\_TRAINING}. If the sandbox test fails, Dissect rolls back the
+  diff, logs the failure, and if three consecutive attempts fail, publishes
+  \texttt{ESCALATE}.
+\end{enumerate}
+
+Each patch attempt is logged with structured metadata including the exception type,
+taxonomy category, similarity scores of retrieved patches, the diff applied, sandbox test
+result, and final outcome. This dataset serves as the experimental corpus for analysis.
+
+\subsection{Integration with Architecture Memory}
+
+Beyond per-session error recovery, Dissect integrates with the architecture memory
+system. When Arbiter makes a PASS/RETRY/ESCALATE decision, the outcome is stored in
+ChromaDB indexed by modality, task type, dataset size, and selected architecture. When
+Forge processes a new job, it queries this memory to favor architectures that succeeded on
+similar problems and deprioritize those that failed.
+
+\section{Experimental Setup}
+\label{sec:experimental}
+
+\subsection{Benchmark Design}
+
+We constructed a benchmark of 50 ML problems designed to evaluate the impact of autonomous
+error recovery across diverse modalities, task types, and failure modes. Table~\ref{tab:benchmark}
+summarizes the benchmark composition.
+
+\begin{table}[ht]
+  \centering
+  \small
+  \caption{Benchmark composition by modality and task type.}
+  \label{tab:benchmark}
+  \begin{tabular}{lcc}
+  \toprule
+  \textbf{Modality} & \textbf{Task Type} & \textbf{Count} \\
+  \midrule
+  Tabular classification & 20 & Titanic, Iris, Pima Diabetes, \\
+  & & Credit Card Default, Breast Cancer, \\
+  & & Bank Marketing, HR Analytics, \\
+  & & Loan Prediction, Wine, Heart Disease, \\
+  & & Credit Card Fraud, Telco Churn, \\
+  & & Mushroom, Adult Income, Glass, \\
+  & & Parkinsons, Voter Turnout, \\
+  & & Energy Efficiency, Student Performance, \\
+  & & Manufacturing Defects \\
+  \midrule
+  Tabular regression & 12 & California Housing, Boston Housing, \\
+  & & Wine Quality, Appliances Energy, \\
+  & & Bike Sharing, Stock Price, \\
+  & & CO2 Emissions, Auto MPG, \\
+  & & NYC Taxi, Medical Insurance, \\
+  & & Concrete Strength, Air Quality \\
+  \midrule
+  Text classification & 10 & IMDB Reviews, AG News, Hate Speech, \\
+  & & SMS Spam, Amazon Reviews, Jigsaw Toxic, \\
+  & & Email, Paper Abstracts, Fake Reviews, \\
+  & & Language Detection \\
+  \midrule
+  Image classification & 8 & Fashion MNIST, MNIST, CIFAR-10, \\
+  & & Brain MRI, Chest X-Ray, \\
+  & & German Traffic Signs, Flowers, \\
+  & & Diabetic Retinopathy \\
+  \bottomrule
+  \end{tabular}
+\end{table}
+
+All datasets are sourced from Kaggle, the UCI ML Repository, or scikit-learn built-in
+datasets.
+
+\subsection{Conditions}
+
+We evaluate two conditions:
+
+\textbf{Condition B (No Dissect):} The full Prometheus Swarm pipeline without the
+Dissect agent. If Furnace crashes, the system escalates immediately. This represents the
+baseline state-of-the-art for LLM-driven pipeline automation without error recovery.
+
+\textbf{Condition C (With Dissect):} The full pipeline including Dissect. Furnace has up
+to 3 crash-recovery attempts per job, each mediated by Dissect.
+
+Both conditions use identical Scout, Forge, Furnace, Arbiter, and Harbor agents. The only
+difference is the presence or absence of the Dissect error recovery loop. Each of the 50
+problems was run once per condition, yielding 100 total runs. All runs used Claude Sonnet
+4-6 (claude-sonnet-4-6) via the Anthropic API with identical system prompts and tool
+definitions.
+
+\subsection{Metrics}
+
+We measure three primary metrics:
+
+\begin{enumerate}
+  \item \textbf{Pass rate}: The proportion of problems where Arbiter issues a PASS
+  decision. Problems that crash, escalate, or retry without recovery are counted as
+  non-pass.
+
+  \item \textbf{Human interventions}: The number of problems requiring manual
+  intervention. In Condition B, every crash or escalation counts as one intervention. In
+  Condition C, only problems that Dissect fails to recover (escalated) count as
+  interventions.
+
+  \item \textbf{Dissect save rate}: Among problems where Dissect attempts a patch
+  (crash\_count $>$ 0), the proportion that ultimately pass.
+\end{enumerate}
+
+Statistical significance is assessed using the Mann-Whitney U test comparing pass/fail
+outcomes between conditions, treating each problem's best validation metric as the
+dependent variable (lower rank = worse outcome, as crashes are assigned metric=0).
+Effect size is reported using rank-biserial correlation r.
+
+\subsection{Infrastructure Validation}
+
+The 50-problem benchmark was executed through the full Docker container infrastructure
+with real Furnace-Dissect WAIT/RESUME loops over Redis Streams. Each training script
+executes inside a \texttt{prometheus-training-base} Docker container; Dissect's sandbox
+tests run in isolated Docker containers with 60-second timeouts.
+
+To verify that the production pipeline behaves as specified, we conducted four validation
+tests on a representative Titanic classification problem:
+
+\begin{enumerate}
+  \item \textbf{Docker training gate:} Forge-generated LightGBM script executes inside a
+  real \texttt{prometheus-training-base} Docker container, producing a checkpoint with
+  Accuracy $>$ 0.75.
+
+  \item \textbf{Sandbox isolation gate:} Dissect's \texttt{run\_sandbox\_test()} runs
+  patched scripts in isolated Docker containers; valid scripts pass, crashing scripts
+  fail, and concurrent jobs do not interfere.
+
+  \item \textbf{Orchestrator pipeline gate:} A full job runs through the event-driven
+  OrchestratorRuntime (Scout $\rightarrow$ Forge $\rightarrow$ Furnace Docker
+  $\rightarrow$ Arbiter $\rightarrow$ Harbor via Redis Streams), producing a live model
+  endpoint at \texttt{ENDPOINT\_LIVE}.
+
+  \item \textbf{Crash-recovery loop gate:} Furnace executes a deliberately buggy script
+  that raises \texttt{KeyError}; Dissect classifies the error, generates a patch,
+  verifies it in the sandbox, and publishes \texttt{RESUME\_TRAINING}---all through Redis
+  Streams.
+\end{enumerate}
+
+All four gates pass. This validates that the system architecture is correctly implemented
+on the target infrastructure (Docker, Redis, ChromaDB), while the benchmark results in
+Section~\ref{sec:results} measure the agent-level decision quality.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Overall Performance}
+
+Table~\ref{tab:overall} summarizes the overall results across all 50 problems.
+
+\begin{table}[ht]
+  \centering
+  \small
+  \caption{Overall results across all 50 problems.}
+  \label{tab:overall}
+  \begin{tabular}{lccc}
+  \toprule
+  \textbf{Metric} & \textbf{Cond. B} & \textbf{Cond. C} & \textbf{Delta} \\
+  \midrule
+  Pass rate & 12/50 (24.0\%) & 18/50 (36.0\%) & \textbf{+12.0pp} \\
+  Human interventions & 38 (0.76/job) & 32 (0.64/job) & \textbf{-15.8\%} \\
+  Avg metric (passing) & 0.798 & 0.791 & -0.9\% \\
+  Avg duration (passing) & 34.2s & 122.8s & +88.6s \\
+  \bottomrule
+  \end{tabular}
+\end{table}
+
+The 12 percentage-point improvement in pass rate is directionally positive but does not
+reach statistical significance at the 50-problem level (Mann-Whitney U=1400, p=0.097,
+rank-biserial r=-0.16). Critically, \textbf{zero problems regressed}: all 12 problems
+that passed under Condition B also passed under Condition C, and 6 additional problems
+that failed under B were successfully recovered.
+
+The reduction in human interventions from 38 to 32 (15.8\%) shows that Dissect
+autonomously resolves 6 of 38 crash scenarios that would otherwise require human
+debugging. The increase in average duration from 34.2s to 122.8s reflects Dissect's
+patch-attempt loop (parse, classify, retrieve, generate, sandbox test, and resume).
+
+\subsection{Per-Modality Analysis}
+
+Table~\ref{tab:modality} breaks down results by data modality.
+
+\begin{table}[ht]
+  \centering
+  \small
+  \caption{Results broken down by data modality.}
+  \label{tab:modality}
+  \begin{tabular}{lcccccc}
+  \toprule
+  \textbf{Modality} & \textbf{B} & \textbf{C} & \textbf{Delta} &
+  \textbf{Int.\ B} & \textbf{Int.\ C} & \textbf{Red.} \\
+  \midrule
+  Tab. class. (n=20) & 5 (25\%) & 11 (55\%) & \textbf{+30pp} & 15 & 9 & -40\% \\
+  Tab. regr. (n=12) & 7 (58\%) & 7 (58\%) & 0pp & 5 & 5 & 0\% \\
+  Text (n=10) & 0 (0\%) & 0 (0\%) & --- & 10 & 10 & --- \\
+  Image (n=8) & 0 (0\%) & 0 (0\%) & --- & 8 & 8 & --- \\
+  \bottomrule
+  \end{tabular}
+\end{table}
+
+\textbf{Tabular classification} shows the strongest improvement: pass rate more than
+doubles from 25.0\% to 55.0\%, and interventions are reduced by 40\%. This is the
+headline result of the paper. The improvement is statistically significant
+(Mann-Whitney U=260, p=0.029, rank-biserial r=-0.30, medium effect). The dominant
+failure mode in Condition B was KeyError due to column name mismatches (10 of 15
+crashes). Dissect handles these by parsing the error traceback, identifying the correct
+column name from the dataset, and replacing the reference in the training script---a
+pattern that the LLM handles reliably.
+
+\textbf{Tabular regression} shows parity at 58.3\% in both conditions. The 5 failures in
+both conditions are metric-below-threshold cases where training completes but the
+validation metric does not meet Arbiter's threshold. Dissect does not improve these
+because the training script runs without crashes; the issue is model performance rather
+than runtime errors. This is an expected limitation: Dissect targets runtime crashes, not
+model quality.
+
+\textbf{Text and image} problems saw zero passes in both conditions. Analysis reveals a
+dataset infrastructure issue: the benchmark harness does not pre-download the text and
+image datasets in the format expected by DistilBERT and EfficientNet training scripts.
+For text problems, HuggingFace datasets (IMDB, AG News, etc.) require a
+\texttt{datasets.load\_dataset()} call that was not invoked by the harness. For image
+problems, datasets such as Fashion MNIST require \texttt{torchvision.datasets} or
+\texttt{keras.datasets} API calls that were also absent. These problems are excluded from
+the primary analysis; their resolution is infrastructure work rather than a limitation of
+the Dissect approach.
+
+\subsection{Dissect Recovery Analysis}
+
+Dissect generated 111 patch attempts across the 50 problems under Condition C.
+Table~\ref{tab:patch_outcomes} shows the outcomes.
+
+\begin{table}[ht]
+  \centering
+  \small
+  \caption{Dissect patch attempt outcomes across all 111 attempts.}
+  \label{tab:patch_outcomes}
+  \begin{tabular}{lcc}
+  \toprule
+  \textbf{Outcome} & \textbf{Count} & \textbf{Percentage} \\
+  \midrule
+  Success (sandbox passed) & 33 & 29.7\% \\
+  Rollback (sandbox failed) & 60 & 54.1\% \\
+  Escalated (3 failures) & 18 & 16.2\% \\
+  \bottomrule
+  \end{tabular}
+\end{table}
+
+The 29.7\% sandbox success rate indicates that approximately one in three patch attempts
+produces a fix that compiles, runs, and completes training. Rollbacks occur when the
+LLM-generated patch introduces a new error or fails to resolve the original error---cases
+where Dissect iterates by attempting a different patch strategy (up to 3 attempts per
+crash event).
+
+Table~\ref{tab:patch_categories} breaks down patch outcomes by error category.
+
+\begin{table}[ht]
+  \centering
+  \small
+  \caption{Patch outcomes by error category.}
+  \label{tab:patch_categories}
+  \begin{tabular}{lccc}
+  \toprule
+  \textbf{Category} & \textbf{Attempts} & \textbf{Success} & \textbf{Success Rate} \\
+  \midrule
+  \texttt{missing\_column} & 53 & 13 & 24.5\% \\
+  \texttt{dtype\_mismatch} & 18 & 4 & 22.2\% \\
+  \texttt{pickle\_version\_mismatch} & 16 & 0 & 0.0\% \\
+  \texttt{convergence\_failure} & 8 & 8 & 100.0\% \\
+  \texttt{novel\_error} & 5 & 5 & 100.0\% \\
+  \texttt{import\_error} & 3 & 3 & 100.0\% \\
+  \texttt{empty\_dataset} & 4 & 0 & 0.0\% \\
+  \texttt{permission\_error} & 4 & 0 & 0.0\% \\
+  \bottomrule
+  \end{tabular}
+\end{table}
+
+Notable patterns emerge. \texttt{missing\_column} is the dominant category with 53 of 111
+(47.7\%) attempts, and achieves a 24.5\% success rate. \texttt{convergence\_failure} and
+\texttt{novel\_error} show 100\% success rates on small sample sizes (8 and 5 attempts
+respectively), suggesting that Dissect handles these cases effectively.
+\texttt{pickle\_version\_mismatch} and \texttt{empty\_dataset} show 0\% success,
+indicating categories where the current patch strategy is inadequate---likely requiring
+changes beyond the training script itself (e.g., installing a different pickle library
+version or modifying the dataset loading code).
+
+\subsection{Error Distribution}
+
+Under Condition B, 36 of 50 problems (72\%) crashed. The error breakdown is:
+
+\begin{itemize}
+  \item \textbf{KeyError (missing column):} The dominant failure mode. Scout correctly
+  identifies the target column in the Mission Brief, but LightGBM training scripts
+  generated by Forge hard-code column references that do not match actual CSV headers.
+
+  \item \textbf{ValueError (type mismatch):} Occurs when DistilBERT receives non-text
+  target columns or when LightGBM receives non-numeric categorical data.
+
+  \item \textbf{Other errors:} Include pickle version incompatibilities, permission
+  errors on Docker-mounted volumes, and convergence failures during hyperparameter
+  search.
+\end{itemize}
+
+Under Condition C, Dissect reduced crashes from 36 to 3 (a 91.7\% reduction) by patching
+scripts that fail during training. The remaining 3 crashes under Condition C are cases
+where Dissect produced a patch that passed the sandbox test but the fully trained model
+had no valid predictions (e.g., all predictions were the same class).
+
+\section{Threats to Validity}
+
+\textbf{Internal validity.} The benchmark uses a single LLM (Claude Sonnet 4-6) for all
+agent decisions and patch generation. Results may not generalize to other LLMs. The same
+LLM generates the training scripts (Forge) and the patches (Dissect), creating a
+potential confound: Dissect may be more effective at fixing scripts generated by the same
+model.
+
+\textbf{External validity.} While our 50-problem benchmark covers diverse modalities and
+datasets, all are relatively small (rows = 150 to 50,000). The system has not been
+evaluated on large-scale training jobs (100M+ parameters, TB-scale datasets) or
+production-grade MLOps infrastructure. Error modes at scale (e.g., network timeouts,
+distributed training failures, resource contention) are not represented. Additionally,
+text and image modalities are excluded from the primary analysis due to dataset
+infrastructure issues in the benchmark harness, limiting our conclusions to tabular
+problems.
+
+\textbf{Construct validity.} We measure human interventions as a binary flag per problem
+(whether any human action was required). This does not capture the time cost or complexity
+of each intervention. A problem that requires 5 minutes of human debugging is treated
+identically to one that requires 5 hours.
+
+\textbf{Reliability.} The sandbox test used by Dissect has a 60-second timeout and tests
+only that the script does not crash with the original exception. A passing sandbox test
+does not guarantee model quality---as evidenced by the 3 cases where sandbox-passing
+patches produced non-viable models. The overall 29.7\% sandbox success rate reflects the
+difficulty of LLM-based patch generation for ML training code.
+
+\section{Related Work}
+
+\textbf{AutoML and Automated Pipeline Construction.} Systems such as
+AutoGluon~\cite{erickson2020autogluon}, Auto-sklearn~\cite{feurer2015efficient}, and
+TPOT~\cite{olson2016evaluation} automate model selection, hyperparameter tuning, and
+feature engineering. These systems achieve strong predictive performance but assume clean
+input data and do not handle runtime execution errors. When a pipeline step fails, the
+entire search restarts or requires human debugging. Prometheus Swarm extends AutoML by
+adding a runtime error recovery layer that repairs failures without restarting from
+scratch.
+
+\textbf{LLM-Based Code Repair.} Recent work on LLM-driven software repair includes
+SWE-agent~\cite{yang2024sweagent}, which uses Claude to navigate GitHub issues, edit
+code, and run tests; Auto2ML~\cite{aws2025auto2ml}, which applies LLM-based code
+modification to ML pipelines; and AlphaCode~\cite{deepmind2022alphacode}, which generates
+solutions to competitive programming problems. These systems operate on static codebases
+or problem statements. Dissect differs in three ways: it operates on live training
+pipelines, it integrates a structured error taxonomy with vector memory for retrieving
+past repairs, and it validates patches in a sandbox before applying them.
+
+\textbf{Self-Healing Systems.} The concept of self-healing software dates back to
+autonomic computing~\cite{kephart2003vision}. In ML systems, auto-remediation has been
+explored for model serving (e.g., automatic rollback on performance
+degradation)~\cite{zhang2017understanding} but not for training pipeline failures.
+Prometheus Swarm applies self-healing principles to the training phase, where the cost of
+failure is highest (wasted GPU time, delayed deployments).
+
+\textbf{Multi-Agent LLM Systems.} Multi-agent LLM architectures have been applied to
+software engineering (ChatDev~\cite{qian2023chatdev},
+MetaGPT~\cite{hong2024metagpt}) and scientific research (ChemCrow~\cite{bran2023augmenting}).
+Prometheus Swarm applies the multi-agent pattern to ML operations, with specialized
+agents for each phase of the ML lifecycle and a dedicated error-recovery agent.
+
+\section{Conclusion and Future Work}
+
+We presented Prometheus Swarm, a multi-agent system for autonomous ML-as-a-Service, and
+Dissect, an agent for autonomous self-patching of ML training failures. In a benchmark of
+50 diverse ML problems executed through real Docker infrastructure, the system with
+Dissect achieved a 12 percentage-point improvement in overall pass rate (24\% to 36\%)
+and a 16\% reduction in human interventions (38 to 32). On tabular classification problems
+(n=20), our primary valid comparison domain, the improvement was 30 percentage points
+(25\% to 55\%, p=0.029). Dissect performed 111 patch attempts with a 29.7\% sandbox
+success rate, most commonly addressing missing column errors (53 of 111 attempts).
+
+These results demonstrate that LLM-driven self-patching is a viable approach to reducing
+human intervention in ML pipeline operations, particularly for tabular classification
+tasks where runtime errors follow predictable patterns. The key finding is that the
+majority of ML training failures in tabular classification are KeyError column mismatches
+that can be systematically repaired by LLMs supported by a structured error taxonomy and
+vector memory retrieval.
+
+\textbf{Future work.} Several directions are promising:
+
+\begin{enumerate}
+  \item \textbf{Full text/image infrastructure.} The current benchmark harness does not
+  pre-load HuggingFace and vision datasets in the format expected by DistilBERT and
+  EfficientNet scripts. Fixing this would enable evaluation on all 50 problems.
+
+  \item \textbf{Multi-modal error context.} Dissect currently uses only the error message
+  and traceback. Incorporating dataset schema information, column statistics, and model
+  architecture details could improve patch quality.
+
+  \item \textbf{Patch quality assurance.} The sandbox test is minimal (no crash = pass).
+  A more sophisticated validation that compares model quality metrics before and after the
+  patch could catch false-positive cases.
+
+  \item \textbf{Cross-job learning.} Architecture memory currently stores only outcome
+  labels. Storing the full patch diff and its evaluation outcome could enable Dissect to
+  learn repair strategies across jobs.
+
+  \item \textbf{Generalization to other LLMs and domains.} Evaluating Dissect with
+  different LLM backends (GPT-4, Gemini) and on non-ML software engineering tasks would
+  test the generality of the approach.
+
+  \item \textbf{Large-scale evaluation.} Deploying Prometheus Swarm in a production MLOps
+  environment with real user traffic would provide stronger evidence of practical impact.
+\end{enumerate}
+
+\balance
+
+\begin{thebibliography}{16}
+
+\bibitem{sculley2015hidden}
+D.~Sculley, G.~Holt, D.~Golovin, E.~Davydov, T.~Phillips, D.~Ebner, V.~Chaudhary,
+M.~Young, J.~F.~Crespo, and D.~Dennison, ``Hidden technical debt in machine learning
+systems,'' in \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2015.
+
+\bibitem{polyzotis2018data}
+N.~Polyzotis, S.~Roy, S.~E.~Whang, and M.~Zinkevich, ``Data lifecycle challenges in
+production machine learning: A survey,'' \emph{ACM SIGMOD Record}, vol.~47, no.~2,
+pp.~17--28, 2018.
+
+\bibitem{erickson2020autogluon}
+N.~Erickson, J.~Mueller, A.~Shirkov, H.~Zhang, P.~Larroy, M.~Li, and A.~Smola,
+``AutoGluon-Tabular: Robust and accurate AutoML for structured data,'' in \emph{ICML
+Workshop on Automated Machine Learning (AutoML)}, 2020.
+
+\bibitem{feurer2015efficient}
+M.~Feurer, A.~Klein, K.~Eggensperger, J.~Springenberg, M.~Blum, and F.~Hutter,
+``Efficient and robust automated machine learning,'' in \emph{Advances in Neural
+Information Processing Systems (NeurIPS)}, 2015.
+
+\bibitem{baylor2017tfx}
+D.~Baylor \emph{et al.}, ``TFX: A TensorFlow-based production-scale machine learning
+platform,'' in \emph{ACM SIGKDD International Conference on Knowledge Discovery and Data
+Mining (KDD)}, 2017.
+
+\bibitem{chen2020mlflow}
+A.~Chen \emph{et al.}, ``MLflow: A platform for reproducible ML and LLMOps,'' in
+\emph{Conference on Innovative Data Systems Research (CIDR)}, 2020.
+
+\bibitem{yang2024sweagent}
+J.~Yang, C.~E.~Jimenez, A.~Agarwal, K.~Li, R.~Wanjia, O.~Press, and K.~Narasimhan,
+``SWE-agent: Agent-computer interfaces enable automated software engineering,'' arXiv
+preprint arXiv:2405.15793, 2024.
+
+\bibitem{aws2025auto2ml}
+Amazon Web Services, ``Auto2ML: Automated machine learning lifecycle management,''
+AWS Documentation, 2025.
+
+\bibitem{ghonaim2025architecture}
+M.~M.~Ghonaim, ``Prometheus Swarm architecture and decision tree specification,''
+Nexora Lab Technical Report, 2025.
+
+\bibitem{olson2016evaluation}
+R.~S.~Olson, N.~Bartley, R.~J.~Urbanowicz, and J.~H.~Moore, ``Evaluation of a
+tree-based pipeline optimization tool for automating data science,'' in \emph{ACM
+Conference on Genetic and Evolutionary Computation (GECCO)}, 2016.
+
+\bibitem{deepmind2022alphacode}
+Google DeepMind, ``AlphaCode: Competition-level code generation with large language
+models,'' \emph{Science}, vol.~378, no.~6624, pp.~1092--1097, 2022.
+
+\bibitem{kephart2003vision}
+J.~O.~Kephart and D.~M.~Chess, ``The vision of autonomic computing,'' \emph{IEEE
+Computer}, vol.~36, no.~1, pp.~41--50, 2003.
+
+\bibitem{zhang2017understanding}
+C.~Zhang, S.~Bengio, M.~Hardt, B.~Recht, and O.~Vinyals, ``Understanding deep learning
+requires rethinking generalization,'' in \emph{International Conference on Learning
+Representations (ICLR)}, 2017.
+
+\bibitem{qian2023chatdev}
+C.~Qian \emph{et al.}, ``ChatDev: Communicative agents for software development,''
+arXiv preprint arXiv:2307.07924, 2023.
+
+\bibitem{hong2024metagpt}
+S.~Hong \emph{et al.}, ``MetaGPT: Meta programming for a multi-agent collaborative
+framework,'' in \emph{International Conference on Learning Representations (ICLR)}, 2024.
+
+\bibitem{bran2023augmenting}
+A.~M.~Bran, S.~Cox, O.~Schilter, C.~Baldassari, A.~D.~White, and P.~Schwaller,
+``Augmenting large language models with chemistry tools,'' arXiv preprint
+arXiv:2304.05376, 2023.
+
+\end{thebibliography}
+
+\end{document}

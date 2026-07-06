@@ -11,6 +11,12 @@ import json
 import logging
 import os
 import sys
+
+# Ensure project root is on sys.path so agent modules can be imported
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -77,6 +83,9 @@ class OrchestratorRuntime:
 
         await self._ensure_consumer_groups()
         await self._register_all_tools()
+
+        # Write heartbeat every 5s so frontend can detect orchestrator is alive
+        asyncio.create_task(self._heartbeat_loop())
 
         # Start metrics server
         from shared.metrics import start_metrics_server
@@ -155,6 +164,14 @@ class OrchestratorRuntime:
         ]
 
         await asyncio.gather(*consumers)
+
+    async def _heartbeat_loop(self) -> None:
+        while self._running:
+            try:
+                await self.redis.set("orch:heartbeat", datetime.now(timezone.utc).isoformat())
+                await asyncio.sleep(5)
+            except Exception:
+                pass
 
     async def stop(self) -> None:
         self._running = False
@@ -346,8 +363,32 @@ class OrchestratorRuntime:
     # Event handlers — launch real agents
     # ------------------------------------------------------------------
 
+    async def _run_scout_if_needed(self, data: dict) -> None:
+        job_id = data.get("job_id", "?")
+        brief_key = f"job:{job_id}:mission_brief"
+        exists = await self.redis.exists(brief_key)
+        if exists:
+            return
+        logger.info(f"[job={job_id}] No mission brief found. Running Scout first.")
+        await self._set_job_status(job_id, "SCOUT_ANALYZING", "Scout")
+        scout = ScoutAgent(job_id=job_id)
+        scout.redis = self._make_redis_client()
+        scout.job_data = {
+            "problem_description": data.get("problem_description", ""),
+            "file_path": data.get("file_path", ""),
+            "target_column": data.get("target_column"),
+            "constraints": None,
+        }
+        try:
+            await scout.run()
+        except Exception as e:
+            logger.error(f"[job={job_id}] Scout failed: {e}")
+            await self._handle_escalate(job_id, "Scout", f"Scout execution failed: {e}")
+            raise
+
     async def _on_mission_brief_ready(self, data: dict) -> None:
         job_id = data.get("job_id", "?")
+        await self._run_scout_if_needed(data)
         logger.info(f"[job={job_id}] Mission brief ready. Launching Forge.")
         await self._set_job_status(job_id, "FORGE_WORKING", "Forge")
 
@@ -649,8 +690,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    sys.path.insert(
-        0,
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    )
     asyncio.run(main())

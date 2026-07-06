@@ -3,11 +3,29 @@ name = "prometheus-swarm"
 version = "0.1.0"
 requires-python = ">=3.11"
 description = "Autonomous multi-agent ML pipeline system"
+dependencies = [
+    "click>=8.1",
+    "rich>=13.0",
+    "shellingham>=1.5",
+]
+
+[project.scripts]
+prometheus = "prometheus.main:cli"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["prometheus*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "validation: Registry and CLI structural validation tests.",
+]
 
 [tool.ruff]
 line-length = 100

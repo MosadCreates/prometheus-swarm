@@ -1,0 +1,727 @@
+from __future__ import annotations
+
+from prometheus.registry.command import Command
+
+
+def _build() -> list[Command]:
+    return [
+        # ── System ──────────────────────────────────────────────────
+        Command(
+            "version",
+            "System",
+            "Show the Prometheus version.",
+            tier=1,
+            implemented=True,
+            aliases=["--version"],
+            examples=["prometheus version"],
+            related=["doctor"],
+        ),
+        Command(
+            "doctor",
+            "System",
+            "Check system prerequisites and health.",
+            tier=1,
+            implemented=True,
+            examples=["prometheus doctor"],
+            related=["config check"],
+        ),
+        Command(
+            "help",
+            "System",
+            "Show help for any command.",
+            tier=1,
+            implemented=True,
+            examples=["prometheus help", "prometheus help agent list"],
+            aliases=["?"],
+            related=["commands", "search", "cheatsheet"],
+        ),
+        Command(
+            "commands",
+            "System",
+            "List all available commands.",
+            tier=1,
+            implemented=True,
+            examples=["prometheus commands"],
+            related=["help", "search"],
+        ),
+        Command(
+            "search",
+            "System",
+            "Search commands by name, description, or keyword.",
+            tier=1,
+            implemented=True,
+            examples=["prometheus search deploy"],
+            related=["commands", "help"],
+        ),
+        Command(
+            "cheatsheet",
+            "System",
+            "Show a quick-reference cheatsheet.",
+            tier=2,
+            implemented=True,
+            examples=["prometheus cheatsheet"],
+            related=["help", "commands", "search"],
+        ),
+        Command(
+            "docs",
+            "System",
+            "Generate command reference documentation.",
+            tier=2,
+            implemented=True,
+            examples=["prometheus docs --output docs/commands"],
+            related=["help", "commands"],
+        ),
+        Command(
+            "diagnostics",
+            "System",
+            "Show command diagnostics and telemetry.",
+            tier=2,
+            implemented=True,
+            examples=["prometheus diagnostics"],
+            related=["doctor"],
+        ),
+        Command(
+            "update",
+            "System",
+            "Check for and apply updates.",
+            tier=3,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        Command(
+            "benchmark",
+            "System",
+            "Run performance benchmarks.",
+            tier=3,
+            implemented=False,
+            experimental=True,
+            since="v0.3.0",
+        ),
+        # ── Config ──────────────────────────────────────────────────
+        Command(
+            "config show",
+            "Config",
+            "Show current configuration.",
+            tier=1,
+            implemented=True,
+            aliases=["cfg show"],
+            examples=["prometheus config show"],
+            related=["config set", "config check"],
+        ),
+        Command(
+            "config set",
+            "Config",
+            "Set a KEY=VALUE in .env.",
+            tier=1,
+            implemented=True,
+            aliases=["cfg set"],
+            examples=["prometheus config set KEY=value"],
+            related=["config show"],
+        ),
+        Command(
+            "config check",
+            "Config",
+            "Validate all prerequisites.",
+            tier=1,
+            implemented=True,
+            aliases=["cfg check"],
+            examples=["prometheus config check"],
+            related=["doctor"],
+        ),
+        Command(
+            "config edit",
+            "Config",
+            "Open .env in the default editor.",
+            tier=1,
+            implemented=True,
+            aliases=["cfg edit"],
+            examples=["prometheus config edit"],
+            related=["config show", "config set"],
+        ),
+        # ── Workspace ───────────────────────────────────────────────
+        Command(
+            "workspace info",
+            "Workspace",
+            "Show workspace metadata.",
+            tier=1,
+            implemented=True,
+            aliases=["ws info"],
+            examples=["prometheus workspace info"],
+            related=["workspace scan", "workspace status"],
+        ),
+        Command(
+            "workspace status",
+            "Workspace",
+            "Show workspace status.",
+            tier=1,
+            implemented=True,
+            aliases=["ws status"],
+            examples=["prometheus workspace status"],
+            related=["workspace info", "workspace scan"],
+        ),
+        Command(
+            "workspace scan",
+            "Workspace",
+            "Scan workspace files and structure.",
+            tier=1,
+            implemented=True,
+            requires_workspace=True,
+            aliases=["ws scan"],
+            examples=["prometheus workspace scan"],
+            related=["workspace info"],
+        ),
+        Command(
+            "workspace tree",
+            "Workspace",
+            "Show workspace directory tree.",
+            tier=2,
+            implemented=True,
+            requires_workspace=True,
+            aliases=["ws tree"],
+            examples=["prometheus workspace tree"],
+            related=["workspace info", "workspace status"],
+        ),
+        Command(
+            "workspace open",
+            "Workspace",
+            "Open workspace in file manager.",
+            tier=2,
+            implemented=True,
+            requires_workspace=True,
+            aliases=["ws open"],
+            examples=["prometheus workspace open"],
+            related=["workspace info", "workspace tree"],
+        ),
+        Command(
+            "workspace init",
+            "Workspace",
+            "Initialize a new workspace.",
+            tier=3,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        Command(
+            "workspace index",
+            "Workspace",
+            "Index workspace for search.",
+            tier=3,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        Command(
+            "workspace clean",
+            "Workspace",
+            "Clean workspace artifacts.",
+            tier=3,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        # ── Project ─────────────────────────────────────────────────
+        Command(
+            "project info",
+            "Project",
+            "Show project metadata and stats.",
+            tier=1,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        Command(
+            "project doctor",
+            "Project",
+            "Check project health.",
+            tier=1,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        # ── Agents ──────────────────────────────────────────────────
+        Command(
+            "agent list",
+            "Agents",
+            "List all registered agents.",
+            tier=1,
+            implemented=True,
+            aliases=["ag list", "agent ls"],
+            examples=["prometheus agent list"],
+            related=["agent inspect"],
+        ),
+        Command(
+            "agent inspect",
+            "Agents",
+            "Inspect a specific agent.",
+            tier=1,
+            implemented=True,
+            aliases=["ag inspect"],
+            examples=["prometheus agent inspect scout"],
+            related=["agent list"],
+        ),
+        Command(
+            "agent logs",
+            "Agents",
+            "Show agent logs.",
+            tier=2,
+            implemented=True,
+            aliases=["ag logs"],
+            examples=["prometheus agent logs forge"],
+            related=["agent list", "agent inspect"],
+        ),
+        Command(
+            "agent metrics",
+            "Agents",
+            "Show agent performance metrics.",
+            tier=2,
+            implemented=True,
+            aliases=["ag metrics"],
+            examples=["prometheus agent metrics"],
+            related=["agent list", "agent logs"],
+        ),
+        Command(
+            "agent run",
+            "Agents",
+            "Run an agent directly.",
+            tier=3,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        Command(
+            "agent stop",
+            "Agents",
+            "Stop a running agent.",
+            tier=3,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        Command(
+            "agent enable",
+            "Agents",
+            "Enable a disabled agent.",
+            tier=3,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        Command(
+            "agent disable",
+            "Agents",
+            "Disable an agent.",
+            tier=3,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        # ── Swarm ───────────────────────────────────────────────────
+        Command(
+            "swarm status",
+            "Swarm",
+            "Show swarm runtime status.",
+            tier=1,
+            implemented=True,
+            examples=["prometheus swarm status"],
+            related=["swarm health"],
+        ),
+        Command(
+            "swarm health",
+            "Swarm",
+            "Run swarm health checks.",
+            tier=2,
+            implemented=True,
+            examples=["prometheus swarm health"],
+            related=["swarm status"],
+        ),
+        Command(
+            "swarm monitor",
+            "Swarm",
+            "Monitor swarm activity in real-time.",
+            tier=2,
+            implemented=True,
+            experimental=True,
+            examples=["prometheus swarm monitor"],
+            related=["swarm status", "swarm health"],
+        ),
+        Command(
+            "swarm start", "Swarm", "Start the swarm.", tier=3, implemented=False, since="v0.2.0"
+        ),
+        Command(
+            "swarm stop", "Swarm", "Stop the swarm.", tier=3, implemented=False, since="v0.2.0"
+        ),
+        Command(
+            "swarm restart",
+            "Swarm",
+            "Restart the swarm.",
+            tier=3,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        Command(
+            "swarm reset",
+            "Swarm",
+            "Reset swarm state.",
+            tier=3,
+            implemented=False,
+            experimental=True,
+            since="v0.3.0",
+        ),
+        # ── Jobs ────────────────────────────────────────────────────
+        Command(
+            "job submit",
+            "Jobs",
+            "Submit a dataset to the pipeline.",
+            tier=1,
+            implemented=True,
+            requires_workspace=True,
+            requires_provider=True,
+            examples=["prometheus job submit data.csv -d 'classify' -t target"],
+            related=["job status", "job list"],
+        ),
+        Command(
+            "job status",
+            "Jobs",
+            "Show job status.",
+            tier=1,
+            implemented=True,
+            examples=["prometheus job status <job_id>"],
+            related=["job list", "job submit"],
+        ),
+        Command(
+            "job list",
+            "Jobs",
+            "List all jobs.",
+            tier=1,
+            implemented=True,
+            aliases=["job ls"],
+            examples=["prometheus job list"],
+            related=["job status"],
+        ),
+        Command(
+            "job cancel",
+            "Jobs",
+            "Cancel a running job.",
+            tier=2,
+            implemented=True,
+            examples=["prometheus job cancel <job_id>"],
+            related=["job status", "job list"],
+        ),
+        Command(
+            "job retry",
+            "Jobs",
+            "Retry a failed job.",
+            tier=2,
+            implemented=True,
+            examples=["prometheus job retry <job_id>"],
+            related=["job status", "job list"],
+        ),
+        Command(
+            "job logs",
+            "Jobs",
+            "Show job execution logs.",
+            tier=2,
+            implemented=True,
+            examples=["prometheus job logs <job_id>"],
+            related=["job status", "job list"],
+        ),
+        Command(
+            "job delete", "Jobs", "Delete a job record.", tier=3, implemented=False, since="v0.2.0"
+        ),
+        # ── Provider ────────────────────────────────────────────────
+        Command(
+            "provider list",
+            "Provider",
+            "List all AI providers.",
+            tier=1,
+            implemented=True,
+            aliases=["prov list"],
+            examples=["prometheus provider list"],
+            related=["provider current"],
+        ),
+        Command(
+            "provider current",
+            "Provider",
+            "Show the active provider.",
+            tier=1,
+            implemented=True,
+            aliases=["prov current"],
+            examples=["prometheus provider current"],
+            related=["provider list"],
+        ),
+        Command(
+            "provider switch",
+            "Provider",
+            "Switch the active provider.",
+            tier=2,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        Command(
+            "provider test",
+            "Provider",
+            "Test provider connectivity.",
+            tier=2,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        Command(
+            "provider login",
+            "Provider",
+            "Authenticate with a provider.",
+            tier=3,
+            implemented=False,
+            since="v0.3.0",
+        ),
+        Command(
+            "provider logout",
+            "Provider",
+            "Log out from a provider.",
+            tier=3,
+            implemented=False,
+            since="v0.3.0",
+        ),
+        # ── Memory ──────────────────────────────────────────────────
+        Command(
+            "memory search",
+            "Memory",
+            "Search memory store.",
+            tier=2,
+            implemented=True,
+            aliases=["mem search"],
+            examples=["prometheus memory search 'query'"],
+            related=["memory stats"],
+        ),
+        Command(
+            "memory stats",
+            "Memory",
+            "Show memory statistics.",
+            tier=2,
+            implemented=True,
+            aliases=["mem stats"],
+            examples=["prometheus memory stats"],
+            related=["memory search"],
+        ),
+        Command(
+            "memory clear",
+            "Memory",
+            "Clear memory store.",
+            tier=3,
+            implemented=False,
+            since="v0.2.0",
+        ),
+        Command(
+            "memory export",
+            "Memory",
+            "Export memory data.",
+            tier=3,
+            implemented=False,
+            since="v0.3.0",
+        ),
+        # ── Deploy ──────────────────────────────────────────────────
+        Command(
+            "deploy list",
+            "Deploy",
+            "List deployed endpoints.",
+            tier=1,
+            implemented=True,
+            aliases=["deploy ls"],
+            examples=["prometheus deploy list"],
+            related=["deploy test", "deploy logs"],
+        ),
+        Command(
+            "deploy test",
+            "Deploy",
+            "Test a deployed endpoint.",
+            tier=1,
+            implemented=True,
+            examples=["prometheus deploy test http://localhost:8080 -i test.json"],
+            related=["deploy list"],
+        ),
+        Command(
+            "deploy logs",
+            "Deploy",
+            "Show deploy container logs.",
+            tier=1,
+            implemented=True,
+            examples=["prometheus deploy logs <container>"],
+            related=["deploy list"],
+        ),
+        Command(
+            "deploy stop",
+            "Deploy",
+            "Stop a deployed endpoint.",
+            tier=1,
+            implemented=True,
+            examples=["prometheus deploy stop <container>"],
+            related=["deploy list"],
+        ),
+        # ── Profile ─────────────────────────────────────────────────
+        Command(
+            "profile list",
+            "Profile",
+            "List all saved profiles.",
+            tier=2,
+            implemented=True,
+            aliases=["profiles list"],
+            examples=["prometheus profile list"],
+            related=["profile current", "profile save", "profile switch"],
+        ),
+        Command(
+            "profile current",
+            "Profile",
+            "Show the active profile.",
+            tier=2,
+            implemented=True,
+            aliases=["profiles current"],
+            examples=["prometheus profile current"],
+            related=["profile list"],
+        ),
+        Command(
+            "profile save",
+            "Profile",
+            "Save current environment as a profile.",
+            tier=2,
+            implemented=True,
+            aliases=["profiles save"],
+            examples=["prometheus profile save my-config"],
+            related=["profile list", "profile switch"],
+        ),
+        Command(
+            "profile switch",
+            "Profile",
+            "Switch to a saved profile.",
+            tier=2,
+            implemented=True,
+            aliases=["profiles switch"],
+            examples=["prometheus profile switch my-config"],
+            related=["profile list", "profile save"],
+        ),
+        Command(
+            "profile inspect",
+            "Profile",
+            "Show a profile's environment variables.",
+            tier=2,
+            implemented=True,
+            aliases=["profiles inspect"],
+            examples=["prometheus profile inspect my-config"],
+            related=["profile list"],
+        ),
+        Command(
+            "profile delete",
+            "Profile",
+            "Delete a saved profile.",
+            tier=2,
+            implemented=True,
+            aliases=["profiles delete"],
+            examples=["prometheus profile delete my-config"],
+            related=["profile list"],
+        ),
+        # ── Plugin ──────────────────────────────────────────────────
+        Command(
+            "plugin list",
+            "Plugin",
+            "List all registered plugins.",
+            tier=2,
+            implemented=True,
+            aliases=["plugins list"],
+            examples=["prometheus plugin list"],
+            related=["plugin inspect"],
+        ),
+        Command(
+            "plugin inspect",
+            "Plugin",
+            "Inspect a specific plugin.",
+            tier=2,
+            implemented=True,
+            aliases=["plugins inspect"],
+            examples=["prometheus plugin inspect my-plugin"],
+            related=["plugin list"],
+        ),
+        # ── Tools ───────────────────────────────────────────────────
+        Command(
+            "tool list",
+            "Tools",
+            "List all registered tools.",
+            tier=2,
+            implemented=True,
+            aliases=["tool ls"],
+            examples=["prometheus tool list"],
+            related=["tool inspect"],
+        ),
+        Command(
+            "tool inspect",
+            "Tools",
+            "Inspect a specific tool.",
+            tier=2,
+            implemented=True,
+            examples=["prometheus tool inspect scout.load_data"],
+            related=["tool list"],
+        ),
+        # ── Logs ────────────────────────────────────────────────────
+        Command(
+            "logs tail",
+            "Logs",
+            "Tail Prometheus logs.",
+            tier=2,
+            implemented=True,
+            aliases=["logs follow"],
+            examples=["prometheus logs tail --lines 50"],
+            related=["logs search"],
+        ),
+        Command(
+            "logs search",
+            "Logs",
+            "Search log entries.",
+            tier=2,
+            implemented=True,
+            examples=["prometheus logs search 'error'"],
+            related=["logs tail"],
+        ),
+    ]
+
+
+_commands: list[Command] | None = None
+_categories: list[str] | None = None
+
+
+def _get_commands() -> list[Command]:
+    global _commands
+    if _commands is None:
+        _commands = _build()
+    return _commands
+
+
+def get_commands() -> list[Command]:
+    return _get_commands()
+
+
+def get_categories() -> list[str]:
+    global _categories
+    if _categories is None:
+        seen: set[str] = set()
+        cats: list[str] = []
+        for cmd in _get_commands():
+            if cmd.category not in seen:
+                cats.append(cmd.category)
+                seen.add(cmd.category)
+        _categories = cats
+    return _categories
+
+
+def get_command(name: str) -> Command | None:
+    for cmd in _get_commands():
+        if cmd.name == name:
+            return cmd
+        if name in cmd.aliases:
+            return cmd
+    return None
+
+
+def list_by_category() -> dict[str, list[Command]]:
+    result: dict[str, list[Command]] = {}
+    for cmd in _get_commands():
+        if cmd.hidden:
+            continue
+        result.setdefault(cmd.category, []).append(cmd)
+    return result
+
+
+def __getattr__(name: str):
+    if name == "COMMANDS":
+        return _get_commands()
+    if name == "CATEGORIES":
+        return get_categories()
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)

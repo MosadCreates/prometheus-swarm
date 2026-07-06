@@ -719,6 +719,13 @@ async def main():
 
     os.chdir(str(PROJECT_ROOT))
     problems = load_problems()
+    # Ensure all datasets are prepared (text fixes + image generation)
+    try:
+        from research.prepare_datasets import prepare_all
+
+        prepare_all("all")
+    except Exception as e:
+        logger.warning(f"Dataset preparation failed (continuing anyway): {e}")
     batch_idx = args.start // args.count + 1
     batch = problems[args.start : args.start + args.count]
 

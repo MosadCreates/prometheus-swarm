@@ -107,6 +107,25 @@ class FurnaceAgent(BaseAgent):
         record_heartbeat("Furnace", self.job_id)
         self.logger.info(f"[job={self.job_id}] Launching Docker training: {script_name}")
 
+        try:
+            raw = await self.redis._client.get(f"job:{self.job_id}:mission_brief")
+            if raw:
+                brief = json.loads(raw) if isinstance(raw, str) else raw
+                orig_path = brief.get("dataset", {}).get("file_path")
+                if orig_path and os.path.isfile(orig_path):
+                    data_dir = os.path.abspath("data")
+                    os.makedirs(data_dir, exist_ok=True)
+                    target = os.path.join(data_dir, os.path.basename(orig_path))
+                    if not os.path.isfile(target):
+                        import shutil
+
+                        shutil.copy2(orig_path, target)
+                        self.logger.info(
+                            f"[job={self.job_id}] Copied dataset {orig_path} -> {target}"
+                        )
+        except Exception as e:
+            self.logger.warning(f"[job={self.job_id}] Could not copy dataset: {e}")
+
         volumes = {
             os.path.abspath("scripts"): {"bind": "/app/scripts", "mode": "ro"},
             os.path.abspath("data"): {"bind": "/app/data", "mode": "ro"},

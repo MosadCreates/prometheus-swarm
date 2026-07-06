@@ -23,3 +23,16 @@ node_modules/
 .pytest_cache/
 frontend/.next/
 prometheus_swarm_blueprint.pdf
+
+# Large binaries / datasets
+data/torchvision_data/
+data/images/
+data/*.tar.gz
+research/patch_log.jsonl
+orch_err.txt
+orch_out.txt
+uploads/
+frontend-dev.log
+
+# Large design inspiration images
+UI/Inspiration/

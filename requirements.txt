@@ -30,6 +30,9 @@ prometheus-client==0.20.0
 filelock==3.15.0
 scipy==1.13.0
 
+# CLI
+click>=8.1
+
 # Dev + Testing
 pytest==8.2.0
 pytest-asyncio==0.23.7

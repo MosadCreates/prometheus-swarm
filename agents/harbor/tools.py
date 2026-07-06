@@ -82,7 +82,9 @@ def _extract_estimator_from_pipeline(model: Any) -> tuple[Any, dict]:
         if step_type == "ColumnTransformer":
             for name_, transformer, cols in step.transformers_:
                 if isinstance(cols, list):
-                    if transformer == "passthrough" or transformer == "drop":
+                    if transformer == "passthrough":
+                        preprocess_config["numeric_cols"].extend(cols)
+                    elif transformer == "drop":
                         pass
                     elif hasattr(transformer, "categories_"):
                         preprocess_config["categorical_cols"].extend(cols)
@@ -202,10 +204,6 @@ def serialize_to_onnx(
         if detected_type == "sklearn_pipeline":
             estimator, preprocess_config = _extract_estimator_from_pipeline(model)
             n_features = _get_n_features(estimator)
-            if numeric_cols:
-                preprocess_config["numeric_cols"] = numeric_cols
-            if categorical_cols:
-                preprocess_config["categorical_cols"] = categorical_cols
             onnx_model = _convert_estimator_to_onnx(estimator, n_features)
 
             os.makedirs(os.path.dirname(output_path), exist_ok=True)

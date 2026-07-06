@@ -39,7 +39,7 @@
       "total": 50,
       "pass_rate": 0.36,
       "interventions_needed": 32,
-      "improvement_pp": 6
+      "improvement_pp": 12
     }
   },
   "by_modality": {
@@ -49,7 +49,7 @@
       "condition_b_pass_rate": 0.25,
       "condition_c_passed": 11,
       "condition_c_pass_rate": 0.55,
-      "improvement_pp": 6,
+      "improvement_pp": 30,
       "note": "Primary valid comparison domain"
     },
     "tabular_regression": {
