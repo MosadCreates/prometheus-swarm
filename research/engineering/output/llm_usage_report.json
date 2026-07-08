@@ -1,0 +1,18 @@
+{
+  "total_llm_calls": 301,
+  "total_input_tokens": 834000,
+  "total_output_tokens": 222400,
+  "estimated_cost_usd": 5.84,
+  "llm_fallback_rate": 0.0764,
+  "avg_tokens_per_call": 3509.6,
+  "avg_cost_per_call_usd": 0.019395,
+  "calls_by_agent": {
+    "dissect": 278
+  },
+  "tokens_by_agent": {
+    "dissect": 1056400
+  },
+  "cost_by_agent_usd": {
+    "dissect": 5.84
+  }
+}

@@ -1,0 +1,1533 @@
+{
+  "version_a_label": "B: without Dissect",
+  "version_b_label": "C: with Dissect",
+  "pass_rate_delta_pp": 18.0,
+  "avg_metric_delta": -4562.29,
+  "avg_duration_delta_s": 151.63,
+  "patch_success_rate_delta": null,
+  "llm_cost_delta_usd": null,
+  "template_error_rate_delta": null,
+  "per_problem_comparisons": [
+    {
+      "problem_id": "TR11",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 1.13,
+      "C_duration": 117.8,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TR12",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 1.21,
+      "C_duration": 116.49,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC01",
+      "B_status": "pass",
+      "C_status": "pass",
+      "B_metric": 0.8588159588159587,
+      "C_metric": 0.8588159588159587,
+      "B_duration": 2.63,
+      "C_duration": 2.59,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TC02",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 2.49,
+      "C_duration": 111.23,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC03",
+      "B_status": "crash",
+      "C_status": "pass",
+      "B_metric": 0.0,
+      "C_metric": 0.834689230979941,
+      "B_duration": 1.39,
+      "C_duration": 126.27,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC04",
+      "B_status": "crash",
+      "C_status": "pass",
+      "B_metric": 0.0,
+      "C_metric": 0.7834929658300389,
+      "B_duration": 3.17,
+      "C_duration": 36.3,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC05",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 1.13,
+      "C_duration": 116.88,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC06",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 1.65,
+      "C_duration": 113.47,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC07",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 1.35,
+      "C_duration": 116.87,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC08",
+      "B_status": "crash",
+      "C_status": "pass",
+      "B_metric": 0.0,
+      "C_metric": 0.9746835443037974,
+      "B_duration": 1.21,
+      "C_duration": 83.71,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC09",
+      "B_status": "pass",
+      "C_status": "pass",
+      "B_metric": 1.0,
+      "C_metric": 1.0,
+      "B_duration": 2.73,
+      "C_duration": 2.81,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TC10",
+      "B_status": "crash",
+      "C_status": "pass",
+      "B_metric": 0.0,
+      "C_metric": 0.7281958263939078,
+      "B_duration": 1.22,
+      "C_duration": 45.91,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC11",
+      "B_status": "pass",
+      "C_status": "pass",
+      "B_metric": 0.7931093019650178,
+      "C_metric": 0.7931093019650178,
+      "B_duration": 4.51,
+      "C_duration": 4.17,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TC12",
+      "B_status": "pass",
+      "C_status": "pass",
+      "B_metric": 0.8072448166281945,
+      "C_metric": 0.8072448166281945,
+      "B_duration": 2.78,
+      "C_duration": 2.7,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TC13",
+      "B_status": "crash",
+      "C_status": "pass",
+      "B_metric": 0.0,
+      "C_metric": 0.4337866267611398,
+      "B_duration": 1.11,
+      "C_duration": 40.39,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC14",
+      "B_status": "crash",
+      "C_status": "pass",
+      "B_metric": 0.0,
+      "C_metric": 0.9296697837499334,
+      "B_duration": 1.13,
+      "C_duration": 37.13,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC15",
+      "B_status": "crash",
+      "C_status": "pass",
+      "B_metric": 0.0,
+      "C_metric": 1.0,
+      "B_duration": 1.2,
+      "C_duration": 34.33,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC16",
+      "B_status": "pass",
+      "C_status": "pass",
+      "B_metric": 0.8928571428571428,
+      "C_metric": 0.8928571428571428,
+      "B_duration": 2.53,
+      "C_duration": 2.51,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TC17",
+      "B_status": "pass",
+      "C_status": "pass",
+      "B_metric": 0.9087713475348501,
+      "C_metric": 0.9087713475348501,
+      "B_duration": 2.54,
+      "C_duration": 2.5,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TC18",
+      "B_status": "crash",
+      "C_status": "pass",
+      "B_metric": 0.0,
+      "C_metric": 0.960823091773791,
+      "B_duration": 1.08,
+      "C_duration": 43.1,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC19",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 1.07,
+      "C_duration": 122.6,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TC20",
+      "B_status": "escalate",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 2.52,
+      "C_duration": 2.48,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TR01",
+      "B_status": "pass",
+      "C_status": "pass",
+      "B_metric": 0.46351720797890145,
+      "C_metric": 0.46351720797890145,
+      "B_duration": 2.69,
+      "C_duration": 2.41,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TR02",
+      "B_status": "pass",
+      "C_status": "pass",
+      "B_metric": 56.57308248374223,
+      "C_metric": 56.57308248374223,
+      "B_duration": 2.41,
+      "C_duration": 2.43,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TR03",
+      "B_status": "pass",
+      "C_status": "pass",
+      "B_metric": 0.6928203230275509,
+      "C_metric": 0.6928203230275509,
+      "B_duration": 2.88,
+      "C_duration": 2.71,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TR04",
+      "B_status": "retry",
+      "C_status": "retry",
+      "B_metric": 91.91479485453506,
+      "C_metric": 91.91479485453506,
+      "B_duration": 2.63,
+      "C_duration": 2.55,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TR05",
+      "B_status": "pass",
+      "C_status": "pass",
+      "B_metric": 3.2322573777573056,
+      "C_metric": 3.2322573777573056,
+      "B_duration": 2.43,
+      "C_duration": 2.44,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TR06",
+      "B_status": "escalate",
+      "C_status": "escalate",
+      "B_metric": 68.16771814341057,
+      "C_metric": 68.16771814341057,
+      "B_duration": 21.6,
+      "C_duration": 22.15,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TR07",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 1.06,
+      "C_duration": 120.07,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TR08",
+      "B_status": "pass",
+      "C_status": "pass",
+      "B_metric": 2.225463806107758,
+      "C_metric": 2.225463806107758,
+      "B_duration": 2.86,
+      "C_duration": 2.56,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TR09",
+      "B_status": "escalate",
+      "C_status": "escalate",
+      "B_metric": 174410.44196816342,
+      "C_metric": 174410.44196816342,
+      "B_duration": 26.64,
+      "C_duration": 25.3,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TR10",
+      "B_status": "pass",
+      "C_status": "pass",
+      "B_metric": 4546.107607546178,
+      "C_metric": 4546.107607546178,
+      "B_duration": 2.74,
+      "C_duration": 2.59,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TX01",
+      "B_status": "crash",
+      "C_status": "crash",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 1.23,
+      "C_duration": 135.63,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TX02",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 1.2,
+      "C_duration": 121.55,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TX03",
+      "B_status": "crash",
+      "C_status": "pass",
+      "B_metric": 0.0,
+      "C_metric": 1.0,
+      "B_duration": 1.3,
+      "C_duration": 85.6,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TX04",
+      "B_status": "retry",
+      "C_status": "retry",
+      "B_metric": 0.6160364337148586,
+      "C_metric": 0.6160364337148586,
+      "B_duration": 3.43,
+      "C_duration": 2.61,
+      "delta_metric": 0.0
+    },
+    {
+      "problem_id": "TX05",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.03587443946188341,
+      "B_duration": 1.24,
+      "C_duration": 76.73,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TX06",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 600.08,
+      "C_duration": 1604.31,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TX07",
+      "B_status": "crash",
+      "C_status": "crash",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 12.14,
+      "C_duration": 35.46,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TX08",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.6535529232649979,
+      "B_duration": 5.47,
+      "C_duration": 290.58,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TX09",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 6.91,
+      "C_duration": 1564.02,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "TX10",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 2.73,
+      "C_duration": 1937.38,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "IC01",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 4.41,
+      "C_duration": 130.48,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "IC02",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 4.1,
+      "C_duration": 191.98,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "IC03",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 4.21,
+      "C_duration": 105.5,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "IC04",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 4.3,
+      "C_duration": 116.95,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "IC05",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 3.87,
+      "C_duration": 135.61,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "IC06",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 3.92,
+      "C_duration": 117.33,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "IC07",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 4.18,
+      "C_duration": 98.27,
+      "delta_metric": null
+    },
+    {
+      "problem_id": "IC08",
+      "B_status": "crash",
+      "C_status": "escalate",
+      "B_metric": 0.0,
+      "C_metric": 0.0,
+      "B_duration": 4.07,
+      "C_duration": 142.76,
+      "delta_metric": null
+    }
+  ],
+  "improvements": [
+    "Pass rate improved by 18.0% with Dissect",
+    "Human interventions reduced: 38 → 29",
+    "TC03: recovered from crash to pass with Dissect",
+    "TC04: recovered from crash to pass with Dissect",
+    "TC08: recovered from crash to pass with Dissect",
+    "TC10: recovered from crash to pass with Dissect",
+    "TC13: recovered from crash to pass with Dissect",
+    "TC14: recovered from crash to pass with Dissect",
+    "TC15: recovered from crash to pass with Dissect",
+    "TC18: recovered from crash to pass with Dissect",
+    "TX03: recovered from crash to pass with Dissect"
+  ],
+  "regressions": [
+    "Average validation metric decreased by 4562.2900"
+  ],
+  "condition_a": [],
+  "condition_b": [
+    {
+      "problem_id": "TR11",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.13,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR12",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.21,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC01",
+      "condition": "B_no_dissect",
+      "status": "pass",
+      "best_val_metric": 0.8588159588159587,
+      "duration_seconds": 2.63,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC02",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 2.49,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC03",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.39,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC04",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 3.17,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC05",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.13,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC06",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.65,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC07",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.35,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC08",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.21,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC09",
+      "condition": "B_no_dissect",
+      "status": "pass",
+      "best_val_metric": 1.0,
+      "duration_seconds": 2.73,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC10",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.22,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC11",
+      "condition": "B_no_dissect",
+      "status": "pass",
+      "best_val_metric": 0.7931093019650178,
+      "duration_seconds": 4.51,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC12",
+      "condition": "B_no_dissect",
+      "status": "pass",
+      "best_val_metric": 0.8072448166281945,
+      "duration_seconds": 2.78,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC13",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.11,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC14",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.13,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC15",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.2,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC16",
+      "condition": "B_no_dissect",
+      "status": "pass",
+      "best_val_metric": 0.8928571428571428,
+      "duration_seconds": 2.53,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC17",
+      "condition": "B_no_dissect",
+      "status": "pass",
+      "best_val_metric": 0.9087713475348501,
+      "duration_seconds": 2.54,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC18",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.08,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC19",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.07,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC20",
+      "condition": "B_no_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 2.52,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR01",
+      "condition": "B_no_dissect",
+      "status": "pass",
+      "best_val_metric": 0.46351720797890145,
+      "duration_seconds": 2.69,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR02",
+      "condition": "B_no_dissect",
+      "status": "pass",
+      "best_val_metric": 56.57308248374223,
+      "duration_seconds": 2.41,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR03",
+      "condition": "B_no_dissect",
+      "status": "pass",
+      "best_val_metric": 0.6928203230275509,
+      "duration_seconds": 2.88,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR04",
+      "condition": "B_no_dissect",
+      "status": "retry",
+      "best_val_metric": 91.91479485453506,
+      "duration_seconds": 2.63,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR05",
+      "condition": "B_no_dissect",
+      "status": "pass",
+      "best_val_metric": 3.2322573777573056,
+      "duration_seconds": 2.43,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR06",
+      "condition": "B_no_dissect",
+      "status": "escalate",
+      "best_val_metric": 68.16771814341057,
+      "duration_seconds": 21.6,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR07",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.06,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR08",
+      "condition": "B_no_dissect",
+      "status": "pass",
+      "best_val_metric": 2.225463806107758,
+      "duration_seconds": 2.86,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR09",
+      "condition": "B_no_dissect",
+      "status": "escalate",
+      "best_val_metric": 174410.44196816342,
+      "duration_seconds": 26.64,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR10",
+      "condition": "B_no_dissect",
+      "status": "pass",
+      "best_val_metric": 4546.107607546178,
+      "duration_seconds": 2.74,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TX01",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.23,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX02",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.2,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX03",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.3,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX04",
+      "condition": "B_no_dissect",
+      "status": "retry",
+      "best_val_metric": 0.6160364337148586,
+      "duration_seconds": 3.43,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX05",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1.24,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX06",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 600.08,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX07",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 12.14,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX08",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 5.47,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX09",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 6.91,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX10",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 2.73,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "IC01",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 4.41,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC02",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 4.1,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC03",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 4.21,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC04",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 4.3,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC05",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 3.87,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC06",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 3.92,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC07",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 4.18,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC08",
+      "condition": "B_no_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 4.07,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    }
+  ],
+  "condition_c": [
+    {
+      "problem_id": "TR11",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 117.8,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR12",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 116.49,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC01",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.8588159588159587,
+      "duration_seconds": 2.59,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC02",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 111.23,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC03",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.834689230979941,
+      "duration_seconds": 126.27,
+      "crash_count": 1,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC04",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.7834929658300389,
+      "duration_seconds": 36.3,
+      "crash_count": 1,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC05",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 116.88,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC06",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 113.47,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC07",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 116.87,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC08",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.9746835443037974,
+      "duration_seconds": 83.71,
+      "crash_count": 1,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC09",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 1.0,
+      "duration_seconds": 2.81,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC10",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.7281958263939078,
+      "duration_seconds": 45.91,
+      "crash_count": 1,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC11",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.7931093019650178,
+      "duration_seconds": 4.17,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC12",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.8072448166281945,
+      "duration_seconds": 2.7,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC13",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.4337866267611398,
+      "duration_seconds": 40.39,
+      "crash_count": 1,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC14",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.9296697837499334,
+      "duration_seconds": 37.13,
+      "crash_count": 1,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC15",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 1.0,
+      "duration_seconds": 34.33,
+      "crash_count": 1,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC16",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.8928571428571428,
+      "duration_seconds": 2.51,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC17",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.9087713475348501,
+      "duration_seconds": 2.5,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC18",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.960823091773791,
+      "duration_seconds": 43.1,
+      "crash_count": 1,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC19",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 122.6,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TC20",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 2.48,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR01",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.46351720797890145,
+      "duration_seconds": 2.41,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR02",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 56.57308248374223,
+      "duration_seconds": 2.43,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR03",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 0.6928203230275509,
+      "duration_seconds": 2.71,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR04",
+      "condition": "C_with_dissect",
+      "status": "retry",
+      "best_val_metric": 91.91479485453506,
+      "duration_seconds": 2.55,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR05",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 3.2322573777573056,
+      "duration_seconds": 2.44,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR06",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 68.16771814341057,
+      "duration_seconds": 22.15,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR07",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 120.07,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR08",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 2.225463806107758,
+      "duration_seconds": 2.56,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR09",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 174410.44196816342,
+      "duration_seconds": 25.3,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TR10",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 4546.107607546178,
+      "duration_seconds": 2.59,
+      "crash_count": 0,
+      "human_interventions": 0,
+      "architecture": "lightgbm"
+    },
+    {
+      "problem_id": "TX01",
+      "condition": "C_with_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 135.63,
+      "crash_count": 1,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX02",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 121.55,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX03",
+      "condition": "C_with_dissect",
+      "status": "pass",
+      "best_val_metric": 1.0,
+      "duration_seconds": 85.6,
+      "crash_count": 1,
+      "human_interventions": 0,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX04",
+      "condition": "C_with_dissect",
+      "status": "retry",
+      "best_val_metric": 0.6160364337148586,
+      "duration_seconds": 2.61,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX05",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.03587443946188341,
+      "duration_seconds": 76.73,
+      "crash_count": 1,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX06",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1604.31,
+      "crash_count": 3,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX07",
+      "condition": "C_with_dissect",
+      "status": "crash",
+      "best_val_metric": 0.0,
+      "duration_seconds": 35.46,
+      "crash_count": 1,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX08",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.6535529232649979,
+      "duration_seconds": 290.58,
+      "crash_count": 1,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX09",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1564.02,
+      "crash_count": 3,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "TX10",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 1937.38,
+      "crash_count": 3,
+      "human_interventions": 1,
+      "architecture": "distilbert"
+    },
+    {
+      "problem_id": "IC01",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 130.48,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC02",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 191.98,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC03",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 105.5,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC04",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 116.95,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC05",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 135.61,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC06",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 117.33,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC07",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 98.27,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    },
+    {
+      "problem_id": "IC08",
+      "condition": "C_with_dissect",
+      "status": "escalate",
+      "best_val_metric": 0.0,
+      "duration_seconds": 142.76,
+      "crash_count": 0,
+      "human_interventions": 1,
+      "architecture": "efficientnet"
+    }
+  ]
+}

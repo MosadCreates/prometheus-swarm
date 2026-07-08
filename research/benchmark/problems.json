@@ -5,7 +5,7 @@
     "dataset": {
       "name": "Titanic",
       "source": "kaggle",
-      "path": "data\\titanic.csv"
+      "path": "data/titanic.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -18,66 +18,12 @@
     "class_imbalance_ratio": null
   },
   {
-    "id": "TC02",
-    "problem_description": "Classify iris flower species based on sepal and petal measurements.",
-    "dataset": {
-      "name": "Iris",
-      "source": "sklearn",
-      "path": "data\\iris.csv"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "species",
-    "evaluation_metric": "f1",
-    "difficulty": "easy",
-    "num_rows_expected": 150,
-    "num_columns_expected": 5,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TC03",
-    "problem_description": "Predict diabetes risk based on health indicators and lifestyle factors.",
-    "dataset": {
-      "name": "CDC Diabetes Health Indicators",
-      "source": "UCI",
-      "path": "data\\tc03_pima_indians_diabetes.csv"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "Diabetes_binary",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "easy",
-    "num_rows_expected": 768,
-    "num_columns_expected": 22,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": 1.5
-  },
-  {
-    "id": "TC04",
-    "problem_description": "Predict credit card default based on demographic and payment history data.",
-    "dataset": {
-      "name": "Default of Credit Card Clients",
-      "source": "UCI",
-      "path": "data\\tc04_default_of_credit_card_clients.xls"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "Y",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "medium",
-    "num_rows_expected": 30000,
-    "num_columns_expected": 24,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": 3.5
-  },
-  {
     "id": "TC05",
     "problem_description": "Classify breast cancer tumours as malignant or benign from cell features.",
     "dataset": {
       "name": "Breast Cancer Wisconsin",
       "source": "UCI",
-      "path": "data\\tc05_breast_cancer_wisconsin.csv"
+      "path": "data/tc05_breast_cancer_wisconsin.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -95,7 +41,7 @@
     "dataset": {
       "name": "Bank Marketing",
       "source": "UCI",
-      "path": "data\\tc06_bank_marketing.csv"
+      "path": "data/tc06_bank_marketing.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -108,84 +54,12 @@
     "class_imbalance_ratio": 7.5
   },
   {
-    "id": "TC07",
-    "problem_description": "Predict employee attrition based on job role, satisfaction, and performance metrics.",
-    "dataset": {
-      "name": "HR Analytics",
-      "source": "kaggle",
-      "path": "SKIP_FILE_NOT_HR_DATA"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "Attrition",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "medium",
-    "num_rows_expected": 1470,
-    "num_columns_expected": 35,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": 5.0
-  },
-  {
-    "id": "TC08",
-    "problem_description": "Predict loan approval status based on applicant income, credit history, and loan amount.",
-    "dataset": {
-      "name": "Loan Prediction",
-      "source": "kaggle",
-      "path": "data\\tc08_loan_prediction.csv"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "loan_status",
-    "evaluation_metric": "f1",
-    "difficulty": "easy",
-    "num_rows_expected": 614,
-    "num_columns_expected": 13,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": 2.5
-  },
-  {
-    "id": "TC09",
-    "problem_description": "Classify wine varieties based on chemical composition analysis.",
-    "dataset": {
-      "name": "Wine",
-      "source": "UCI",
-      "path": "data\\wine.csv"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "cultivar",
-    "evaluation_metric": "f1",
-    "difficulty": "easy",
-    "num_rows_expected": 178,
-    "num_columns_expected": 14,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TC10",
-    "problem_description": "Predict heart disease presence based on clinical and laboratory features.",
-    "dataset": {
-      "name": "Heart Disease Cleveland",
-      "source": "UCI",
-      "path": "data\\tc10_heart_disease_cleveland.csv"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "num",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "medium",
-    "num_rows_expected": 303,
-    "num_columns_expected": 14,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": 1.2
-  },
-  {
     "id": "TC11",
     "problem_description": "Predict whether a transaction is fraudulent based on time and amount features.",
     "dataset": {
       "name": "Credit Card Fraud",
       "source": "kaggle",
-      "path": "data\\tc11_credit_card_fraud.csv"
+      "path": "data/tc11_credit_card_fraud.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -203,7 +77,7 @@
     "dataset": {
       "name": "Telco Customer Churn",
       "source": "kaggle",
-      "path": "data\\tc12_telco_customer_churn.csv"
+      "path": "data/tc12_telco_customer_churn.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -216,156 +90,12 @@
     "class_imbalance_ratio": 2.8
   },
   {
-    "id": "TC13",
-    "problem_description": "Classify mushrooms as edible or poisonous based on cap shape, odor, and habitat.",
-    "dataset": {
-      "name": "Mushroom",
-      "source": "UCI",
-      "path": "data\\tc13_mushroom.csv"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "0",
-    "evaluation_metric": "f1",
-    "difficulty": "easy",
-    "num_rows_expected": 8124,
-    "num_columns_expected": 23,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": 1.0
-  },
-  {
-    "id": "TC14",
-    "problem_description": "Predict income level (>50K or <50K) from census demographic data.",
-    "dataset": {
-      "name": "Adult Income",
-      "source": "UCI",
-      "path": "data\\tc14_adult_income.data"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "14",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "medium",
-    "num_rows_expected": 48842,
-    "num_columns_expected": 15,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": 3.0
-  },
-  {
-    "id": "TC15",
-    "problem_description": "Classify glass types based on refractive index and oxide content.",
-    "dataset": {
-      "name": "Glass Identification",
-      "source": "UCI",
-      "path": "data\\tc15_glass_identification.csv"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "9",
-    "evaluation_metric": "f1",
-    "difficulty": "medium",
-    "num_rows_expected": 214,
-    "num_columns_expected": 10,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TC16",
-    "problem_description": "Predict Parkinson disease progression from voice measurements.",
-    "dataset": {
-      "name": "Parkinsons",
-      "source": "UCI",
-      "path": "data\\tc16_parkinsons.data"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "status",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "medium",
-    "num_rows_expected": 195,
-    "num_columns_expected": 24,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": 2.5
-  },
-  {
-    "id": "TC17",
-    "problem_description": "Predict whether a voter will turn out based on demographics and past voting history.",
-    "dataset": {
-      "name": "Voter Turnout",
-      "source": "custom",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tc17_voter_turnout.csv"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "voted",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "medium",
-    "num_rows_expected": 10000,
-    "num_columns_expected": 12,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": 1.5
-  },
-  {
-    "id": "TC18",
-    "problem_description": "Classify energy efficiency rating of buildings based on insulation and surface area.",
-    "dataset": {
-      "name": "Energy Efficiency",
-      "source": "UCI",
-      "path": "SKIP_FILE_NOT_ENERGY_DATA"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "rating",
-    "evaluation_metric": "f1",
-    "difficulty": "medium",
-    "num_rows_expected": 768,
-    "num_columns_expected": 10,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TC19",
-    "problem_description": "Predict student final grade (G3) based on study hours, attendance, and previous grades.",
-    "dataset": {
-      "name": "Student Performance",
-      "source": "UCI",
-      "path": "data\\tc19_student_performance.csv"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "G3",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "easy",
-    "num_rows_expected": 649,
-    "num_columns_expected": 33,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": 1.3
-  },
-  {
-    "id": "TC20",
-    "problem_description": "Detect defective manufacturing parts based on sensor readings and QA measurements.",
-    "dataset": {
-      "name": "Manufacturing Defects",
-      "source": "custom",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tc20_manufacturing_defects.csv"
-    },
-    "task_type": "classification",
-    "modality": "tabular",
-    "target_column": "defective",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "hard",
-    "num_rows_expected": 50000,
-    "num_columns_expected": 45,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": 20.0
-  },
-  {
     "id": "TR01",
     "problem_description": "Predict median house value in California districts based on location and demographics.",
     "dataset": {
       "name": "California Housing",
       "source": "sklearn",
-      "path": "data\\california_housing.csv"
+      "path": "data/california_housing.csv"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -378,66 +108,12 @@
     "class_imbalance_ratio": null
   },
   {
-    "id": "TR02",
-    "problem_description": "Predict Boston housing prices based on crime rate, rooms, and accessibility.",
-    "dataset": {
-      "name": "Boston Housing",
-      "source": "sklearn",
-      "path": "data\\boston_housing.csv"
-    },
-    "task_type": "regression",
-    "modality": "tabular",
-    "target_column": "MEDV",
-    "evaluation_metric": "rmse",
-    "difficulty": "easy",
-    "num_rows_expected": 506,
-    "num_columns_expected": 14,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TR03",
-    "problem_description": "Predict wine quality score based on physicochemical properties.",
-    "dataset": {
-      "name": "Wine Quality Red",
-      "source": "UCI",
-      "path": "data\\tr03_wine_quality_red.csv"
-    },
-    "task_type": "regression",
-    "modality": "tabular",
-    "target_column": "quality",
-    "evaluation_metric": "rmse",
-    "difficulty": "medium",
-    "num_rows_expected": 4898,
-    "num_columns_expected": 12,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TR04",
-    "problem_description": "Predict energy consumption of appliances based on temperature, humidity, and weather.",
-    "dataset": {
-      "name": "Appliances Energy",
-      "source": "UCI",
-      "path": "data\\tr04_appliances_energy.csv"
-    },
-    "task_type": "regression",
-    "modality": "tabular",
-    "target_column": "Appliances",
-    "evaluation_metric": "rmse",
-    "difficulty": "hard",
-    "num_rows_expected": 19735,
-    "num_columns_expected": 29,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
     "id": "TR05",
     "problem_description": "Predict bike rental demand based on season, weather, and time features.",
     "dataset": {
       "name": "Bike Sharing",
       "source": "UCI",
-      "path": "data\\tr05_bike_sharing.csv"
+      "path": "data/tr05_bike_sharing.csv"
     },
     "task_type": "regression",
     "modality": "tabular",
@@ -450,138 +126,12 @@
     "class_imbalance_ratio": null
   },
   {
-    "id": "TR06",
-    "problem_description": "Predict stock price movement based on historical prices, volume, and technical indicators.",
-    "dataset": {
-      "name": "Stock Price",
-      "source": "yahoo",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tr06_stock_price.csv"
-    },
-    "task_type": "regression",
-    "modality": "tabular",
-    "target_column": "Close",
-    "evaluation_metric": "rmse",
-    "difficulty": "hard",
-    "num_rows_expected": 1000,
-    "num_columns_expected": 10,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TR07",
-    "problem_description": "Predict CO2 emissions of vehicles based on engine size, cylinders, and fuel type.",
-    "dataset": {
-      "name": "CO2 Emissions",
-      "source": "open data",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tr07_co2_emissions.csv"
-    },
-    "task_type": "regression",
-    "modality": "tabular",
-    "target_column": "co2TailpipeGpm",
-    "evaluation_metric": "rmse",
-    "difficulty": "easy",
-    "num_rows_expected": 7385,
-    "num_columns_expected": 12,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TR08",
-    "problem_description": "Predict MPG (fuel efficiency) of cars based on cylinders, displacement, and horsepower.",
-    "dataset": {
-      "name": "Auto MPG",
-      "source": "UCI",
-      "path": "data\\tr08_auto_mpg.csv"
-    },
-    "task_type": "regression",
-    "modality": "tabular",
-    "target_column": "mpg",
-    "evaluation_metric": "rmse",
-    "difficulty": "easy",
-    "num_rows_expected": 398,
-    "num_columns_expected": 9,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TR09",
-    "problem_description": "Predict taxi trip duration based on pickup/drop-off locations and time.",
-    "dataset": {
-      "name": "NYC Taxi Duration",
-      "source": "kaggle",
-      "path": "data\\tr09_nyc_taxi_duration.csv"
-    },
-    "task_type": "regression",
-    "modality": "tabular",
-    "target_column": "trip_duration",
-    "evaluation_metric": "rmse",
-    "difficulty": "hard",
-    "num_rows_expected": 1458644,
-    "num_columns_expected": 11,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TR10",
-    "problem_description": "Predict insurance premium costs based on age, BMI, smoking status, and region.",
-    "dataset": {
-      "name": "Medical Insurance",
-      "source": "kaggle",
-      "path": "data\\tr10_medical_insurance.csv"
-    },
-    "task_type": "regression",
-    "modality": "tabular",
-    "target_column": "charges",
-    "evaluation_metric": "rmse",
-    "difficulty": "easy",
-    "num_rows_expected": 1338,
-    "num_columns_expected": 7,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TR11",
-    "problem_description": "Predict concrete compressive strength from age and ingredient proportions.",
-    "dataset": {
-      "name": "Concrete Strength",
-      "source": "UCI",
-      "path": "data\\tr11_concrete_strength.xls"
-    },
-    "task_type": "regression",
-    "modality": "tabular",
-    "target_column": "Concrete compressive strength(MPa, megapascals) ",
-    "evaluation_metric": "rmse",
-    "difficulty": "medium",
-    "num_rows_expected": 1030,
-    "num_columns_expected": 9,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TR12",
-    "problem_description": "Predict air humidity AH based on meteorological and temporal features.",
-    "dataset": {
-      "name": "Air Quality",
-      "source": "UCI",
-      "path": "data\\tr12_air_quality.csv"
-    },
-    "task_type": "regression",
-    "modality": "tabular",
-    "target_column": "AH",
-    "evaluation_metric": "rmse",
-    "difficulty": "medium",
-    "num_rows_expected": 9358,
-    "num_columns_expected": 15,
-    "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": null
-  },
-  {
     "id": "TX01",
     "problem_description": "Classify movie reviews as positive or negative sentiment.",
     "dataset": {
       "name": "IMDB Reviews",
       "source": "huggingface",
-      "path": "data\\tx01_imdb_reviews.csv"
+      "path": "data/tx01_imdb_reviews.csv"
     },
     "task_type": "classification",
     "modality": "text",
@@ -594,48 +144,12 @@
     "class_imbalance_ratio": null
   },
   {
-    "id": "TX02",
-    "problem_description": "Classify news articles into categories (sports, business, tech, politics, entertainment).",
-    "dataset": {
-      "name": "AG News",
-      "source": "huggingface",
-      "path": "data\\tx02_ag_news.csv"
-    },
-    "task_type": "classification",
-    "modality": "text",
-    "target_column": "category",
-    "evaluation_metric": "f1",
-    "difficulty": "medium",
-    "num_rows_expected": 127600,
-    "num_columns_expected": 2,
-    "expected_architecture": "distilbert",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TX03",
-    "problem_description": "Classify Twitter tweets as hate speech or not.",
-    "dataset": {
-      "name": "Hate Speech",
-      "source": "huggingface",
-      "path": "data\\tx03_hate_speech.csv"
-    },
-    "task_type": "classification",
-    "modality": "text",
-    "target_column": "label",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "hard",
-    "num_rows_expected": 24783,
-    "num_columns_expected": 2,
-    "expected_architecture": "distilbert",
-    "class_imbalance_ratio": 5.0
-  },
-  {
     "id": "TX04",
     "problem_description": "Classify SMS messages as spam or ham.",
     "dataset": {
       "name": "SMS Spam",
       "source": "UCI",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tx04_sms_spam.csv"
+      "path": "data/tx04_sms_spam.csv"
     },
     "task_type": "classification",
     "modality": "text",
@@ -648,156 +162,12 @@
     "class_imbalance_ratio": 5.4
   },
   {
-    "id": "TX05",
-    "problem_description": "Classify Amazon product reviews by star rating (1-5).",
-    "dataset": {
-      "name": "Amazon Reviews",
-      "source": "huggingface",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tx05_amazon_reviews.csv"
-    },
-    "task_type": "classification",
-    "modality": "text",
-    "target_column": "rating",
-    "evaluation_metric": "f1",
-    "difficulty": "hard",
-    "num_rows_expected": 400000,
-    "num_columns_expected": 2,
-    "expected_architecture": "distilbert",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TX06",
-    "problem_description": "Detect toxic comments on online discussion forums.",
-    "dataset": {
-      "name": "Jigsaw Toxic",
-      "source": "kaggle",
-      "path": "data\\tx06_jigsaw_toxic.csv"
-    },
-    "task_type": "classification",
-    "modality": "text",
-    "target_column": "toxic",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "hard",
-    "num_rows_expected": 159571,
-    "num_columns_expected": 2,
-    "expected_architecture": "distilbert",
-    "class_imbalance_ratio": 8.0
-  },
-  {
-    "id": "TX07",
-    "problem_description": "Classify emails into categories: personal, work, social, promotional.",
-    "dataset": {
-      "name": "Email Classification",
-      "source": "custom",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tx07_email_classification.csv"
-    },
-    "task_type": "classification",
-    "modality": "text",
-    "target_column": "category",
-    "evaluation_metric": "f1",
-    "difficulty": "medium",
-    "num_rows_expected": 25000,
-    "num_columns_expected": 2,
-    "expected_architecture": "distilbert",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TX08",
-    "problem_description": "Classify research paper abstracts into CS subdomains (ML, NLP, vision, systems, theory).",
-    "dataset": {
-      "name": "Paper Abstracts",
-      "source": "arxiv",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\tx08_paper_abstracts.csv"
-    },
-    "task_type": "classification",
-    "modality": "text",
-    "target_column": "subdomain",
-    "evaluation_metric": "f1",
-    "difficulty": "medium",
-    "num_rows_expected": 50000,
-    "num_columns_expected": 2,
-    "expected_architecture": "distilbert",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "TX09",
-    "problem_description": "Detect whether a product review is fake or genuine based on text content.",
-    "dataset": {
-      "name": "Fake Reviews",
-      "source": "kaggle",
-      "path": "data\\tx09_fake_reviews.csv"
-    },
-    "task_type": "classification",
-    "modality": "text",
-    "target_column": "label",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "hard",
-    "num_rows_expected": 40432,
-    "num_columns_expected": 2,
-    "expected_architecture": "distilbert",
-    "class_imbalance_ratio": 1.2
-  },
-  {
-    "id": "TX10",
-    "problem_description": "Classify language of text samples as English, French, German, Spanish, or Italian.",
-    "dataset": {
-      "name": "Language Detection",
-      "source": "huggingface",
-      "path": "data\\tx10_language_detection.csv"
-    },
-    "task_type": "classification",
-    "modality": "text",
-    "target_column": "language",
-    "evaluation_metric": "f1",
-    "difficulty": "easy",
-    "num_rows_expected": 25000,
-    "num_columns_expected": 2,
-    "expected_architecture": "distilbert",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "IC01",
-    "problem_description": "Classify small images of clothing items (T-shirt, trousers, dress, etc.).",
-    "dataset": {
-      "name": "Fashion MNIST",
-      "source": "keras",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\ic01_fashion_mnist.csv"
-    },
-    "task_type": "classification",
-    "modality": "image",
-    "target_column": "label",
-    "evaluation_metric": "f1",
-    "difficulty": "easy",
-    "num_rows_expected": 70000,
-    "num_columns_expected": 0,
-    "expected_architecture": "efficientnet",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "IC02",
-    "problem_description": "Classify handwritten digits 0-9 from grayscale images.",
-    "dataset": {
-      "name": "MNIST",
-      "source": "keras",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\ic02_mnist.csv"
-    },
-    "task_type": "classification",
-    "modality": "image",
-    "target_column": "digit",
-    "evaluation_metric": "f1",
-    "difficulty": "easy",
-    "num_rows_expected": 70000,
-    "num_columns_expected": 0,
-    "expected_architecture": "efficientnet",
-    "class_imbalance_ratio": null
-  },
-  {
     "id": "IC03",
     "problem_description": "Classify CIFAR-10 images into 10 object categories (plane, car, bird, cat, etc.).",
     "dataset": {
       "name": "CIFAR-10",
       "source": "keras",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\ic03_cifar10.csv"
+      "path": "data/ic03_cifar10.csv"
     },
     "task_type": "classification",
     "modality": "image",
@@ -808,95 +178,5 @@
     "num_columns_expected": 0,
     "expected_architecture": "efficientnet",
     "class_imbalance_ratio": null
-  },
-  {
-    "id": "IC04",
-    "problem_description": "Classify brain MRI images as containing a tumor or not.",
-    "dataset": {
-      "name": "Brain MRI",
-      "source": "kaggle",
-      "path": "data\\ic04_image_dataset.csv"
-    },
-    "task_type": "classification",
-    "modality": "image",
-    "target_column": "has_tumor",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "hard",
-    "num_rows_expected": 4600,
-    "num_columns_expected": 0,
-    "expected_architecture": "efficientnet",
-    "class_imbalance_ratio": 1.5
-  },
-  {
-    "id": "IC05",
-    "problem_description": "Classify chest X-ray images as normal or pneumonia.",
-    "dataset": {
-      "name": "Chest X-Ray",
-      "source": "kaggle",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\ic05_chest_xray.csv"
-    },
-    "task_type": "classification",
-    "modality": "image",
-    "target_column": "label",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "hard",
-    "num_rows_expected": 5856,
-    "num_columns_expected": 0,
-    "expected_architecture": "efficientnet",
-    "class_imbalance_ratio": 2.0
-  },
-  {
-    "id": "IC06",
-    "problem_description": "Classify traffic sign images (speed limit, stop, yield, etc.).",
-    "dataset": {
-      "name": "German Traffic Signs",
-      "source": "UCI",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\ic06_gtsrb.csv"
-    },
-    "task_type": "classification",
-    "modality": "image",
-    "target_column": "sign",
-    "evaluation_metric": "f1",
-    "difficulty": "medium",
-    "num_rows_expected": 51839,
-    "num_columns_expected": 0,
-    "expected_architecture": "efficientnet",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "IC07",
-    "problem_description": "Classify flower species (daisy, dandelion, rose, sunflower, tulip).",
-    "dataset": {
-      "name": "Flowers",
-      "source": "tensorflow",
-      "path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\data\\ic07_flowers.csv"
-    },
-    "task_type": "classification",
-    "modality": "image",
-    "target_column": "species",
-    "evaluation_metric": "f1",
-    "difficulty": "medium",
-    "num_rows_expected": 3670,
-    "num_columns_expected": 0,
-    "expected_architecture": "efficientnet",
-    "class_imbalance_ratio": null
-  },
-  {
-    "id": "IC08",
-    "problem_description": "Detect whether a retinal image shows signs of diabetic retinopathy.",
-    "dataset": {
-      "name": "Diabetic Retinopathy",
-      "source": "kaggle",
-      "path": "data\\ic08_diabetic_retinopathy.csv"
-    },
-    "task_type": "classification",
-    "modality": "image",
-    "target_column": "has_disease",
-    "evaluation_metric": "auc_roc",
-    "difficulty": "hard",
-    "num_rows_expected": 35126,
-    "num_columns_expected": 0,
-    "expected_architecture": "efficientnet",
-    "class_imbalance_ratio": 3.0
   }
 ]

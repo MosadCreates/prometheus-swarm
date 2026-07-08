@@ -1,11 +1,12 @@
 """Forge template renderer — deterministic script generation from Jinja templates.
 
-Replaces the f-string-based script generators in tools.py with clean, externalized
-Jinja2 template files. Each architecture + task type combination has a dedicated
-.jinja template that renders to a valid Python training script.
-
-After rendering, prevention rules (from Gap 2) are loaded from Redis and applied
-to fix known error patterns before the script is written.
+Pipeline:
+    1. Jinja renders template with mission variables
+    2. ast.parse() validates syntactic correctness
+    3. Static prevention applies deterministic fixes (encoding, dtypes, validation)
+    4. ast.parse() validates post-fix correctness
+    5. Redis-based prevention rules from Dissect history are applied
+    6. Final validation + script returned
 
 Usage:
     script = select_and_render(mission_brief, job_id, data_path, architecture)
@@ -141,11 +142,54 @@ def _build_variables(
 
 
 def validate_script(script: str) -> bool:
+    """Validate script is syntactically valid Python."""
     try:
         ast.parse(script)
         return True
     except SyntaxError:
         return False
+
+
+def validate_script_rich(script: str) -> dict[str, Any]:
+    """Validate script and return detailed diagnostics.
+
+    Checks:
+        1. Syntax valid (ast.parse)
+        2. Has result.json write (orchestrator needs it)
+        3. Has TRAINING_COMPLETE print (orchestrator needs it)
+        4. Has no unprotected pd.read_csv without encoding
+        5. Has no narrow numeric dtype selection
+
+    Returns dict with:
+        valid: bool — overall validity
+        syntax_ok: bool
+        has_result_json: bool
+        has_training_complete: bool
+        has_encoding: bool
+        has_number_dtype: bool
+        findings: list[str]
+    """
+    from agents.forge.static_prevention import validate_script_static
+
+    # Syntax check
+    syntax_ok = validate_script(script)
+
+    # Content checks
+    has_result_json = "result.json" in script
+    has_training_complete = 'print("TRAINING_COMPLETE' in script or 'print(\'TRAINING_COMPLETE' in script
+
+    # Run static analysis
+    findings_raw = validate_script_static(script) if syntax_ok else []
+    findings = [f"[{f['severity'].upper()}] {f['message']}" for f in findings_raw]
+
+    return {
+        "valid": syntax_ok and has_result_json and has_training_complete and len(findings) == 0,
+        "syntax_ok": syntax_ok,
+        "has_result_json": has_result_json,
+        "has_training_complete": has_training_complete,
+        "findings": findings_raw,
+        "diagnostics": findings,
+    }
 
 
 async def _report_error_stats(redis_client: Any, architecture: str, job_id: str) -> None:
@@ -202,6 +246,28 @@ def select_and_render(
     if not validate_script(script):
         logger.warning(f"Template {template_name} produced invalid Python — falling back")
         return None
+
+    # ── Apply static prevention (Phase 3: deterministic, no Redis needed) ──
+    try:
+        from agents.forge.static_prevention import apply_static_prevention
+
+        script, findings = apply_static_prevention(script, mission_brief)
+        if findings:
+            logger.info(
+                f"[job={job_id}] Static prevention found {len(findings)} "
+                f"pattern(s) in {template_name}"
+            )
+
+        # Re-validate after static prevention transforms
+        if not validate_script(script):
+            logger.error(
+                f"Static prevention broke template {template_name} — "
+                f"this is a bug in static_prevention.py"
+            )
+            # Return the original (valid) script
+            script = template.render(**vars)
+    except Exception as e:
+        logger.warning(f"Static prevention skipped: {e}")
 
     # ── Apply prevention rules from Redis (Gap 2) ───────────────────────
     if redis_client is not None:

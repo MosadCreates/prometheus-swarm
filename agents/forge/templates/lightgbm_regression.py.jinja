@@ -24,8 +24,12 @@ import lightgbm as lgb
 
 warnings.filterwarnings("ignore")
 
+import random
+random.seed(42)
+np.random.seed(42)
+
 _search_space_json = os.getenv("SEARCH_SPACE_JSON")
-_use_optuna = bool(_search_space_json)
+_use_optuna = bool(_search_space_json and _search_space_json.strip() not in ("", "null", "false", "0"))
 if _use_optuna:
     import optuna
     _search_space = json.loads(_search_space_json)
@@ -98,3 +102,8 @@ with open(checkpoint_path, "wb") as f:
 print(f"Model saved to {checkpoint_path}")
 np.save(os.path.join(output_dir, "y_test.npy"), y_test)
 np.save(os.path.join(output_dir, "y_pred.npy"), y_pred)
+
+result = {"checkpoint_path": checkpoint_path, "val_score": float(rmse), "metric": "rmse"}
+with open(os.path.join(_outputs_dir, "{{ job_id }}", "result.json"), "w") as f:
+    json.dump(result, f)
+print("TRAINING_COMPLETE")

@@ -28,8 +28,12 @@ from imblearn.pipeline import Pipeline as ImbPipeline
 
 warnings.filterwarnings("ignore")
 
+import random
+random.seed(42)
+np.random.seed(42)
+
 _search_space_json = os.getenv("SEARCH_SPACE_JSON")
-_use_optuna = bool(_search_space_json)
+_use_optuna = bool(_search_space_json and _search_space_json.strip() not in ("", "null", "false", "0"))
 if _use_optuna:
     import optuna
     _search_space = json.loads(_search_space_json)
@@ -47,9 +51,18 @@ for _c in df.select_dtypes(include=["int64", "float64"]).columns:
 for _c in df.select_dtypes(include=["object"]).columns:
     df[_c] = df[_c].fillna(df[_c].mode().iloc[0] if not df[_c].mode().empty else "MISSING")
 
-X_train, X_test, y_train, y_test = train_test_split(
-    df, target, test_size=0.2, random_state=42, stratify=target
-)
+_n_classes = target.nunique()
+_n_samples = len(target)
+if _n_samples < 2:
+    print(f"WARNING: Dataset has {_n_samples} rows; using all data for train and test")
+    X_train = X_test = df
+    y_train = y_test = target
+else:
+    _use_stratify = _n_classes > 1 and _n_samples >= 4
+    X_train, X_test, y_train, y_test = train_test_split(
+        df, target, test_size=0.2, random_state=42,
+        stratify=target if _use_stratify else None
+    )
 
 numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolist()
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
@@ -105,7 +118,11 @@ model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 y_proba = model.predict_proba(X_test)[:, 1]
 acc = accuracy_score(y_test, y_pred)
-auc = roc_auc_score(y_test, y_proba)
+_y_n_classes = y_test.nunique()
+if _y_n_classes > 1:
+    auc = roc_auc_score(y_test, y_proba)
+else:
+    auc = float(acc)
 print(f"Accuracy: {acc:.4f}")
 print(f"AUC: {auc:.4f}")
 
@@ -119,3 +136,8 @@ print(f"Model saved to {checkpoint_path}")
 np.save(os.path.join(output_dir, "y_test.npy"), y_test)
 np.save(os.path.join(output_dir, "y_pred.npy"), y_pred)
 np.save(os.path.join(output_dir, "y_prob.npy"), y_proba)
+
+result = {"checkpoint_path": checkpoint_path, "val_score": float(auc), "metric": "auc_roc"}
+with open(os.path.join(_outputs_dir, "{{ job_id }}", "result.json"), "w") as f:
+    json.dump(result, f)
+print("TRAINING_COMPLETE")

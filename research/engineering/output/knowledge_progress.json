@@ -1,0 +1,14 @@
+{
+  "patch_memory_size": 301,
+  "architecture_memory_size": 0,
+  "tool_memory_size": 0,
+  "unique_patches": 256,
+  "unique_error_categories_seen": 11,
+  "patch_memory_growth_rate": 1.74,
+  "patch_memory_growth_rate_per_job": 4.43,
+  "oldest_patch_timestamp": "2026-07-01T12:30:38.923942+00:00",
+  "newest_patch_timestamp": "2026-07-08T17:44:25.602860+00:00",
+  "total_jobs_in_patch_log": 68,
+  "patches_per_job_avg": 4.43,
+  "patches_per_job_max": 15
+}

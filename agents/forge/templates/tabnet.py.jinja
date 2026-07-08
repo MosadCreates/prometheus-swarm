@@ -24,6 +24,11 @@ import torch
 
 warnings.filterwarnings("ignore")
 
+import random
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+
 _data_dir = os.getenv("DATA_DIR", "./data")
 df = pd.read_csv(os.path.join(_data_dir, "{{ data_filename }}"))
 target = df.pop("{{ target_column }}")
@@ -45,8 +50,9 @@ numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolis
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
 for col in categorical_cols:
-    X_train[col] = LabelEncoder().fit_transform(X_train[col].astype(str))
-    X_test[col] = LabelEncoder().fit_transform(X_test[col].astype(str))
+    _le = LabelEncoder()
+    X_train[col] = _le.fit_transform(X_train[col].astype(str))
+    X_test[col] = _le.transform(X_test[col].astype(str))
 
 scaler = StandardScaler()
 X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
@@ -119,3 +125,12 @@ if y_prob.shape[1] == 2:
     y_prob = y_prob[:, 1]
 np.save(os.path.join(output_dir, "y_prob.npy"), y_prob)
 {% endif %}
+
+{% if task_type in ("binary", "multiclass") %}
+result = {"checkpoint_path": checkpoint_path, "val_score": float(acc), "metric": "accuracy"}
+{% else %}
+result = {"checkpoint_path": checkpoint_path, "val_score": float(rmse), "metric": "rmse"}
+{% endif %}
+with open(os.path.join(_outputs_dir, "{{ job_id }}", "result.json"), "w") as f:
+    json.dump(result, f)
+print("TRAINING_COMPLETE")

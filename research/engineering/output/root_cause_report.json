@@ -1,0 +1,88 @@
+{
+  "total_problems": 52,
+  "total_failures": 38,
+  "failure_rate": 0.7307692307692307,
+  "failures_by_category": {
+    "dtype_mismatch": 46,
+    "missing_column": 68,
+    "pickle_version_mismatch": 16,
+    "empty_dataset": 4,
+    "permission_error": 11,
+    "nan_propagation": 4,
+    "convergence_failure": 4,
+    "encoding_error": 11,
+    "novel_error": 33,
+    "import_error": 1,
+    "syntax_error": 14
+  },
+  "failures_by_architecture": {
+    "lightgbm": 51,
+    "distilbert": 28,
+    "efficientnet": 16
+  },
+  "failures_by_modality": {},
+  "top_failure_errors": [
+    {
+      "problem_id": "TR11",
+      "architecture": "lightgbm",
+      "error": "KeyError: 'strength'"
+    },
+    {
+      "problem_id": "TR12",
+      "architecture": "lightgbm",
+      "error": "KeyError: 'PM2.5'"
+    },
+    {
+      "problem_id": "TR11",
+      "architecture": "lightgbm",
+      "error": "KeyError: 'strength'"
+    },
+    {
+      "problem_id": "TR12",
+      "architecture": "lightgbm",
+      "error": "KeyError: 'PM2.5'"
+    },
+    {
+      "problem_id": "TC02",
+      "architecture": "lightgbm",
+      "error": "TypeError: '>' not supported between instances of 'str' and 'float'"
+    },
+    {
+      "problem_id": "TC03",
+      "architecture": "lightgbm",
+      "error": "KeyError: 'Outcome'"
+    },
+    {
+      "problem_id": "TC04",
+      "architecture": "lightgbm",
+      "error": "KeyError: 'default'"
+    },
+    {
+      "problem_id": "TC05",
+      "architecture": "lightgbm",
+      "error": "KeyError: 'diagnosis'"
+    },
+    {
+      "problem_id": "TC06",
+      "architecture": "lightgbm",
+      "error": "KeyError: 'y'"
+    },
+    {
+      "problem_id": "TC07",
+      "architecture": "lightgbm",
+      "error": "KeyError: 'Attrition'"
+    }
+  ],
+  "common_failure_patterns": [
+    "KeyError: 103x",
+    "TypeError: 50x",
+    "NameError: 42x",
+    "RuntimeError: 26x",
+    "AttributeError: 24x"
+  ],
+  "recommendations": [
+    "Prioritize fixing lightgbm templates (51 failures)",
+    "Focus Dissect training on missing_column category (68 unresolved failures)",
+    "Add static prevention rule for 'KeyError' (103 occurrences)"
+  ]
+}

@@ -25,6 +25,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "validation: Registry and CLI structural validation tests.",
+    "training_exec: Slow execution tests that run rendered training scripts against real data.",
 ]
 
 [tool.ruff]

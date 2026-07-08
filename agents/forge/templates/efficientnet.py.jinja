@@ -25,6 +25,11 @@ from sklearn.preprocessing import LabelEncoder
 from PIL import Image
 warnings.filterwarnings("ignore")
 
+import random
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+
 JOB_ID = "{{ job_id }}"
 DATA_PATH = os.path.join(os.getenv("DATA_DIR", "./data"), "{{ data_filename }}")
 OUTPUT_DIR = os.path.join(os.getenv("OUTPUTS_DIR", "./outputs"), JOB_ID, "checkpoints")
@@ -107,6 +112,7 @@ np.save(os.path.join(OUTPUT_DIR, "y_test.npy"), np.array(all_labels))
 np.save(os.path.join(OUTPUT_DIR, "y_pred.npy"), np.array(all_preds))
 
 result = {"checkpoint_path": checkpoint_path, "val_score": float(val_acc), "metric": "accuracy"}
-with open(os.path.join("outputs", JOB_ID, "result.json"), "w") as f:
+_outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
+with open(os.path.join(_outputs_dir, JOB_ID, "result.json"), "w") as f:
     json.dump(result, f)
 print("TRAINING_COMPLETE")

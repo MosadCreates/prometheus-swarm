@@ -365,17 +365,27 @@ if _use_optuna:
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")
-df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"))
+df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"), encoding="utf-8", errors="replace")
 {target_line}
 
 mask = target.notna()
 df = df[mask]
 target = target[mask]
 
+if len(df) == 0:
+    print("ERROR: Dataset is empty after removing NaN targets. Aborting.")
+    raise SystemExit(1)
+
 for _c in df.select_dtypes(include=["int64", "float64"]).columns:
     df[_c] = df[_c].fillna(df[_c].median())
 for _c in df.select_dtypes(include=["object"]).columns:
     df[_c] = df[_c].fillna(df[_c].mode().iloc[0] if not df[_c].mode().empty else "MISSING")
+
+# Coerce string columns that look numeric to prevent dtype errors
+for _c in df.select_dtypes(include=["object"]).columns:
+    _converted = pd.to_numeric(df[_c], errors="ignore")
+    if _converted.dtype in ("int64", "float64"):
+        df[_c] = _converted
 
 {split_and_cv}
 numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolist()
@@ -523,17 +533,27 @@ import torch
 warnings.filterwarnings("ignore")
 
 _data_dir = os.getenv("DATA_DIR", "./data")
-df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"))
+df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"), encoding="utf-8", errors="replace")
 {target_line}
 
 mask = target.notna()
 df = df[mask]
 target = target[mask]
 
+if len(df) == 0:
+    print("ERROR: Dataset is empty after removing NaN targets. Aborting.")
+    raise SystemExit(1)
+
 for _c in df.select_dtypes(include=["int64", "float64"]).columns:
     df[_c] = df[_c].fillna(df[_c].median())
 for _c in df.select_dtypes(include=["object"]).columns:
     df[_c] = df[_c].fillna(df[_c].mode().iloc[0] if not df[_c].mode().empty else "MISSING")
+
+# Coerce string columns that look numeric to prevent dtype errors
+for _c in df.select_dtypes(include=["object"]).columns:
+    _converted = pd.to_numeric(df[_c], errors="ignore")
+    if _converted.dtype in ("int64", "float64"):
+        df[_c] = _converted
 
 X_train, X_test, y_train, y_test = train_test_split(
     df, target, test_size=0.2, random_state=42
@@ -743,17 +763,27 @@ if _use_optuna:
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")
-df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"))
+df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"), encoding="utf-8", errors="replace")
 {target_line}
 
 mask = target.notna()
 df = df[mask]
 target = target[mask]
 
+if len(df) == 0:
+    print("ERROR: Dataset is empty after removing NaN targets. Aborting.")
+    raise SystemExit(1)
+
 for _c in df.select_dtypes(include=["int64", "float64"]).columns:
     df[_c] = df[_c].fillna(df[_c].median())
 for _c in df.select_dtypes(include=["object"]).columns:
     df[_c] = df[_c].fillna(df[_c].mode().iloc[0] if not df[_c].mode().empty else "MISSING")
+
+# Coerce string columns that look numeric to prevent dtype errors
+for _c in df.select_dtypes(include=["object"]).columns:
+    _converted = pd.to_numeric(df[_c], errors="ignore")
+    if _converted.dtype in ("int64", "float64"):
+        df[_c] = _converted
 
 {split_and_cv}
 numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolist()
