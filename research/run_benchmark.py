@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 import numpy as np
+import pandas as pd
 
 load_dotenv()
 
@@ -966,6 +967,4 @@ def _write_combined_baseline(
 
 
 if __name__ == "__main__":
-    import pandas as pd
-
     asyncio.run(main())

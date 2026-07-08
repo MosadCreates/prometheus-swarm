@@ -12,6 +12,20 @@ from bus.publisher import publish
 logger = logging.getLogger(__name__)
 
 
+async def _record_reproducibility(redis: RedisClient, job_id: str, dataset_path: str) -> None:
+    """Record reproducibility context — best-effort, never blocks submission."""
+    try:
+        from orchestrator.reproducibility import (
+            gather_reproducibility_context,
+            record_reproducibility,
+        )
+
+        context = await gather_reproducibility_context(job_id=job_id, dataset_path=dataset_path)
+        await record_reproducibility(redis, context)
+    except Exception as e:
+        logger.warning(f"[job={job_id}] Reproducibility recording skipped: {e}")
+
+
 async def submit_job(
     problem_description: str,
     dataset_path: str,
@@ -48,6 +62,9 @@ async def submit_job(
     await redis.set_json(f"job:{job_id}:meta", job_meta)
     await redis.set_str(f"job:{job_id}:status", "QUEUED")
     await redis.set_str(f"job:{job_id}:crash_count", "0")
+
+    # Record reproducibility context before Scout touches the job
+    await _record_reproducibility(redis, job_id, dataset_path)
 
     logger.info(f"Job {job_id} submitted: {problem_description[:80]}...")
 

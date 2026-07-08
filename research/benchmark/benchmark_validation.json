@@ -1,0 +1,529 @@
+{
+  "schema_version": "1.0",
+  "benchmark_path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\research\\benchmark\\problems.json",
+  "timestamp": "2026-07-07T21:25:45.518184+00:00",
+  "total_problems": 50,
+  "passed": 50,
+  "failed": 0,
+  "results": [
+    {
+      "problem_id": "TC01",
+      "dataset_name": "Titanic",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "7d118fef8b6ccf7f81111877bc388536f7b1e498a655e3d649d19aaa010e9f6f",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC02",
+      "dataset_name": "Iris",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "b4de16f5417d97a9be08d25e10cc832659200359ff9682a3014adb195de8270e",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC03",
+      "dataset_name": "CDC Diabetes Health Indicators",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~768, got ~253680 (off by 32931%)"
+      ],
+      "sha256": "5449f01a01bed2b3326145b2a5679ad1215651f3bb8d826a9fa4e495c11a5eff",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC04",
+      "dataset_name": "Default of Credit Card Clients",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Could not verify row count"
+      ],
+      "sha256": "30c6be3abd8dcfd3e6096c828bad8c2f011238620f5369220bd60cfc82700933",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC05",
+      "dataset_name": "Breast Cancer Wisconsin",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "6ed571f518a62ad88e7ec8db90dba8ebc0c6e760def34ffae837ef1baf195654",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC06",
+      "dataset_name": "Bank Marketing",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "d1513ec63b385506f7cfce9f2c5caa9fe99e7ba4e8c3fa264b3aaf0f849ed32d",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC07",
+      "dataset_name": "HR Analytics",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Dataset marked as unavailable on disk"
+      ]
+    },
+    {
+      "problem_id": "TC08",
+      "dataset_name": "Loan Prediction",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Target column 'loan_status' matched after stripping whitespace",
+        "Row count mismatch: expected ~614, got ~4269 (off by 595%)"
+      ],
+      "sha256": "4b5cd093d178378f4cfa8c107adb6e599b88be9d8a3b51f3b99c0d5914154e54",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC09",
+      "dataset_name": "Wine",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "4c1df3e1371e3ef0a037c6cd97231e238aa20f9eede3f44973df8a00eed4bf2f",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC10",
+      "dataset_name": "Heart Disease Cleveland",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "548eaf3b9d47152c9e0d25c167dc629740e8a4a13366a9be8fbd789ac3d2ebae",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC11",
+      "dataset_name": "Credit Card Fraud",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "76274b691b16a6c49d3f159c883398e03ccd6d1ee12d9d8ee38f4b4b98551a89",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC12",
+      "dataset_name": "Telco Customer Churn",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "88be4b93fbe0cc83421af1c503794c97c342eca914c1576db7c276e61d61358a",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC13",
+      "dataset_name": "Mushroom",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "1e22338710ed22f2cbbc4bc48e9ef35425c385115ee7441727640fa28c82261a",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC14",
+      "dataset_name": "Adult Income",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Target column is positional index 14 (no header)",
+        "Row count mismatch: expected ~48842, got ~32560 (off by 33%)"
+      ],
+      "sha256": "df25a4e32ed6f1bd4b3910d21a7bd661a09061eced7cb45555a519d9667cc87b",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC15",
+      "dataset_name": "Glass Identification",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "979fb2872354ce2c4c123f10c29fb69da4aa3b5faf6807359be576c8918d2864",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC16",
+      "dataset_name": "Parkinsons",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "a36116c2deac07895b79ce97a2f99a1b3720ac4892995ff5c3b9ccb397ed2bc5",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC17",
+      "dataset_name": "Voter Turnout",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~10000, got ~3000 (off by 70%)"
+      ],
+      "sha256": "44ec6a1b1451d4fcb6cadc1add57d2fc165ab2907ae545abea9065b2afcc4285",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC18",
+      "dataset_name": "Energy Efficiency",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Dataset marked as unavailable on disk"
+      ]
+    },
+    {
+      "problem_id": "TC19",
+      "dataset_name": "Student Performance",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~649, got ~395 (off by 39%)"
+      ],
+      "sha256": "e47f9ee225e1ee6e69b7564e6dac7123e80b8486677fe111f351964cef5dec80",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TC20",
+      "dataset_name": "Manufacturing Defects",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~50000, got ~1941 (off by 96%)"
+      ],
+      "sha256": "c5862132fc04732c7836e298f102ee7bb2166dff4e29877a18faa640f539b894",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TR01",
+      "dataset_name": "California Housing",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "7192af0bf33e94141194cfd91958c62d66262dc40c07cc2e6fbe0b2d02b0e1b3",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TR02",
+      "dataset_name": "Boston Housing",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "3bd4ec2b2c51570a14a823774185caa0ef5a51c3cd939ba27a10146aa1271e9b",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TR03",
+      "dataset_name": "Wine Quality Red",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~4898, got ~6497 (off by 33%)"
+      ],
+      "sha256": "4dba8d5e49394140f09ca0ee754edb2f7263e183f6d6d7cb2f8f6b28aceb5a0d",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TR04",
+      "dataset_name": "Appliances Energy",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "2820bf712ad0275cb18b85a05250926100d8e65ebb9f4d2d016ca91ea152a25d",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TR05",
+      "dataset_name": "Bike Sharing",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "e03de4ee4ef4dc376ac6e04bf829673c6269e8eba5c60fa121640fa2f829504f",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TR06",
+      "dataset_name": "Stock Price",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~1000, got ~2516 (off by 152%)"
+      ],
+      "sha256": "2ea933cc3993a4cc8b591ed489444c7d5bd2f8977ef371067afa89aa5cce20f6",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TR07",
+      "dataset_name": "CO2 Emissions",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~7385, got ~5000 (off by 32%)"
+      ],
+      "sha256": "9f8345ab92f567e413a2ae621531ec4ed5603c24716a844ef795736b47d749ba",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TR08",
+      "dataset_name": "Auto MPG",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "bfc4669038308d1298f10947e45d89bbd32f5c6cf3940adb17f0ebf8a0c0b03c",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TR09",
+      "dataset_name": "NYC Taxi Duration",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "fc8c777a4ab99a362d8b6b6f2038ff8a2c4625b9593248a47352d0d26fa99927",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TR10",
+      "dataset_name": "Medical Insurance",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "388eff679557d08ac19f463d025de5e0b4adc482537c8456d19934d78621fd47",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TR11",
+      "dataset_name": "Concrete Strength",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Could not verify row count"
+      ],
+      "sha256": "710076c66b9ca3f8050e7942f3dcbdbe04013534daeb0077ffd3079a52d8e0c4",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TR12",
+      "dataset_name": "Air Quality",
+      "passed": true,
+      "issues": [],
+      "warnings": [],
+      "sha256": "13277ae5d8581e80b7be09d47c7d3d06fe9b8e957078f2cf6e859f955e62f996",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TX01",
+      "dataset_name": "IMDB Reviews",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~50000, got ~10000 (off by 80%)"
+      ],
+      "sha256": "33f3900eb934a309ec85fbbcdef0ce7ab93ab0926498c54c3f380c96027076ea",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TX02",
+      "dataset_name": "AG News",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~127600, got ~10000 (off by 92%)"
+      ],
+      "sha256": "1ace5c927f79fe1f207e4f372e107b12dd20c2d77b22e0e5810d74a70e5d826e",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TX03",
+      "dataset_name": "Hate Speech",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~24783, got ~10886 (off by 56%)"
+      ],
+      "sha256": "25776829b4fc379cdc5b4d8ec23e668c00773a6a8beea43e7ea1cfaf2d6557b7",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TX04",
+      "dataset_name": "SMS Spam",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~5572, got ~11148 (off by 100%)"
+      ],
+      "sha256": "8211ae3dec5a26b0d17bf4eee68b9b9daee66f40b7e69efb1acc7fd8451da13f",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TX05",
+      "dataset_name": "Amazon Reviews",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~400000, got ~2000 (off by 100%)"
+      ],
+      "sha256": "8d6eb8d826a55167522bc3cca3e8c75c8247f7042d897ea46f258fdb3acc5f8a",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TX06",
+      "dataset_name": "Jigsaw Toxic",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~159571, got ~5000 (off by 97%)"
+      ],
+      "sha256": "e66e6039b6631875e6adddf198e484e6cf63f4da7da588a81e34d72c795c7023",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TX07",
+      "dataset_name": "Email Classification",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~25000, got ~51453 (off by 106%)"
+      ],
+      "sha256": "0842f8b0d6c2b766e4c4989d92c039362e9b52b77ec619c4a0c0eb9abced28d9",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TX08",
+      "dataset_name": "Paper Abstracts",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~50000, got ~2000 (off by 96%)"
+      ],
+      "sha256": "abb0ce8fd405e831c7b94456a12c331d57d496076b911c33aebc92abd37e75a2",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TX09",
+      "dataset_name": "Fake Reviews",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~40432, got ~72222 (off by 79%)"
+      ],
+      "sha256": "efaeff607e6c9a927ffafbb27537f271c0f86713a9fa73f281869bd7f36c91a7",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "TX10",
+      "dataset_name": "Language Detection",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Row count mismatch: expected ~25000, got ~5000 (off by 80%)"
+      ],
+      "sha256": "80e5e0f9374b9392c2d2e7077d7a6ad2399ab37f80d1f4b11b2cbad0a1392da9",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "IC01",
+      "dataset_name": "Fashion MNIST",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Image dataset (expected_architecture=efficientnet)",
+        "Row count mismatch: expected ~70000, got ~10000 (off by 86%)"
+      ],
+      "sha256": "5396f887c3abfa655639b2a451dca13764017b2237ffe8ccce1dc8c2542daf20",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "IC02",
+      "dataset_name": "MNIST",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Image dataset (expected_architecture=efficientnet)",
+        "Row count mismatch: expected ~70000, got ~10000 (off by 86%)"
+      ],
+      "sha256": "bf528e720d83aa6a0f04beb81bbe22f0afcc920dd894f01f2345e64ba6ad7fbb",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "IC03",
+      "dataset_name": "CIFAR-10",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Image dataset (expected_architecture=efficientnet)",
+        "Row count mismatch: expected ~60000, got ~2500 (off by 96%)"
+      ],
+      "sha256": "5f9a94f36e0ed768a596c991ee43c54889448e71927083e841e76636d9026532",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "IC04",
+      "dataset_name": "Brain MRI",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Image dataset (expected_architecture=efficientnet)",
+        "Row count mismatch: expected ~4600, got ~500 (off by 89%)"
+      ],
+      "sha256": "5ef44bb853a9c855f1f91abd530b38c108c3ae37c03b629ac483d3c6682bad66",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "IC05",
+      "dataset_name": "Chest X-Ray",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Image dataset (expected_architecture=efficientnet)",
+        "Row count mismatch: expected ~5856, got ~500 (off by 91%)"
+      ],
+      "sha256": "ee7e1a1833eadf9944eb1a30e85676327125781c7d7d8ebd7c492a5eb242407e",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "IC06",
+      "dataset_name": "German Traffic Signs",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Image dataset (expected_architecture=efficientnet)",
+        "Row count mismatch: expected ~51839, got ~5000 (off by 90%)"
+      ],
+      "sha256": "3fd2b5f998486bc6e31cf0056c168999cfd779d6cbf1080a5311d7e0870b079b",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "IC07",
+      "dataset_name": "Flowers",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Image dataset (expected_architecture=efficientnet)",
+        "Row count mismatch: expected ~3670, got ~25500 (off by 595%)"
+      ],
+      "sha256": "3ba283053b8f7261c95cc2a58be01e06fe5485165c339c22c56edd0d469ca1b2",
+      "target_column_found": true
+    },
+    {
+      "problem_id": "IC08",
+      "dataset_name": "Diabetic Retinopathy",
+      "passed": true,
+      "issues": [],
+      "warnings": [
+        "Image dataset (expected_architecture=efficientnet)",
+        "Row count mismatch: expected ~35126, got ~500 (off by 99%)"
+      ],
+      "sha256": "135f1bc9ef20d73b3eb7ab35e07ebc30b649bf67f6c458c8a59ea931b9fdc2ef",
+      "target_column_found": true
+    }
+  ],
+  "summary": []
+}

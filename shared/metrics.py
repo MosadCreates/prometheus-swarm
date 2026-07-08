@@ -69,6 +69,31 @@ FORGE_SCRIPTS_GENERATION_DURATION = Histogram(
     ["architecture", "job_id"],
     buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0),
 )
+FORGE_PLANS_GENERATED = Counter(
+    "swarm_forge_plans_generated_total",
+    "Number of engineering plans generated",
+    ["job_id"],
+)
+FORGE_TEMPLATES_USED = Counter(
+    "swarm_forge_templates_used_total",
+    "Number of Jinja template renders (vs f-string fallback)",
+    ["architecture", "job_id"],
+)
+FORGE_PREVENTIONS_APPLIED = Counter(
+    "swarm_forge_preventions_applied_total",
+    "Number of prevention rules applied to generated scripts",
+    ["architecture", "job_id"],
+)
+FORGE_ERROR_PREVENTIONS_AUTO = Counter(
+    "swarm_forge_error_preventions_auto_total",
+    "Number of auto-generated prevention rules from error stats",
+    ["architecture", "category"],
+)
+FORGE_STRATEGY_ROUTES = Counter(
+    "swarm_forge_strategy_routes_total",
+    "Confidence-threshold routing decisions: template / cache / llm",
+    ["strategy", "architecture", "job_id"],
+)
 
 # ─── Furnace-specific metrics ────────────────────────────────────────────
 FURNACE_TRAINING_RUNS = Counter(
@@ -114,6 +139,16 @@ DISSECT_PATCH_DURATION = Histogram(
     ["category", "job_id"],
     buckets=(0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
 )
+DISSECT_CASCADE_LEVEL = Counter(
+    "swarm_dissect_cascade_level_total",
+    "Repair distribution by cascade level",
+    ["level", "job_id"],
+)
+DISSECT_LLM_BUDGET_EXHAUSTED = Counter(
+    "swarm_dissect_llm_budget_exhausted_total",
+    "Times LLM budget was exhausted before repair",
+    ["job_id"],
+)
 DISSECT_OUTCOMES = Counter(
     "swarm_dissect_outcomes_total",
     "Dissect outcome (resume vs escalate)",
@@ -149,6 +184,18 @@ SCOUT_ANALYSIS_DURATION = Histogram(
     "Duration of dataset analysis",
     ["job_id"],
     buckets=(1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 120.0),
+)
+
+# ─── Experience Memory metrics ───────────────────────────────────────────
+EXPERIENCE_STORED = Counter(
+    "swarm_experience_stored_total",
+    "Number of experience records stored",
+    ["job_id", "outcome"],
+)
+EXPERIENCE_QUERIED = Counter(
+    "swarm_experience_queried_total",
+    "Number of experience queries performed",
+    ["job_id", "agent"],
 )
 
 # ─── Arbiter-specific metrics ────────────────────────────────────────────
@@ -268,6 +315,11 @@ __all__ = [
     "FORGE_ARCHITECTURE_SELECTIONS",
     "FORGE_SCRIPTS_GENERATED",
     "FORGE_SCRIPTS_GENERATION_DURATION",
+    "FORGE_PLANS_GENERATED",
+    "FORGE_TEMPLATES_USED",
+    "FORGE_PREVENTIONS_APPLIED",
+    "FORGE_ERROR_PREVENTIONS_AUTO",
+    "FORGE_STRATEGY_ROUTES",
     "FURNACE_TRAINING_RUNS",
     "FURNACE_EPOCHS",
     "FURNACE_CRASHES",
@@ -276,12 +328,16 @@ __all__ = [
     "DISSECT_ERROR_CLASSIFICATIONS",
     "DISSECT_PATCHES_GENERATED",
     "DISSECT_PATCH_DURATION",
+    "DISSECT_CASCADE_LEVEL",
+    "DISSECT_LLM_BUDGET_EXHAUSTED",
     "DISSECT_OUTCOMES",
     "HARBOR_DEPLOYS",
     "HARBOR_SERVING_LATENCY",
     "HARBOR_ACTIVE_DEPLOYMENTS",
     "SCOUT_DATASETS_PROCESSED",
     "SCOUT_ANALYSIS_DURATION",
+    "EXPERIENCE_STORED",
+    "EXPERIENCE_QUERIED",
     "ARBITER_DECISIONS",
     "ARBITER_BENCHMARK_EVALUATION_DURATION",
     "PIPELINE_JOBS",

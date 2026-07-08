@@ -20,6 +20,14 @@ from prometheus.cli.memory import memory
 from prometheus.cli.tool import tool
 from prometheus.cli.profile import profile
 from prometheus.cli.plugin import plugin
+from prometheus.cli.solve import solve
+from prometheus.cli.explain import explain
+from prometheus.cli.replay import replay
+from prometheus.cli.report import report
+from prometheus.cli.planner import planner
+from prometheus.cli.benchmark import benchmark
+from prometheus.cli.reproduce import reproduce
+from prometheus.cli.evaluate import evaluate
 
 __all__ = [
     "help_cmd",
@@ -42,4 +50,11 @@ __all__ = [
     "tool",
     "profile",
     "plugin",
+    "solve",
+    "explain",
+    "replay",
+    "report",
+    "planner",
+    "reproduce",
+    "evaluate",
 ]

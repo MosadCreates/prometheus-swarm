@@ -2,8 +2,17 @@
 
 import logging
 import os
+from typing import Any
 
 from agents.forge.decision_tree import select_architecture
+from agents.forge.template_renderer import select_and_render, has_template
+from agents.forge.script_fingerprint import (
+    check_fingerprint,
+    compute_fingerprint,
+    record_fingerprint_pending,
+)
+from agents.forge.confidence_router import get_generation_strategy, Strategy
+from shared.metrics import FORGE_TEMPLATES_USED, FORGE_STRATEGY_ROUTES
 
 logger = logging.getLogger(__name__)
 
@@ -58,24 +67,207 @@ def define_optuna_space(architecture: str) -> dict:
     return spaces.get(architecture, {})
 
 
-def write_training_script(mission_brief: dict, job_id: str, scripts_dir: str = "./scripts") -> str:
-    architecture = select_architecture(mission_brief)
+def write_training_script(
+    mission_brief: dict,
+    job_id: str,
+    scripts_dir: str = "./scripts",
+    design_summary: str | None = None,
+    architecture: str | None = None,
+    engineering_plan: dict | None = None,
+    redis_client: Any | None = None,
+    confidence: float | None = None,
+) -> str:
+    """Generate a training script respecting the engineering plan.
 
-    # Dispatch to modality-specific script generators
+    Args:
+        mission_brief: The full mission brief dict (backward compat).
+        job_id: Unique job identifier.
+        scripts_dir: Directory to write the script.
+        design_summary: Human-readable plan summary (injected as header comment).
+        architecture: Architecture selected (from plan, not re-derived from decision tree).
+        engineering_plan: Full EngineeringPlan dict (provides validation strategy,
+            imbalance strategy, hyperparameter config, budget constraints).
+        redis_client: Optional Redis client for loading prevention rules (Gap 2).
+        confidence: Scout's overall_confidence (0.0–1.0). Routes generation strategy:
+            ≥ 0.85 → deterministic template only (fast path)
+            ≥ 0.55 → fingerprint cache → template → f-string (balanced)
+            < 0.55 → skip template, f-string generators only (flexible path).
+
+    Returns:
+        Path to the written training script.
+    """
+    if architecture is None:
+        architecture = select_architecture(mission_brief)
+
+    plan = engineering_plan or {}
+
+    # Extract plan-driven parameters with sensible defaults
+    validation_strategy = "train_val_split"
+    imbalance_method = "none"
+    max_trials = 10
+    gpu_required = False
+    expected_ram_mb = 512
+
+    imbalance_method = mission_brief.get("imbalance_strategy", "none")
+
+    if plan:
+        arch_selected = plan.get("architecture_selected", {})
+        hp = plan.get("hyperparameter_strategy", {})
+        budget = plan.get("computational_budget", {})
+        pipeline = plan.get("preprocessing_pipeline", [])
+
+        for step in pipeline:
+            name = step.get("name", "")
+            if "fold" in name or "split" in name:
+                validation_strategy = name
+                break
+
+        for step in pipeline:
+            name = step.get("name", "")
+            if "smote" in name.lower():
+                imbalance_method = "smote"
+                break
+            if "class_weight" in name.lower():
+                imbalance_method = "class_weight"
+                break
+
+        max_trials = hp.get("max_trials", 10) if hp else 10
+        gpu_required = budget.get("gpu_required", False) if budget else False
+        expected_ram_mb = budget.get("estimated_ram_mb", 512) if budget else 512
+
+    strategy = get_generation_strategy(confidence)
+    FORGE_STRATEGY_ROUTES.labels(strategy=strategy, architecture=architecture, job_id=job_id).inc()
+
+    file_path = mission_brief.get("dataset", {}).get("file_path")
+
+    # ── Strategy: TEMPLATE (high confidence — deterministic, no fallback) ───
+    if strategy == "template":
+        rendered = select_and_render(
+            mission_brief,
+            job_id,
+            data_path=file_path,
+            architecture=architecture,
+            design_summary=design_summary,
+            redis_client=redis_client,
+        )
+        if rendered is None:
+            raise RuntimeError(
+                f"Template path selected (confidence={confidence}) but "
+                f"no template available for {architecture}"
+            )
+        script_path = os.path.join(scripts_dir, f"training_script_{job_id}.py")
+        os.makedirs(scripts_dir, exist_ok=True)
+        with open(script_path, "w", encoding="utf-8") as f:
+            f.write(rendered)
+        FORGE_TEMPLATES_USED.labels(architecture=architecture, job_id=job_id).inc()
+        logger.info(
+            f"[job={job_id}] [strategy=template] Template-rendered {script_path} "
+            f"({len(rendered)} bytes)"
+        )
+        _check_and_record_fingerprint(redis_client, script_path, architecture, job_id)
+        _increment_script_count(redis_client, architecture)
+        return script_path
+
+    # ── Strategy: CACHE (medium confidence — check fingerprint first) ───────
+    if strategy == "cache":
+        cached = _lookup_fingerprint(redis_client, architecture, job_id)
+        if cached:
+            logger.info(
+                f"[job={job_id}] [strategy=cache] Fingerprint HIT — reusing "
+                f"{cached} (val_metric from prior run)"
+            )
+            return cached
+
+    # ── Template fallback (cache + llm strategies) ──────────────────────────
+    rendered = select_and_render(
+        mission_brief,
+        job_id,
+        data_path=file_path,
+        architecture=architecture,
+        design_summary=design_summary,
+        redis_client=redis_client,
+    )
+    if rendered is not None:
+        script_path = os.path.join(scripts_dir, f"training_script_{job_id}.py")
+        os.makedirs(scripts_dir, exist_ok=True)
+        with open(script_path, "w", encoding="utf-8") as f:
+            f.write(rendered)
+        FORGE_TEMPLATES_USED.labels(architecture=architecture, job_id=job_id).inc()
+        logger.info(
+            f"[job={job_id}] [strategy={strategy}] Template fallback — {script_path} "
+            f"({len(rendered)} bytes)"
+        )
+        _check_and_record_fingerprint(redis_client, script_path, architecture, job_id)
+        _increment_script_count(redis_client, architecture)
+        return script_path
+
+    # ── Dispatch to architecture-specific f-string generators ──────────────
     if architecture == "distilbert":
-        return _write_distilbert_script(mission_brief, job_id, scripts_dir)
+        script_path = _write_distilbert_script(
+            mission_brief,
+            job_id,
+            scripts_dir,
+            design_summary,
+            max_trials=max_trials,
+        )
     elif architecture == "efficientnet":
-        return _write_efficientnet_script(mission_brief, job_id, scripts_dir)
-
-    if architecture == "xgboost":
-        return _write_xgboost_script(mission_brief, job_id, scripts_dir)
+        script_path = _write_efficientnet_script(
+            mission_brief,
+            job_id,
+            scripts_dir,
+            design_summary,
+            max_trials=max_trials,
+        )
+    elif architecture == "xgboost":
+        script_path = _write_xgboost_script(
+            mission_brief,
+            job_id,
+            scripts_dir,
+            design_summary,
+            validation_strategy=validation_strategy,
+            max_trials=max_trials,
+        )
     elif architecture == "tabnet":
-        return _write_tabnet_script(mission_brief, job_id, scripts_dir)
+        script_path = _write_tabnet_script(
+            mission_brief,
+            job_id,
+            scripts_dir,
+            design_summary,
+            validation_strategy=validation_strategy,
+            max_trials=max_trials,
+        )
+    else:
+        script_path = _write_lightgbm_script(
+            mission_brief,
+            job_id,
+            scripts_dir,
+            design_summary,
+            validation_strategy=validation_strategy,
+            imbalance_method=imbalance_method,
+            max_trials=max_trials,
+        )
 
-    return _write_lightgbm_script(mission_brief, job_id, scripts_dir)
+    logger.info(f"[job={job_id}] [strategy={strategy}] F-string script written to {script_path}")
+    _check_and_record_fingerprint(redis_client, script_path, architecture, job_id)
+    _increment_script_count(redis_client, architecture)
+    return script_path
 
 
-def _write_xgboost_script(mission_brief: dict, job_id: str, scripts_dir: str = "./scripts") -> str:
+def _design_header_block(design_summary: str | None) -> str:
+    if not design_summary:
+        return ""
+    lines = design_summary.strip().split("\n")
+    return "Design Summary:\n" + "\n".join(f"  {line}" for line in lines) + "\n"
+
+
+def _write_xgboost_script(
+    mission_brief: dict,
+    job_id: str,
+    scripts_dir: str = "./scripts",
+    design_summary: str | None = None,
+    validation_strategy: str = "train_val_split",
+    max_trials: int = 10,
+) -> str:
     """Generate an XGBoost training script."""
     task_type = mission_brief["task_type"]
     target = mission_brief.get("target_column", "target")
@@ -108,12 +300,47 @@ def _write_xgboost_script(mission_brief: dict, job_id: str, scripts_dir: str = "
     )
     direction = '"maximize"' if is_classification else '"minimize"'
 
+    # ── CV support ──────────────────────────────────────────────────────
+    use_cv = "fold" in validation_strategy or "kfold" in validation_strategy.lower()
+    n_folds = 5
+    if "3fold" in validation_strategy:
+        n_folds = 3
+    stratified = "stratified" in validation_strategy
+
+    if use_cv:
+        kfold_class = "StratifiedKFold" if stratified else "KFold"
+        split_and_cv = (
+            f"from sklearn.model_selection import train_test_split, {kfold_class}\n"
+            f"cv = {kfold_class}(n_splits={n_folds}, shuffle=True, random_state=42)\n"
+            f"X_train, X_test, y_train, y_test = train_test_split(df, target, test_size=0.2, random_state=42)\n"
+            f"cv_scores = []\n"
+        )
+        final_fit = (
+            'best_params = {"n_estimators": 100, "max_depth": 6, "random_state": 42, "verbosity": 0}\n'
+            f"for fold_idx, (train_idx, val_idx) in enumerate(cv.split(X_train, y_train)):\n"
+            f"    X_tr, X_val = X_train.iloc[train_idx], X_train.iloc[val_idx]\n"
+            f"    y_tr, y_val = y_train.iloc[train_idx], y_train.iloc[val_idx]\n"
+            f"    estimator = xgb.XGBClassifier(**best_params) if {is_classification} else xgb.XGBRegressor(**best_params)\n"
+            f"    model = Pipeline([('preprocessor', preprocessor), ('estimator', estimator)])\n"
+            f"    model.fit(X_tr, y_tr)\n"
+            f"    cv_scores.append(model.score(X_val, y_val))\n"
+            f"print(f'CV scores: {{cv_scores}} | mean: {{np.mean(cv_scores):.4f}}')\n"
+            f"estimator = xgb.XGBClassifier(**best_params) if {is_classification} else xgb.XGBRegressor(**best_params)\n"
+            f"model = Pipeline([('preprocessor', preprocessor), ('estimator', estimator)])\n"
+            f"model.fit(X_train, y_train)\n"
+        )
+    else:
+        split_and_cv = "X_train, X_test, y_train, y_test = train_test_split(df, target, test_size=0.2, random_state=42)\n"
+        final_fit = ""
+
+    header_design = _design_header_block(design_summary)
     script = f'''"""
 Training script for job {job_id}
 Architecture: xgboost
 Task: {task_type}
 Auto-generated by Forge agent.
-"""
+Validation strategy: {validation_strategy}
+{header_design}"""
 
 import os
 import json
@@ -123,9 +350,9 @@ import warnings
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import accuracy_score, mean_squared_error, roc_auc_score, f1_score
+from sklearn.metrics import accuracy_score, mean_squared_error
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
+from sklearn.preprocessing import OrdinalEncoder
 from sklearn.pipeline import Pipeline
 import xgboost as xgb
 
@@ -141,10 +368,6 @@ _data_dir = os.getenv("DATA_DIR", "./data")
 df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"))
 {target_line}
 
-for col in ["Name", "Ticket", "Cabin"]:
-    if col in df.columns:
-        df.drop(columns=[col], inplace=True)
-
 mask = target.notna()
 df = df[mask]
 target = target[mask]
@@ -154,10 +377,7 @@ for _c in df.select_dtypes(include=["int64", "float64"]).columns:
 for _c in df.select_dtypes(include=["object"]).columns:
     df[_c] = df[_c].fillna(df[_c].mode().iloc[0] if not df[_c].mode().empty else "MISSING")
 
-X_train, X_test, y_train, y_test = train_test_split(
-    df, target, test_size=0.2, random_state=42
-)
-
+{split_and_cv}
 numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolist()
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
@@ -196,7 +416,7 @@ if _use_optuna:
             _y_pred = _model.predict(X_test)
             return float(mean_squared_error(y_test, _y_pred))
 
-    _n_trials = int(os.getenv("OPTUNA_TRIALS", "10"))
+    _n_trials = {max_trials}
     study = optuna.create_study(direction={direction})
     study.optimize(_objective, n_trials=_n_trials)
     best_params = study.best_params
@@ -205,19 +425,20 @@ if _use_optuna:
 else:
     best_params = {{"n_estimators": 100, "max_depth": 6, "random_state": 42, "verbosity": 0}}
 
-if {is_classification}:
-    estimator = xgb.XGBClassifier(**best_params)
-else:
-    estimator = xgb.XGBRegressor(**best_params)
+{final_fit}if not {use_cv}:
+    if {is_classification}:
+        estimator = xgb.XGBClassifier(**best_params)
+    else:
+        estimator = xgb.XGBRegressor(**best_params)
 
-model = Pipeline([
-    ("preprocessor", preprocessor),
-    ("estimator", estimator),
-])
-model.fit(X_train, y_train)
+    model = Pipeline([
+        ("preprocessor", preprocessor),
+        ("estimator", estimator),
+    ])
+    model.fit(X_train, y_train)
 
-y_pred = model.predict(X_test)
-{eval_metrics}
+    y_pred = model.predict(X_test)
+    {eval_metrics}
 
 _outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
 output_dir = os.path.join(_outputs_dir, "{job_id}", "checkpoints")
@@ -242,7 +463,14 @@ if {is_classification}:
     return script_path
 
 
-def _write_tabnet_script(mission_brief: dict, job_id: str, scripts_dir: str = "./scripts") -> str:
+def _write_tabnet_script(
+    mission_brief: dict,
+    job_id: str,
+    scripts_dir: str = "./scripts",
+    design_summary: str | None = None,
+    validation_strategy: str = "train_val_split",
+    max_trials: int = 10,
+) -> str:
     """Generate a TabNet training script for large tabular datasets."""
     task_type = mission_brief["task_type"]
     target = mission_brief.get("target_column", "target")
@@ -268,12 +496,13 @@ def _write_tabnet_script(mission_brief: dict, job_id: str, scripts_dir: str = ".
             "    _target_col = df.columns[-1]\n"
             "target = df.pop(_target_col)"
         )
+    header_design = _design_header_block(design_summary)
     script = f'''"""
 Training script for job {job_id}
 Architecture: tabnet
 Task: {task_type}
 Auto-generated by Forge agent.
-"""
+{header_design}"""
 
 import os
 import json
@@ -296,10 +525,6 @@ warnings.filterwarnings("ignore")
 _data_dir = os.getenv("DATA_DIR", "./data")
 df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"))
 {target_line}
-
-for col in ["Name", "Ticket", "Cabin"]:
-    if col in df.columns:
-        df.drop(columns=[col], inplace=True)
 
 mask = target.notna()
 df = df[mask]
@@ -400,7 +625,15 @@ if {is_classification}:
     return script_path
 
 
-def _write_lightgbm_script(mission_brief: dict, job_id: str, scripts_dir: str = "./scripts") -> str:
+def _write_lightgbm_script(
+    mission_brief: dict,
+    job_id: str,
+    scripts_dir: str = "./scripts",
+    design_summary: str | None = None,
+    validation_strategy: str = "train_val_split",
+    imbalance_method: str = "none",
+    max_trials: int = 10,
+) -> str:
     task_type = mission_brief["task_type"]
     target = mission_brief.get("target_column", "target")
     file_path = mission_brief["dataset"]["file_path"]
@@ -426,6 +659,17 @@ def _write_lightgbm_script(mission_brief: dict, job_id: str, scripts_dir: str = 
             "    _target_col = df.columns[-1]\n"
             "target = df.pop(_target_col)"
         )
+
+    # ── Imbalance imports ──────────────────────────────────────────────
+    smote_import = ""
+    smote_step = ""
+    class_weight_param = ""
+    if imbalance_method == "smote":
+        smote_import = "from imblearn.over_sampling import SMOTE\nfrom imblearn.pipeline import Pipeline as ImbPipeline\n"
+        smote_step = "model = ImbPipeline([('preprocessor', preprocessor), ('smote', SMOTE(random_state=42)), ('estimator', estimator)])\n"
+    elif imbalance_method == "class_weight" and is_classification:
+        class_weight_param = ', "class_weight": "balanced"'
+
     eval_metrics = (
         'y_pred_class = (y_pred > 0.5).astype(int)\nprint(f"Accuracy: {accuracy_score(y_test, y_pred_class):.4f}")'
         if is_classification
@@ -433,12 +677,48 @@ def _write_lightgbm_script(mission_brief: dict, job_id: str, scripts_dir: str = 
     )
     direction = '"maximize"' if is_classification else '"minimize"'
 
+    # ── Split / CV code block ──────────────────────────────────────────
+    use_cv = "fold" in validation_strategy or "kfold" in validation_strategy.lower()
+    n_folds = 5
+    if "3fold" in validation_strategy:
+        n_folds = 3
+    stratified = "stratified" in validation_strategy
+
+    if use_cv:
+        kfold_class = "StratifiedKFold" if stratified else "KFold"
+        split_and_cv = f"""from sklearn.model_selection import {kfold_class}
+cv = {kfold_class}(n_splits={n_folds}, shuffle=True, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(df, target, test_size=0.2, random_state=42)
+cv_scores = []
+"""
+        final_fit = f"""best_params = {{"n_estimators": 100, "random_state": 42, "verbose": -1}}
+for fold_idx, (train_idx, val_idx) in enumerate(cv.split(X_train, y_train)):
+    X_tr, X_val = X_train.iloc[train_idx], X_train.iloc[val_idx]
+    y_tr, y_val = y_train.iloc[train_idx], y_train.iloc[val_idx]
+    estimator = lgb.LGBMClassifier(**best_params{class_weight_param}) if {is_classification} else lgb.LGBMRegressor(**best_params)
+    model = Pipeline([("preprocessor", preprocessor), ("estimator", estimator)])
+    model.fit(X_tr, y_tr)
+    _score = model.score(X_val, y_val)
+    cv_scores.append(_score)
+print(f"CV scores: {{cv_scores}} | mean: {{np.mean(cv_scores):.4f}}")
+# Refit on full training set
+estimator = lgb.LGBMClassifier(**best_params{class_weight_param}) if {is_classification} else lgb.LGBMRegressor(**best_params)
+model = Pipeline([("preprocessor", preprocessor), ("estimator", estimator)])
+model.fit(X_train, y_train)
+"""
+    else:
+        split_and_cv = "X_train, X_test, y_train, y_test = train_test_split(df, target, test_size=0.2, random_state=42)\n"
+        final_fit = ""
+
+    header_design = _design_header_block(design_summary)
     script = f'''"""
 Training script for job {job_id}
 Architecture: lightgbm
 Task: {task_type}
 Auto-generated by Forge agent.
-"""
+Imbalance strategy: {imbalance_method}
+Validation strategy: {validation_strategy}
+{header_design}"""
 
 import os
 import json
@@ -448,12 +728,12 @@ import warnings
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import accuracy_score, mean_squared_error, roc_auc_score, f1_score
+from sklearn.metrics import accuracy_score, mean_squared_error
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
+from sklearn.preprocessing import OrdinalEncoder
 from sklearn.pipeline import Pipeline
 import lightgbm as lgb
-
+{smote_import}
 warnings.filterwarnings("ignore")
 
 _search_space_json = os.getenv("SEARCH_SPACE_JSON")
@@ -466,10 +746,6 @@ _data_dir = os.getenv("DATA_DIR", "./data")
 df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"))
 {target_line}
 
-for col in ["Name", "Ticket", "Cabin"]:
-    if col in df.columns:
-        df.drop(columns=[col], inplace=True)
-
 mask = target.notna()
 df = df[mask]
 target = target[mask]
@@ -479,10 +755,7 @@ for _c in df.select_dtypes(include=["int64", "float64"]).columns:
 for _c in df.select_dtypes(include=["object"]).columns:
     df[_c] = df[_c].fillna(df[_c].mode().iloc[0] if not df[_c].mode().empty else "MISSING")
 
-X_train, X_test, y_train, y_test = train_test_split(
-    df, target, test_size=0.2, random_state=42
-)
-
+{split_and_cv}
 numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolist()
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
@@ -521,7 +794,7 @@ if _use_optuna:
             _y_pred = _model.predict(X_test)
             return float(mean_squared_error(y_test, _y_pred))
 
-    _n_trials = int(os.getenv("OPTUNA_TRIALS", "10"))
+    _n_trials = {max_trials}
     study = optuna.create_study(direction={direction})
     study.optimize(_objective, n_trials=_n_trials)
     best_params = study.best_params
@@ -530,19 +803,19 @@ if _use_optuna:
 else:
     best_params = {{"n_estimators": 100, "random_state": 42, "verbose": -1}}
 
-if {is_classification}:
-    estimator = lgb.LGBMClassifier(**best_params)
-else:
-    estimator = lgb.LGBMRegressor(**best_params)
+{final_fit}if not {use_cv}:
+    if {is_classification}:
+        estimator = lgb.LGBMClassifier(**best_params{class_weight_param})
+    else:
+        estimator = lgb.LGBMRegressor(**best_params)
+    {smote_step}model = Pipeline([
+        ("preprocessor", preprocessor),
+        ("estimator", estimator),
+    ])
+    model.fit(X_train, y_train)
 
-model = Pipeline([
-    ("preprocessor", preprocessor),
-    ("estimator", estimator),
-])
-model.fit(X_train, y_train)
-
-y_pred = model.predict(X_test)
-{eval_metrics}
+    y_pred = model.predict(X_test)
+    {eval_metrics}
 
 _outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
 output_dir = os.path.join(_outputs_dir, "{job_id}", "checkpoints")
@@ -570,19 +843,25 @@ if {is_classification}:
 
 
 def _write_distilbert_script(
-    mission_brief: dict, job_id: str, scripts_dir: str = "./scripts"
+    mission_brief: dict,
+    job_id: str,
+    scripts_dir: str = "./scripts",
+    design_summary: str | None = None,
+    max_trials: int = 10,
 ) -> str:
     task_type = mission_brief["task_type"]
     target = mission_brief.get("target_column", "target")
     file_path = mission_brief["dataset"]["file_path"]
     data_filename = os.path.basename(file_path)
 
+    header_design = _design_header_block(design_summary)
     script = f'''"""
 Training script for job {job_id}
 Architecture: distilbert
 Task: {task_type}
 Auto-generated by Forge agent.
-"""
+Epochs from plan: {max_trials}
+{header_design}"""
 
 import os
 import json
@@ -685,18 +964,24 @@ print("TRAINING_COMPLETE")
 
 
 def _write_efficientnet_script(
-    mission_brief: dict, job_id: str, scripts_dir: str = "./scripts"
+    mission_brief: dict,
+    job_id: str,
+    scripts_dir: str = "./scripts",
+    design_summary: str | None = None,
+    max_trials: int = 10,
 ) -> str:
     task_type = mission_brief["task_type"]
     file_path = mission_brief["dataset"]["file_path"]
     data_filename = os.path.basename(file_path)
 
+    header_design = _design_header_block(design_summary)
     script = f'''"""
 Training script for job {job_id}
 Architecture: efficientnet
 Task: {task_type}
 Auto-generated by Forge agent.
-"""
+Epochs from plan: {max_trials}
+{header_design}"""
 
 import os
 import json
@@ -807,3 +1092,155 @@ print("TRAINING_COMPLETE")
 
     logger.info(f"[job={job_id}] EfficientNet script written to {script_path}")
     return script_path
+
+
+def _lookup_fingerprint(
+    redis_client: Any,
+    architecture: str,
+    job_id: str,
+) -> str | None:
+    """Pre-generation fingerprint lookup.
+
+    Checks if an existing script with a matching fingerprint already
+    produced a successful training run. If so, returns its path so the
+    caller can skip re-generation entirely.
+
+    Returns:
+        Cached script path if a matching successful fingerprint is found,
+        None otherwise.
+    """
+    if redis_client is None:
+        return None
+    try:
+        from agents.forge.script_fingerprint import (
+            query_fingerprint_by_architecture,
+        )
+
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+        coro = _query_recent_successful_fingerprint(redis_client, architecture)
+        if loop.is_running():
+            import concurrent.futures
+
+            future = asyncio.run_coroutine_threadsafe(coro, loop)
+            cached = future.result(timeout=5)
+        else:
+            cached = loop.run_until_complete(coro)
+
+        if cached and cached.get("outcome") == "success":
+            return cached.get("script_path")
+    except Exception as e:
+        logger.debug(f"[job={job_id}] Fingerprint lookup skipped: {e}")
+    return None
+
+
+async def _query_recent_successful_fingerprint(
+    redis_client: Any,
+    architecture: str,
+) -> dict | None:
+    """Query Redis for a recent successful fingerprint for this architecture."""
+    try:
+        pattern = "fingerprint:*:meta"
+        keys = await redis_client.keys(pattern)
+        for key in keys:
+            meta = await redis_client.get_json(key)
+            if (
+                meta
+                and meta.get("architecture") == architecture
+                and meta.get("outcome") == "success"
+            ):
+                return meta
+    except Exception:
+        pass
+    return None
+
+
+def _check_and_record_fingerprint(
+    redis_client: Any,
+    script_path: str,
+    architecture: str,
+    job_id: str,
+) -> str | None:
+    """Check fingerprint cache and record. Returns cached script_path if hit."""
+    if redis_client is None:
+        return None
+    try:
+        import asyncio
+
+        with open(script_path, encoding="utf-8") as f:
+            content = f.read()
+
+        fp = compute_fingerprint(content)
+        cached = None
+
+        # Run fingerprint check synchronously
+        loop = asyncio.get_event_loop()
+        coro_check = check_fingerprint(redis_client, fp)
+        if loop.is_running():
+            import concurrent.futures
+
+            future = asyncio.run_coroutine_threadsafe(coro_check, loop)
+            cached = future.result(timeout=5)
+        else:
+            cached = loop.run_until_complete(coro_check)
+
+        if cached and cached.get("outcome") == "success":
+            logger.info(
+                f"[job={job_id}] Fingerprint cache HIT | fp={fp[:8]}... "
+                f"arch={architecture} val_metric={cached.get('val_metric', 'N/A')} "
+                f"usage={cached.get('usage_count', 0)}"
+            )
+            # Store cache hit info for the orchestrator
+            cache_key = f"job:{job_id}:fingerprint_cache_hit"
+            import json
+
+            if loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    redis_client.setex(cache_key, 86400, json.dumps(cached)),
+                    loop,
+                )
+            else:
+                loop.run_until_complete(redis_client.setex(cache_key, 86400, json.dumps(cached)))
+            return cached.get("script_path", script_path)
+
+        # Record as pending
+        coro_record = record_fingerprint_pending(
+            redis_client,
+            fp,
+            architecture,
+            job_id,
+            script_path,
+            content,
+        )
+        if loop.is_running():
+            asyncio.run_coroutine_threadsafe(coro_record, loop)
+        else:
+            loop.run_until_complete(coro_record)
+
+    except Exception as e:
+        logger.debug(f"Fingerprint check skipped: {e}")
+
+    return None
+
+
+def _increment_script_count(redis_client: Any, architecture: str) -> None:
+    """Increment the total script counter for an architecture in Redis.
+
+    Called after every successful script generation (template or f-string).
+    This feeds error-rate calculations in quality_feedback.py.
+    """
+    if redis_client is None:
+        return
+    try:
+        from agents.forge.quality_feedback import increment_script_count
+
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(increment_script_count(redis_client, architecture))
+        else:
+            loop.run_until_complete(increment_script_count(redis_client, architecture))
+    except Exception as e:
+        logger.debug(f"Failed to increment script count: {e}")

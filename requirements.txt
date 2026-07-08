@@ -13,6 +13,7 @@ optuna==3.6.1
 imbalanced-learn==0.12.3
 pandas==2.2.2
 numpy==1.26.4
+openpyxl>=3.1.2            # Excel .xls/.xlsx reading via pandas
 
 # Infrastructure
 redis==5.0.4
@@ -30,8 +31,14 @@ prometheus-client==0.20.0
 filelock==3.15.0
 scipy==1.13.0
 
+# Templates
+jinja2==3.1.4
+
 # CLI
 click>=8.1
+
+# Figures
+matplotlib>=3.8.0
 
 # Dev + Testing
 pytest==8.2.0

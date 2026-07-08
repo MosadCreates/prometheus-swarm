@@ -96,6 +96,14 @@ def _register_commands():
         tool,
         profile,
         plugin,
+        solve,
+        explain,
+        replay,
+        report,
+        planner,
+        benchmark,
+        reproduce,
+        evaluate,
     )
 
     cli.add_command(workspace)
@@ -110,6 +118,14 @@ def _register_commands():
     cli.add_command(tool)
     cli.add_command(profile)
     cli.add_command(plugin)
+    cli.add_command(solve)
+    cli.add_command(explain)
+    cli.add_command(replay)
+    cli.add_command(report)
+    cli.add_command(planner)
+    cli.add_command(benchmark)
+    cli.add_command(reproduce)
+    cli.add_command(evaluate)
 
     cli.add_command(help_cmd)
     cli.add_command(commands_cmd)
@@ -132,6 +148,10 @@ def _register_commands():
         "prov": "provider",
         "mem": "memory",
         "jb": "job",
+        "sv": "solve",
+        "ex": "explain",
+        "rp": "replay",
+        "rpt": "report",
     },
     context_settings=dict(help_option_names=[]),
 )

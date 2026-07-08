@@ -97,6 +97,84 @@ def compute_diff(original: str, patched: str) -> str:
     return "".join(diff)
 
 
+def apply_unified_diff(script_path: str, diff_text: str) -> tuple[bool, str]:
+    """Apply a unified diff to a file in-place. Creates .bak backup.
+
+    Parses a unified diff produced by compute_diff() and applies line insertions
+    and deletions readably without shelling out to `patch`.
+    """
+    if not os.path.exists(script_path):
+        return False, f"Script not found: {script_path}"
+    try:
+        bak_path = script_path + ".bak"
+        shutil.copy2(script_path, bak_path)
+
+        with open(script_path, encoding="utf-8") as f:
+            lines = f.readlines()
+
+        hunk_lines = []
+        in_hunk = False
+        for line in diff_text.split("\n"):
+            if line.startswith("@@"):
+                hunk_lines.append(line)
+                in_hunk = True
+            elif in_hunk:
+                if line.startswith("---") or line.startswith("+++"):
+                    continue
+                hunk_lines.append(line)
+
+        result = list(lines)
+        offset = 0
+        i = 0
+        while i < len(hunk_lines):
+            h = hunk_lines[i]
+            if not h.startswith("@@"):
+                i += 1
+                continue
+            parts = h.split()
+            if len(parts) < 2:
+                i += 1
+                continue
+            old_range = parts[1]
+            if "," in old_range:
+                old_start, old_count = old_range.split(",")
+                old_start = int(old_start) - 1
+                old_count = int(old_count)
+            else:
+                old_start = int(old_range) - 1
+                old_count = 1
+            i += 1
+            deletions = 0
+            insertions = []
+            while i < len(hunk_lines) and not hunk_lines[i].startswith("@@"):
+                cl = hunk_lines[i]
+                if cl.startswith("---") or cl.startswith("+++"):
+                    i += 1
+                    continue
+                if cl.startswith("-"):
+                    deletions += 1
+                elif cl.startswith("+"):
+                    insertions.append(cl[1:])
+                i += 1
+
+            pos = old_start + offset
+            if pos < 0:
+                pos = 0
+            for _ in range(deletions):
+                if pos < len(result):
+                    result.pop(pos)
+            for j, ins in enumerate(insertions):
+                result.insert(pos + j, ins + "\n" if not ins.endswith("\n") else ins)
+            offset += len(insertions) - deletions
+
+        with open(script_path, "w", encoding="utf-8") as f:
+            f.writelines(result)
+
+        return True, f"Diff applied. Backup at {bak_path}"
+    except Exception as e:
+        return False, f"Failed to apply diff: {e}"
+
+
 async def run_sandbox_test(script_path: str, job_id: str, max_epochs: int = 3) -> tuple[bool, str]:
     """Run patched script in a Docker sandbox for up to max_epochs to verify it works.
 

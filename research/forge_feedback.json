@@ -1,0 +1,53 @@
+{
+  "recurring_categories": {
+    "unknown::shape_mismatch": {
+      "architecture": "unknown",
+      "category": "shape_mismatch",
+      "count": 50,
+      "last_seen": "2026-07-08T14:49:14.350393+00:00",
+      "recommendation": "Avoid errors of type shape_mismatch in unknown scripts"
+    },
+    "lightgbm::dtype_mismatch": {
+      "architecture": "lightgbm",
+      "category": "dtype_mismatch",
+      "count": 37,
+      "last_seen": "2026-07-08T14:50:43.848212+00:00",
+      "recommendation": "Add LabelEncoder/OrdinalEncoder for categorical columns during preprocessing; use pd.to_numeric with errors='coerce' for mixed-type columns"
+    },
+    "unknown::missing_column": {
+      "architecture": "unknown",
+      "category": "missing_column",
+      "count": 9,
+      "last_seen": "2026-07-08T14:47:58.077776+00:00",
+      "recommendation": "Verify all column names used in script match actual dataset columns; use df.columns to list available columns before referencing them"
+    }
+  },
+  "category_by_architecture": {
+    "unknown": {
+      "shape_mismatch": 50,
+      "missing_column": 9
+    },
+    "lightgbm": {
+      "dtype_mismatch": 37
+    }
+  },
+  "top_failures": [
+    {
+      "key": "unknown::shape_mismatch",
+      "count": 50,
+      "recommendation": "Avoid errors of type shape_mismatch in unknown scripts"
+    },
+    {
+      "key": "lightgbm::dtype_mismatch",
+      "count": 37,
+      "recommendation": "Add LabelEncoder/OrdinalEncoder for categorical columns during preprocessing; use pd.to_numeric with errors='coerce' for mixed-type columns"
+    },
+    {
+      "key": "unknown::missing_column",
+      "count": 9,
+      "recommendation": "Verify all column names used in script match actual dataset columns; use df.columns to list available columns before referencing them"
+    }
+  ],
+  "total_jobs_tracked": 96,
+  "total_repairs_needed": 58
+}

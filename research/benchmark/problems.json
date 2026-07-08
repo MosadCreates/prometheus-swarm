@@ -37,21 +37,21 @@
   },
   {
     "id": "TC03",
-    "problem_description": "Predict whether a patient has diabetes based on diagnostic measurements.",
+    "problem_description": "Predict diabetes risk based on health indicators and lifestyle factors.",
     "dataset": {
-      "name": "Pima Indians Diabetes",
+      "name": "CDC Diabetes Health Indicators",
       "source": "UCI",
       "path": "data\\tc03_pima_indians_diabetes.csv"
     },
     "task_type": "classification",
     "modality": "tabular",
-    "target_column": "Outcome",
+    "target_column": "Diabetes_binary",
     "evaluation_metric": "auc_roc",
     "difficulty": "easy",
     "num_rows_expected": 768,
-    "num_columns_expected": 9,
+    "num_columns_expected": 22,
     "expected_architecture": "lightgbm",
-    "class_imbalance_ratio": 1.87
+    "class_imbalance_ratio": 1.5
   },
   {
     "id": "TC04",
@@ -63,7 +63,7 @@
     },
     "task_type": "classification",
     "modality": "tabular",
-    "target_column": "default",
+    "target_column": "Y",
     "evaluation_metric": "auc_roc",
     "difficulty": "medium",
     "num_rows_expected": 30000,
@@ -73,7 +73,7 @@
   },
   {
     "id": "TC05",
-    "problem_description": "Classify cancer diagnoses as malignant or benign from cell features.",
+    "problem_description": "Classify breast cancer tumours as malignant or benign from cell features.",
     "dataset": {
       "name": "Breast Cancer Wisconsin",
       "source": "UCI",
@@ -81,7 +81,7 @@
     },
     "task_type": "classification",
     "modality": "tabular",
-    "target_column": "diagnosis",
+    "target_column": "1",
     "evaluation_metric": "auc_roc",
     "difficulty": "easy",
     "num_rows_expected": 569,
@@ -113,7 +113,7 @@
     "dataset": {
       "name": "HR Analytics",
       "source": "kaggle",
-      "path": "data\\tc07_hr_analytics.csv"
+      "path": "SKIP_FILE_NOT_HR_DATA"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -135,7 +135,7 @@
     },
     "task_type": "classification",
     "modality": "tabular",
-    "target_column": "Loan_Status",
+    "target_column": "loan_status",
     "evaluation_metric": "f1",
     "difficulty": "easy",
     "num_rows_expected": 614,
@@ -171,7 +171,7 @@
     },
     "task_type": "classification",
     "modality": "tabular",
-    "target_column": "target",
+    "target_column": "num",
     "evaluation_metric": "auc_roc",
     "difficulty": "medium",
     "num_rows_expected": 303,
@@ -225,7 +225,7 @@
     },
     "task_type": "classification",
     "modality": "tabular",
-    "target_column": "class",
+    "target_column": "0",
     "evaluation_metric": "f1",
     "difficulty": "easy",
     "num_rows_expected": 8124,
@@ -243,7 +243,7 @@
     },
     "task_type": "classification",
     "modality": "tabular",
-    "target_column": "income",
+    "target_column": "14",
     "evaluation_metric": "auc_roc",
     "difficulty": "medium",
     "num_rows_expected": 48842,
@@ -261,7 +261,7 @@
     },
     "task_type": "classification",
     "modality": "tabular",
-    "target_column": "Type",
+    "target_column": "9",
     "evaluation_metric": "f1",
     "difficulty": "medium",
     "num_rows_expected": 214,
@@ -311,7 +311,7 @@
     "dataset": {
       "name": "Energy Efficiency",
       "source": "UCI",
-      "path": "data\\tc18_energy_efficiency.csv"
+      "path": "SKIP_FILE_NOT_ENERGY_DATA"
     },
     "task_type": "classification",
     "modality": "tabular",
@@ -325,7 +325,7 @@
   },
   {
     "id": "TC19",
-    "problem_description": "Predict student exam pass/fail based on study hours, attendance, and previous grades.",
+    "problem_description": "Predict student final grade (G3) based on study hours, attendance, and previous grades.",
     "dataset": {
       "name": "Student Performance",
       "source": "UCI",
@@ -333,7 +333,7 @@
     },
     "task_type": "classification",
     "modality": "tabular",
-    "target_column": "pass",
+    "target_column": "G3",
     "evaluation_metric": "auc_roc",
     "difficulty": "easy",
     "num_rows_expected": 649,
@@ -549,7 +549,7 @@
     },
     "task_type": "regression",
     "modality": "tabular",
-    "target_column": "strength",
+    "target_column": "Concrete compressive strength(MPa, megapascals) ",
     "evaluation_metric": "rmse",
     "difficulty": "medium",
     "num_rows_expected": 1030,
@@ -559,7 +559,7 @@
   },
   {
     "id": "TR12",
-    "problem_description": "Predict air quality PM2.5 levels based on meteorological and temporal features.",
+    "problem_description": "Predict air humidity AH based on meteorological and temporal features.",
     "dataset": {
       "name": "Air Quality",
       "source": "UCI",
@@ -567,7 +567,7 @@
     },
     "task_type": "regression",
     "modality": "tabular",
-    "target_column": "PM2.5",
+    "target_column": "AH",
     "evaluation_metric": "rmse",
     "difficulty": "medium",
     "num_rows_expected": 9358,

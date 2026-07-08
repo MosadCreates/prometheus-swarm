@@ -2,13 +2,31 @@
 
 Supports both synchronous regex-based classification and asynchronous LLM-based
 classification for novel errors that don't match known patterns.
+
+Each entry includes deterministic repair metadata for the 5-level repair cascade:
+  Level 0: Deterministic repair rules (rules.py)
+  Level 1: Compiled repair templates (repair_templates.py)
+  Level 2: Repair cache (fingerprint-based exact match)
+  Level 3: Patch memory retrieval (ChromaDB semantic search)
+  Level 4: LLM reasoning
+  Level 5: Escalation
 """
 
 import logging
 from dataclasses import dataclass
+from enum import Enum
 import re
 
 logger = logging.getLogger(__name__)
+
+
+class CascadeLevel(Enum):
+    DETERMINISTIC_RULE = 0
+    COMPILED_TEMPLATE = 1
+    REPAIR_CACHE = 2
+    PATCH_MEMORY = 3
+    LLM_REASONING = 4
+    ESCALATION = 5
 
 
 @dataclass
@@ -18,6 +36,12 @@ class TaxonomyEntry:
     message_patterns: list[str]
     repair_strategy: str
     confidence: float = 0.9
+    requires_llm: bool = False
+    deterministic: bool = False
+    cascade_level: int = 4
+    has_template: bool = False
+    has_rule: bool = False
+    sub_strategies: list[str] | None = None
 
 
 TAXONOMY: list[TaxonomyEntry] = [
@@ -26,60 +50,100 @@ TAXONOMY: list[TaxonomyEntry] = [
         exception_types=["ValueError"],
         message_patterns=[r"shape", r"features.*expect", r"dimension"],
         repair_strategy="Detect dropped columns; re-align feature list; regenerate encoder",
+        deterministic=True,
+        cascade_level=1,
+        has_template=True,
+        has_rule=False,
+        sub_strategies=["reindex", "reencode", "slice_features"],
     ),
     TaxonomyEntry(
         category="sparse_matrix",
         exception_types=["TypeError"],
         message_patterns=[r"SMOTE.*sparse", r"sparse matrix"],
         repair_strategy="Convert to dense before SMOTE; or replace SMOTE with class_weight",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
+        sub_strategies=["to_dense", "replace_smote"],
     ),
     TaxonomyEntry(
         category="oom",
         exception_types=["MemoryError"],
         message_patterns=[r"cannot allocate", r"memory"],
         repair_strategy="Reduce batch size 50%; switch to chunked loading; flag if still OOM",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
+        sub_strategies=["halve_batch", "chunked_loading"],
     ),
     TaxonomyEntry(
         category="cuda_oom",
         exception_types=["RuntimeError"],
         message_patterns=[r"CUDA out of memory", r"out of memory"],
         repair_strategy="Halve batch size; enable gradient checkpointing; clear GPU cache",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
+        sub_strategies=["halve_batch", "gradient_checkpointing", "cpu_fallback"],
     ),
     TaxonomyEntry(
         category="missing_column",
         exception_types=["KeyError"],
         message_patterns=[r"not found in", r"not in index"],
         repair_strategy="Detect missing derived column; add derivation step to preprocessing",
+        deterministic=True,
+        cascade_level=1,
+        has_template=True,
+        has_rule=False,
+        sub_strategies=["derive", "rename", "drop", "abort"],
     ),
     TaxonomyEntry(
         category="dtype_mismatch",
         exception_types=["ValueError"],
         message_patterns=[r"could not convert string", r"cannot convert"],
         repair_strategy="Detect non-numeric column; add LabelEncoder or OrdinalEncoder",
+        deterministic=True,
+        cascade_level=1,
+        has_template=True,
+        has_rule=False,
+        sub_strategies=["astype", "infer_dtype", "convert_numeric", "label_encode"],
     ),
     TaxonomyEntry(
         category="convergence_failure",
         exception_types=["ConvergenceWarning", "RuntimeError"],
         message_patterns=[r"failed to converge", r"convergence"],
         repair_strategy="Increase max_iter; switch solver to saga; reduce regularisation",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
+        sub_strategies=["increase_iter", "switch_solver", "reduce_reg"],
     ),
     TaxonomyEntry(
         category="import_error",
         exception_types=["ModuleNotFoundError", "ImportError"],
         message_patterns=[r"No module named", r"cannot import"],
         repair_strategy="Run pip install in container; retry",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
     ),
     TaxonomyEntry(
         category="nan_propagation",
         exception_types=["ValueError"],
         message_patterns=[r"NaN", r"contains NaN", r"missing values"],
         repair_strategy="Detect NaN columns; median imputation for numeric; mode for categorical",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
     ),
     TaxonomyEntry(
         category="checkpoint_corruption",
         exception_types=["UnpicklingError", "EOFError"],
         message_patterns=[r"invalid load key", r"unpickl"],
         repair_strategy="Delete checkpoint; restart from epoch 0; increase save frequency",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
     ),
     TaxonomyEntry(
         category="feature_mismatch",
@@ -90,6 +154,11 @@ TAXONOMY: list[TaxonomyEntry] = [
             r"X has \d+ features",
         ],
         repair_strategy="Align feature order and count between train/test; re-run encoder on combined column set",
+        deterministic=True,
+        cascade_level=1,
+        has_template=True,
+        has_rule=False,
+        sub_strategies=["reindex", "reencode", "slice_features"],
     ),
     TaxonomyEntry(
         category="index_error",
@@ -100,6 +169,9 @@ TAXONOMY: list[TaxonomyEntry] = [
             r"list index",
         ],
         repair_strategy="Add bounds check before array access; verify label encoding produced correct indices",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
     ),
     TaxonomyEntry(
         category="zero_division",
@@ -110,48 +182,108 @@ TAXONOMY: list[TaxonomyEntry] = [
             r"invalid value encountered",
         ],
         repair_strategy="Add epsilon (1e-8) to denominator in metric computations; check for constant target column",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
     ),
     TaxonomyEntry(
         category="empty_dataset",
         exception_types=["ValueError", "IndexError", "StopIteration"],
         message_patterns=[r"zero-size array", r"empty", r"0 rows", r"no samples"],
         repair_strategy="Check that train_test_split produced non-empty sets; verify filtering did not remove all rows",
+        deterministic=True,
+        cascade_level=1,
+        has_template=True,
+        has_rule=False,
+        sub_strategies=["fix_split", "disable_filter", "synthetic_data"],
     ),
     TaxonomyEntry(
         category="invalid_axis",
         exception_types=["ValueError"],
         message_patterns=[r"axis", r"no axis named", r"invalid axis"],
         repair_strategy="Correct axis parameter: use axis=0 for rows, axis=1 for columns in pandas/numpy operations",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
     ),
     TaxonomyEntry(
         category="optimizer_divergence",
         exception_types=["RuntimeError", "ValueError"],
         message_patterns=[r"loss.*inf", r"loss.*nan", r"diverg", r"explode"],
         repair_strategy="Reduce learning rate by 0.5x; add gradient clipping; check for NaN in input features",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
+        sub_strategies=["halve_lr", "gradient_clip", "check_nan_input"],
     ),
     TaxonomyEntry(
         category="encoding_error",
         exception_types=["UnicodeDecodeError", "UnicodeEncodeError", "LookupError"],
         message_patterns=[r"codec", r"encode", r"decode", r"charmap"],
         repair_strategy="Open file with encoding='utf-8' and errors='replace'; detect file encoding automatically",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
     ),
     TaxonomyEntry(
         category="permission_error",
         exception_types=["PermissionError", "OSError"],
         message_patterns=[r"permission denied", r"access is denied", r"cannot open"],
         repair_strategy="Check output directory exists and is writable; create directory with exist_ok=True",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
     ),
     TaxonomyEntry(
         category="label_mismatch",
         exception_types=["ValueError"],
         message_patterns=[r"class", r"label", r"n_classes", r"number of classes"],
         repair_strategy="Check that all classes are present in training data; add missing classes to label encoder",
+        deterministic=True,
+        cascade_level=1,
+        has_template=True,
+        has_rule=False,
+        sub_strategies=["add_missing_class", "refit_encoder", "min_class_threshold"],
     ),
     TaxonomyEntry(
         category="pickle_version_mismatch",
         exception_types=["UnpicklingError", "ModuleNotFoundError"],
         message_patterns=[r"pickle", r"protocol", r"unsupported pickle"],
         repair_strategy="Load pickle with fix_imports=True; re-save with protocol=2 for cross-version compatibility",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
+    ),
+    TaxonomyEntry(
+        category="name_error",
+        exception_types=["NameError"],
+        message_patterns=[
+            r"'false' is not defined",
+            r"'true' is not defined",
+            r"'null' is not defined",
+            r"name 'false'",
+            r"name 'true'",
+            r"name 'null'",
+        ],
+        repair_strategy="Replace JavaScript-style literals: false -> False, true -> True, null -> None",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
+    ),
+    TaxonomyEntry(
+        category="syntax_error",
+        exception_types=["SyntaxError"],
+        message_patterns=[
+            r"positional argument follows keyword",
+            r"invalid syntax",
+            r"unexpected EOF",
+            r"EOL while scanning",
+        ],
+        repair_strategy="Fix syntax: move positional args before keyword args; check for missing commas, parens",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
+        sub_strategies=["reorder_args", "ast_fix", "add_missing_paren"],
     ),
     TaxonomyEntry(
         category="novel_error",
@@ -159,6 +291,10 @@ TAXONOMY: list[TaxonomyEntry] = [
         message_patterns=[],
         repair_strategy="Use LLM backbone with full context; log confidence score; escalate if confidence < 0.6",
         confidence=0.5,
+        requires_llm=True,
+        deterministic=False,
+        cascade_level=4,
+        has_rule=False,
     ),
 ]
 
@@ -251,8 +387,53 @@ async def classify_error_async(
     return "novel_error", 0.5, "llm"
 
 
+def get_cascade_level(category: str) -> int:
+    """Return the initial cascade level for a given category.
+    Lower means the category can be handled more deterministically.
+    """
+    for entry in TAXONOMY:
+        if entry.category == category:
+            return entry.cascade_level
+    return 4
+
+
+def is_deterministic(category: str) -> bool:
+    for entry in TAXONOMY:
+        if entry.category == category:
+            return entry.deterministic
+    return False
+
+
+def has_rule(category: str) -> bool:
+    for entry in TAXONOMY:
+        if entry.category == category:
+            return entry.has_rule
+    return False
+
+
+def has_template(category: str) -> bool:
+    for entry in TAXONOMY:
+        if entry.category == category:
+            return entry.has_template
+    return False
+
+
+def can_use_deterministic_repair(category: str) -> bool:
+    for entry in TAXONOMY:
+        if entry.category == category:
+            return entry.has_rule or entry.has_template
+    return False
+
+
+def get_sub_strategies(category: str) -> list[str]:
+    for entry in TAXONOMY:
+        if entry.category == category:
+            return entry.sub_strategies or []
+    return []
+
+
 def get_repair_strategy(category: str) -> str:
     for entry in TAXONOMY:
         if entry.category == category:
             return entry.repair_strategy
-    return "Unknown error ? escalate to human"
+    return "Unknown error - escalate to human"

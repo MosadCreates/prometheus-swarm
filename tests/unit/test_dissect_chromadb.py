@@ -41,33 +41,50 @@ async def test_dissect_queries_similar_patches_before_llm(crash_event, script_pa
 
     agent = DissectAgent(job_id=crash_event["job_id"])
     agent.redis = MagicMock()
-    agent.redis._client = MagicMock()
+    agent.redis._client = AsyncMock()
+    agent.redis._client.get = AsyncMock(return_value=None)
+    agent.redis._client.setex = AsyncMock()
+    agent.redis._client.rpush = AsyncMock()
     agent.call_llm = AsyncMock(
         return_value={"text": "import pandas as pd\n\ndef train():\n    pass\n"}
     )
 
-    with patch(
-        "agents.dissect.agent.query_similar_patches",
-        return_value=[
-            {
-                "patch_id": "p1",
-                "similarity_score": 0.85,
-                "category": "shape_mismatch",
-                "outcome": "success",
-                "repair_strategy": "re-align feature list",
-            }
-        ],
-    ) as mock_query, patch(
-        "agents.dissect.agent.store_patch",
-    ), patch(
-        "agents.dissect.agent.run_sandbox_test",
-        return_value=(True, "All good"),
-    ), patch(
-        "agents.dissect.agent.write_patch_log",
-        new_callable=AsyncMock,
-    ), patch(
-        "agents.dissect.agent.publish",
-        new_callable=AsyncMock,
+    with (
+        patch(
+            "memory.collections.patch_memory.query_similar_patches",
+            return_value=[
+                {
+                    "patch_id": "p1",
+                    "similarity_score": 0.85,
+                    "category": "shape_mismatch",
+                    "outcome": "success",
+                    "repair_strategy": "re-align feature list",
+                }
+            ],
+        ) as mock_query,
+        patch(
+            "agents.dissect.agent.store_patch",
+        ),
+        patch(
+            "agents.dissect.agent.run_sandbox_test",
+            return_value=(True, "All good"),
+        ),
+        patch(
+            "agents.dissect.agent.write_patch_log",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "agents.dissect.agent.publish",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "agents.dissect.repair_cache.cache_lookup",
+            return_value=None,
+        ),
+        patch(
+            "agents.dissect.repair_templates.find_matching_templates",
+            return_value=[],
+        ),
     ):
         await agent.handle_crash(crash_event)
 
@@ -87,25 +104,42 @@ async def test_dissect_stores_patch_after_success(crash_event, script_path):
 
     agent = DissectAgent(job_id=crash_event["job_id"])
     agent.redis = MagicMock()
-    agent.redis._client = MagicMock()
+    agent.redis._client = AsyncMock()
+    agent.redis._client.get = AsyncMock(return_value=None)
+    agent.redis._client.setex = AsyncMock()
+    agent.redis._client.rpush = AsyncMock()
     agent.call_llm = AsyncMock(
         return_value={"text": "import pandas as pd\n\ndef train():\n    pass\n"}
     )
 
-    with patch(
-        "agents.dissect.agent.query_similar_patches",
-        return_value=[],
-    ), patch(
-        "agents.dissect.agent.store_patch",
-    ) as mock_store, patch(
-        "agents.dissect.agent.run_sandbox_test",
-        return_value=(True, "All good"),
-    ), patch(
-        "agents.dissect.agent.write_patch_log",
-        new_callable=AsyncMock,
-    ), patch(
-        "agents.dissect.agent.publish",
-        new_callable=AsyncMock,
+    with (
+        patch(
+            "memory.collections.patch_memory.query_similar_patches",
+            return_value=[],
+        ),
+        patch(
+            "agents.dissect.agent.store_patch",
+        ) as mock_store,
+        patch(
+            "agents.dissect.agent.run_sandbox_test",
+            return_value=(True, "All good"),
+        ),
+        patch(
+            "agents.dissect.agent.write_patch_log",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "agents.dissect.agent.publish",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "agents.dissect.repair_cache.cache_lookup",
+            return_value=None,
+        ),
+        patch(
+            "agents.dissect.repair_templates.find_matching_templates",
+            return_value=[],
+        ),
     ):
         await agent.handle_crash(crash_event)
 
@@ -127,25 +161,42 @@ async def test_dissect_stores_patch_after_escalation(crash_event, script_path):
 
     agent = DissectAgent(job_id=crash_event["job_id"])
     agent.redis = MagicMock()
-    agent.redis._client = MagicMock()
+    agent.redis._client = AsyncMock()
+    agent.redis._client.get = AsyncMock(return_value=None)
+    agent.redis._client.setex = AsyncMock()
+    agent.redis._client.rpush = AsyncMock()
     agent.call_llm = AsyncMock(
         return_value={"text": "import pandas as pd\n\ndef train():\n    pass\n"}
     )
 
-    with patch(
-        "agents.dissect.agent.query_similar_patches",
-        return_value=[],
-    ), patch(
-        "agents.dissect.agent.store_patch",
-    ) as mock_store, patch(
-        "agents.dissect.agent.run_sandbox_test",
-        return_value=(False, "Still broken"),
-    ), patch(
-        "agents.dissect.agent.write_patch_log",
-        new_callable=AsyncMock,
-    ), patch(
-        "agents.dissect.agent.publish",
-        new_callable=AsyncMock,
+    with (
+        patch(
+            "memory.collections.patch_memory.query_similar_patches",
+            return_value=[],
+        ),
+        patch(
+            "agents.dissect.agent.store_patch",
+        ) as mock_store,
+        patch(
+            "agents.dissect.agent.run_sandbox_test",
+            return_value=(False, "Still broken"),
+        ),
+        patch(
+            "agents.dissect.agent.write_patch_log",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "agents.dissect.agent.publish",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "agents.dissect.repair_cache.cache_lookup",
+            return_value=None,
+        ),
+        patch(
+            "agents.dissect.repair_templates.find_matching_templates",
+            return_value=[],
+        ),
     ):
         await agent.handle_crash(crash_event)
 
@@ -165,28 +216,46 @@ async def test_dissect_stores_patch_after_rollback(crash_event, script_path):
 
     agent = DissectAgent(job_id=crash_event["job_id"])
     agent.redis = MagicMock()
-    agent.redis._client = MagicMock()
+    agent.redis._client = AsyncMock()
+    agent.redis._client.get = AsyncMock(return_value=None)
+    agent.redis._client.setex = AsyncMock()
+    agent.redis._client.rpush = AsyncMock()
     agent.call_llm = AsyncMock(
         return_value={"text": "import pandas as pd\n\ndef train():\n    pass\n"}
     )
 
-    with patch(
-        "agents.dissect.agent.query_similar_patches",
-        return_value=[],
-    ), patch(
-        "agents.dissect.agent.store_patch",
-    ) as mock_store, patch(
-        "agents.dissect.agent.run_sandbox_test",
-        return_value=(False, "Script still fails"),
-    ), patch(
-        "agents.dissect.agent.write_patch_log",
-        new_callable=AsyncMock,
-    ), patch(
-        "agents.dissect.agent.publish",
-        new_callable=AsyncMock,
-    ), patch(
-        "agents.dissect.agent.rollback_patch",
-        return_value=True,
+    with (
+        patch(
+            "memory.collections.patch_memory.query_similar_patches",
+            return_value=[],
+        ),
+        patch(
+            "agents.dissect.agent.store_patch",
+        ) as mock_store,
+        patch(
+            "agents.dissect.agent.run_sandbox_test",
+            return_value=(False, "Script still fails"),
+        ),
+        patch(
+            "agents.dissect.agent.write_patch_log",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "agents.dissect.agent.publish",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "agents.dissect.agent.rollback_patch",
+            return_value=True,
+        ),
+        patch(
+            "agents.dissect.repair_cache.cache_lookup",
+            return_value=None,
+        ),
+        patch(
+            "agents.dissect.repair_templates.find_matching_templates",
+            return_value=[],
+        ),
     ):
         agent._escalate = AsyncMock()
         await agent.handle_crash(crash_event)

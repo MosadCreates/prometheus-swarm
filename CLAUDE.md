@@ -218,24 +218,41 @@ Each agent has a fixed role. Read this before writing any agent code.
 
 ### 3.1 Scout â€” The Perceiver
 - **Input:** Raw natural-language problem description + dataset file path + constraints
-- **Output:** `mission_brief.json` written to Redis key `job:{job_id}:mission_brief`
-- **Tools it can call:** `parse_problem`, `detect_modality`, `run_eda`, `write_mission_brief`
-- **Publishes to bus:** `MISSION_BRIEF_READY` event on stream `scout_output`
+- **Output:** `MissionSpecification` at `job:{job_id}:mission_spec` (primary contract) +
+  `mission_brief.json` at `job:{job_id}:mission_brief` (backward compat)
+- **Tools it can call:** `parse_problem`, `detect_modality`, `run_eda`, `write_mission_spec`,
+  `write_mission_brief`
+- **Publishes to bus:** `MISSION_BRIEF_READY` event on `scout_output` with both
+  `mission_spec_redis_key` and `mission_brief_redis_key`
 - **Subscribes to:** Nothing (Scout is the entry point)
 - **Must detect:** task_type, modality, target_column, class_imbalance_ratio,
   feature_types, recommended_metric, data_warnings
 - **Does NOT do:** Training, architecture selection, evaluation, deployment
+- **Measurable success criteria:**
+  - Dataset parsed and EDA completed within 30s for datasets < 100k rows
+  - MissionSpecification produced with ≥ 3 engineering decision nodes
+  - Each decision node has selected, rationale, confidence, alternatives
+  - `overall_confidence` ≥ 0.60 for datasets with ≥ 200 rows
+  - `success_criteria.min_acceptable` computed from imbalance + row count
+  - MissionSpecification written to Redis; `MISSION_BRIEF_READY` event published
 
 ### 3.2 Forge â€” The Architect
-- **Input:** `mission_brief.json` from Redis
+- **Input:** `MissionSpecification` from Redis (`job:{job_id}:mission_spec`)
 - **Output:** `training_script_{job_id}.py` written to `scripts/` + `search_space.json`
   written to Redis key `job:{job_id}:search_space`
-- **Tools it can call:** `read_mission_brief`, `select_architecture`, `write_training_script`,
+- **Tools it can call:** `read_mission_spec`, `select_architecture`, `write_training_script`,
   `define_optuna_space`
 - **Publishes to bus:** `TRAINING_SCRIPT_READY` event on stream `forge_output`
 - **Subscribes to:** `scout_output` stream (waits for `MISSION_BRIEF_READY`)
 - **Architecture decision logic lives in:** `agents/forge/decision_tree.py`
 - **Does NOT do:** Running training, evaluating, patching errors, deploying
+- **Measurable success criteria:**
+  - Architecture selected from Scout's candidate models or decision tree within 5s
+  - Training script generated with correct architecture, validation strategy, imbalance method
+  - Script passes syntax check (compile with `ast.parse`)
+  - Search space defined (Optuna-compatible) with at least 3 hyperparameters
+  - If on retry: switches to Scout's first alternative architecture
+  - `TRAINING_SCRIPT_READY` event published
 
 ### 3.3 Furnace â€” The Trainer
 - **Input:** `training_script_{job_id}.py` path from Redis + `search_space.json`
@@ -249,6 +266,13 @@ Each agent has a fixed role. Read this before writing any agent code.
   - `CRASH_EVENT` (on any Python exception) on stream `furnace_crash`
 - **Subscribes to:** `forge_output` stream + `dissect_output` stream (RESUME_TRAINING)
 - **Does NOT do:** Writing code, evaluating, deploying, patching
+- **Measurable success criteria:**
+  - Container launches within 60s of receiving training script
+  - At least one `EPOCH_COMPLETE` event published before completion or crash
+  - On crash: `CRASH_EVENT` published with full traceback, exception type, last checkpoint
+  - On success: checkpoint saved at expected path, `TRAINING_COMPLETE` event published
+  - On resume: restores from checkpoint, increments epoch counter correctly
+  - Reports `total_crashes_recovered` count in `TRAINING_COMPLETE` event
 
 ### 3.4 Dissect â€” The Debugger (Core Scientific Contribution)
 - **Input:** `CRASH_EVENT` from `furnace_crash` stream
@@ -266,6 +290,14 @@ Each agent has a fixed role. Read this before writing any agent code.
   works after 3 attempts â†’ ESCALATE.
 - **patch_log.jsonl entry is MANDATORY for every patch attempt, success or failure**
 - **Does NOT do:** Training, evaluating, deploying, selecting architectures
+- **Measurable success criteria:**
+  - Error classified within 10s of receiving CRASH_EVENT
+  - Error taxonomy category matches one of 22 known categories (or "novel_error")
+  - Patch memory queried (K=3) before generating new patch
+  - Patch applied as unified diff; number of lines changed recorded
+  - Sandbox test executed and result (pass/fail) recorded
+  - patch_log entry written via Redis RPUSH BEFORE publishing RESUME_TRAINING or ESCALATE
+  - On 3rd failure: ESCALATE published, NOT a 4th RESUME_TRAINING
 
 ### 3.5 Arbiter â€” The Critic
 - **Input:** Best model checkpoint path from Redis + test dataset path
@@ -287,6 +319,13 @@ Each agent has a fixed role. Read this before writing any agent code.
   A model must beat the naive mean prediction by â‰¥15%: `threshold_rmse = std(y_target) * 0.85`.
   Arbiter computes this dynamically from the test set, not from a hardcoded constant.
 - **Does NOT do:** Training, patching, deploying, modifying scripts
+- **Measurable success criteria:**
+  - Metrics computed within 30s of receiving TRAINING_COMPLETE
+  - Primary metric value correctly compared against MissionSpecification's success_criteria
+  - Decision matches expected: PASS (above min_acceptable), RETRY (within 15%), ESCALATE (far below)
+  - eval_report written with all metrics, decision, reason, failure analysis
+  - Experience recorded to ChromaDB (experience_memory) on every decision
+  - ESCALATE published with source_agent="Arbiter" and diagnostic report path
 
 ### 3.6 Harbor â€” The Deployer
 - **Input:** `PASS` event from `arbiter_output` + checkpoint path
@@ -306,6 +345,16 @@ Each agent has a fixed role. Read this before writing any agent code.
 - **Phase 4:** Deploy to GKE (Kubernetes manifests in `infra/kubernetes/`)
 
 ---
+- **Measurable success criteria:**
+  - Model serialized to ONNX (or pickle fallback) within 60s
+  - FastAPI serving template populated with correct input schema, model path, predict route
+  - Docker image built and container launched within 120s
+  - `/predict` endpoint responds with valid JSON within 500ms P95
+  - `/metrics` endpoint exposes Prometheus counters
+  - `ENDPOINT_LIVE` event published with endpoint_url, latency, model_format
+  - Drift monitor configured with PSI_THRESHOLD=0.2, PSI_WINDOW_SIZE=1000
+  - Auto port management: picks next available port if 8080 is occupied
+
 
 ## 4. FILE OWNERSHIP
 
@@ -364,7 +413,8 @@ JOB_FAILED            = "JOB_FAILED"
 {
     "event_type": "MISSION_BRIEF_READY",
     "job_id": str,                    # UUID4, generated at job submission
-    "mission_brief_redis_key": str,   # "job:{job_id}:mission_brief"
+    "mission_brief_redis_key": str,   # "job:{job_id}:mission_brief" (backward compat)
+    "mission_spec_redis_key": str,    # "job:{job_id}:mission_spec" (primary contract)
     "timestamp": str                  # ISO 8601
 }
 

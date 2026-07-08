@@ -28,6 +28,9 @@ from agents.arbiter.agent import ArbiterAgent
 from agents.harbor.agent import HarborAgent
 from agents.scout.agent import ScoutAgent
 from memory.redis_client import RedisClient
+from orchestrator.mission_report import generate_mission_report
+from evaluation import config as eval_config
+from evaluation.perf_logger import record_stage
 from bus.events import (
     MISSION_BRIEF_READY,
     CRASH_EVENT,
@@ -37,6 +40,9 @@ from bus.events import (
     JOB_FAILED,
     ENDPOINT_LIVE,
     DRIFT_ALERT,
+    PLAN_CREATED,
+    PLAN_COMPLETED,
+    PLAN_FAILED,
     STREAM_SCOUT_OUTPUT,
     STREAM_FORGE_OUTPUT,
     STREAM_FURNACE_OUTPUT,
@@ -46,6 +52,7 @@ from bus.events import (
     STREAM_ARBITER_OUTPUT,
     STREAM_HARBOR_OUTPUT,
     STREAM_ORCHESTRATOR_OUT,
+    STREAM_PLANNER_OUTPUT,
     GROUP_ORCHESTRATOR,
     GROUP_FORGE,
     GROUP_FURNACE,
@@ -114,6 +121,7 @@ class OrchestratorRuntime:
             STREAM_HARBOR_OUTPUT: [GROUP_ORCHESTRATOR, GROUP_SCOUT],
             STREAM_SCOUT_OUTPUT: [GROUP_ORCHESTRATOR, GROUP_FORGE],
             STREAM_FORGE_OUTPUT: [GROUP_ORCHESTRATOR, GROUP_FURNACE],
+            STREAM_PLANNER_OUTPUT: [GROUP_ORCHESTRATOR],
         }
 
         for stream, groups in streams_groups.items():
@@ -371,6 +379,8 @@ class OrchestratorRuntime:
             return
         logger.info(f"[job={job_id}] No mission brief found. Running Scout first.")
         await self._set_job_status(job_id, "SCOUT_ANALYZING", "Scout")
+        if eval_config.PROFILE_MODE:
+            record_stage(job_id, "scout", "start")
         scout = ScoutAgent(job_id=job_id)
         scout.redis = self._make_redis_client()
         scout.job_data = {
@@ -386,11 +396,272 @@ class OrchestratorRuntime:
             await self._handle_escalate(job_id, "Scout", f"Scout execution failed: {e}")
             raise
 
+    async def _compile_and_store_plan(self, job_id: str) -> None:
+        """Compile ExecutionPlan from MissionSpecification and store in Redis."""
+        if eval_config.DISABLE_PLANNER:
+            logger.info(f"[job={job_id}] Planner disabled — skipping plan compilation")
+            if eval_config.PROFILE_MODE:
+                record_stage(job_id, "planner", "skipped")
+            return
+
+        if eval_config.PROFILE_MODE:
+            record_stage(job_id, "planner", "start")
+
+        spec_key = f"job:{job_id}:mission_spec"
+        spec = await self.redis.get(spec_key)
+        if not spec:
+            logger.warning(f"[job={job_id}] No MissionSpecification found for plan compilation")
+            return
+        try:
+            spec_dict = json.loads(spec) if isinstance(spec, str) else spec
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(f"[job={job_id}] Could not parse MissionSpecification for planning")
+            return
+
+        from prometheus.planner.compiler import compile_plan
+
+        # Load historical hints from past execution outcomes
+        hints = await self._load_planning_hints(spec_dict, job_id)
+
+        plan = compile_plan(spec_dict, job_id, hints=hints)
+        plan_key = f"job:{job_id}:execution_plan"
+        await self.redis.set(plan_key, plan.model_dump_json())
+        await self._init_plan_state(plan)
+        from bus.publisher import publish
+
+        await publish(
+            self.redis,
+            STREAM_PLANNER_OUTPUT,
+            PLAN_CREATED,
+            {
+                "job_id": job_id,
+                "plan_id": plan.plan_id,
+                "estimated_total_minutes": plan.estimated_total_minutes,
+                "confidence_score": plan.confidence.score,
+                "confidence_assessment": plan.confidence.assessment,
+            },
+        )
+        logger.info(
+            f"[job={job_id}] Plan {plan.plan_id} created | "
+            f"confidence={plan.confidence.score:.2f} ({plan.confidence.assessment}) | "
+            f"est={plan.estimated_total_minutes}min | "
+            f"nodes={len(plan.nodes)}"
+        )
+
+        if eval_config.PROFILE_MODE:
+            record_stage(job_id, "planner", "end")
+
+    async def _load_planning_hints(self, spec_dict: dict, job_id: str):
+        """Load PlanningHints from historical execution outcomes."""
+        try:
+            from learning.planner_feedback import compute_planning_hints
+
+            hints = await compute_planning_hints(spec_dict, self.redis, job_id)
+            return hints
+        except Exception as e:
+            logger.debug(f"[job={job_id}] PlanningHints unavailable: {e}")
+            return None
+
+    async def _record_execution_outcome(
+        self, job_id: str, deployment_success: bool | None = None
+    ) -> None:
+        """Record ExecutionOutcome after job completion or escalation."""
+        try:
+            from learning.execution_outcome import record_outcome, get_outcome
+
+            outcome = await get_outcome(self.redis, job_id)
+            if outcome:
+                # Already recorded — update deployment flag
+                return
+
+            brief = None
+            try:
+                rc = self._make_redis_client()
+                brief = await rc.get_json(f"job:{job_id}:mission_brief")
+            except Exception:
+                pass
+
+            arch = brief.get("recommended_architecture_family", "unknown") if brief else "unknown"
+            modality = brief.get("modality", "tabular") if brief else "tabular"
+            task_type = brief.get("task_type", "classification") if brief else "classification"
+            num_rows = brief.get("dataset", {}).get("num_rows", 0) if brief else 0
+            num_cols = brief.get("dataset", {}).get("num_columns", 0) if brief else 0
+
+            retry_count = 0
+            try:
+                rc2 = self._make_redis_client()
+                retry_raw = await rc2._client.get(f"job:{job_id}:retry_count")
+                retry_count = int(retry_raw) if retry_raw else 0
+            except Exception:
+                pass
+
+            duration_seconds = 0.0
+            try:
+                started_raw = await self.redis.get(f"job:{job_id}:training_started_at")
+                if started_raw:
+                    started = float(started_raw) if isinstance(started_raw, str) else started_raw
+                    duration_seconds = datetime.now(timezone.utc).timestamp() - started
+            except Exception:
+                pass
+
+            crash_count = 0
+            crashes_recovered = 0
+            try:
+                crash_raw = await self.redis.get(f"job:{job_id}:crash_count")
+                crash_count = int(crash_raw) if crash_raw else 0
+                recovered_raw = await self.redis.get(f"job:{job_id}:crashes_recovered")
+                crashes_recovered = int(recovered_raw) if recovered_raw else 0
+            except Exception:
+                pass
+
+            outcome_label = "pass" if deployment_success else "escalate"
+
+            await record_outcome(
+                redis=self.redis,
+                job_id=job_id,
+                architecture=arch,
+                modality=modality,
+                task_type=task_type,
+                duration_seconds=duration_seconds,
+                retries=retry_count,
+                crashes=crash_count,
+                crashes_recovered=crashes_recovered,
+                deployment_success=deployment_success,
+                outcome_label=outcome_label,
+                num_rows=num_rows,
+                num_columns=num_cols,
+            )
+        except Exception as e:
+            logger.warning(f"[job={job_id}] Outcome recording failed: {e}")
+
+    async def _update_plan_state(self, job_id: str, task_id: str, status: str) -> None:
+        """Update plan task state without triggering dispatch (for observability)."""
+        state_key = f"job:{job_id}:plan_state"
+        raw = await self.redis.get(state_key)
+        if not raw:
+            return
+        try:
+            state = json.loads(raw) if isinstance(raw, str) else raw
+        except (json.JSONDecodeError, TypeError):
+            return
+        state[task_id] = status
+        await self.redis.set(state_key, json.dumps(state))
+
+    async def _init_plan_state(self, plan) -> None:
+        """Initialize plan task states in Redis."""
+        state: dict[str, str] = {}
+        for node_id in plan.nodes:
+            state[node_id] = "pending"
+        state["__plan_complete__"] = "pending"
+        state["__plan_failed__"] = "pending"
+        await self.redis.set(f"job:{plan.job_id}:plan_state", json.dumps(state))
+
+    async def _mark_task_completed(
+        self, job_id: str, task_id: str, condition: str | None = None
+    ) -> None:
+        """Mark a task as completed in plan state, then dispatch next ready tasks."""
+        state_key = f"job:{job_id}:plan_state"
+        raw = await self.redis.get(state_key)
+        if not raw:
+            return
+        try:
+            state = json.loads(raw) if isinstance(raw, str) else raw
+        except (json.JSONDecodeError, TypeError):
+            return
+
+        state[task_id] = "completed"
+        await self.redis.set(state_key, json.dumps(state))
+
+        # Dispatch next tasks from the plan
+        await self._dispatch_from_plan(job_id, state, task_id, condition)
+
+    async def _dispatch_from_plan(
+        self, job_id: str, state: dict[str, str], completed_task: str, condition: str | None = None
+    ) -> None:
+        """Check the ExecutionPlan and launch any tasks whose dependencies are met."""
+        plan_key = f"job:{job_id}:execution_plan"
+        raw = await self.redis.get(plan_key)
+        if not raw:
+            return
+        try:
+            plan_dict = json.loads(raw) if isinstance(raw, str) else raw
+        except (json.JSONDecodeError, TypeError):
+            return
+
+        nodes = plan_dict.get("nodes", {})
+        edges = plan_dict.get("edges", [])
+
+        # Find outgoing edges from the completed task that match the condition
+        for edge in edges:
+            if edge.get("from_node") != completed_task:
+                continue
+            edge_condition = edge.get("condition")
+            if edge_condition and edge_condition != condition:
+                continue
+
+            next_node_id = edge.get("to_node", "")
+            if next_node_id in ("__plan_complete__", "__plan_failed__"):
+                await self._handle_plan_terminal(job_id, next_node_id)
+                continue
+
+            # Check if next node's dependencies are all met
+            next_node = nodes.get(next_node_id)
+            if not next_node:
+                continue
+            deps = next_node.get("depends_on", [])
+            all_deps_met = all(state.get(d, "pending") == "completed" for d in deps)
+
+            if all_deps_met and state.get(next_node_id, "pending") == "pending":
+                state[next_node_id] = "ready"
+                await self.redis.set(f"job:{job_id}:plan_state", json.dumps(state))
+                await self._launch_agent_for_task(job_id, next_node_id)
+
+    async def _handle_plan_terminal(self, job_id: str, terminal: str) -> None:
+        """Handle plan terminal node (__plan_complete__ or __plan_failed__)."""
+        from bus.publisher import publish
+
+        if terminal == "__plan_complete__":
+            await publish(
+                self.redis,
+                STREAM_PLANNER_OUTPUT,
+                PLAN_COMPLETED,
+                {"job_id": job_id, "timestamp": datetime.now(timezone.utc).isoformat()},
+            )
+            logger.info(f"[job={job_id}] Plan completed successfully")
+        elif terminal == "__plan_failed__":
+            await publish(
+                self.redis,
+                STREAM_PLANNER_OUTPUT,
+                PLAN_FAILED,
+                {"job_id": job_id, "timestamp": datetime.now(timezone.utc).isoformat()},
+            )
+            logger.info(f"[job={job_id}] Plan failed")
+
+    async def _launch_agent_for_task(self, job_id: str, task_id: str) -> None:
+        """Launch the appropriate agent for a task based on its id."""
+        logger.info(f"[job={job_id}] Dispatching task: {task_id}")
+        if task_id in ("forge_generate", "forge_retry"):
+            try:
+                forge = ForgeAgent(job_id=job_id)
+                forge.redis = self._make_redis_client()
+                await forge.run()
+            except Exception as e:
+                logger.error(f"[job={job_id}] Forge ({task_id}) failed: {e}")
+                await self._handle_escalate(job_id, "Forge", str(e))
+
     async def _on_mission_brief_ready(self, data: dict) -> None:
         job_id = data.get("job_id", "?")
+        if eval_config.PROFILE_MODE:
+            record_stage(job_id, "scout", "end")
         await self._run_scout_if_needed(data)
+
+        # Compile ExecutionPlan from MissionSpecification
+        await self._compile_and_store_plan(job_id)
+
         logger.info(f"[job={job_id}] Mission brief ready. Launching Forge.")
         await self._set_job_status(job_id, "FORGE_WORKING", "Forge")
+        if eval_config.PROFILE_MODE:
+            record_stage(job_id, "forge", "start")
 
         forge = ForgeAgent(job_id=job_id)
         forge.redis = self._make_redis_client()
@@ -403,8 +674,13 @@ class OrchestratorRuntime:
     async def _on_training_script_ready(self, data: dict) -> None:
         job_id = data.get("job_id", "?")
         script_path = data.get("script_path", "")
+        # Mark forge_generate as completed in plan state
+        await self._update_plan_state(job_id, "forge_generate", "completed")
         logger.info(f"[job={job_id}] Training script ready. Launching Furnace.")
         await self._set_job_status(job_id, "FURNACE_TRAINING", "Furnace")
+        if eval_config.PROFILE_MODE:
+            record_stage(job_id, "forge", "end")
+            record_stage(job_id, "furnace", "start")
         await self.redis.set(f"job:{job_id}:script_path", script_path)
 
         # Read search space from Redis and pass to Furnace as serialized JSON
@@ -417,6 +693,9 @@ class OrchestratorRuntime:
 
         furnace = FurnaceAgent(job_id=job_id)
         furnace.redis = self._make_redis_client()
+        await self.redis.set(
+            f"job:{job_id}:training_started_at", str(datetime.now(timezone.utc).timestamp())
+        )
         try:
             await furnace.run(script_path=script_path, search_space_json=search_space_json)
         except Exception as e:
@@ -429,11 +708,21 @@ class OrchestratorRuntime:
 
     async def _on_training_complete(self, data: dict) -> None:
         job_id = data.get("job_id", "?")
+        # Mark furnace_train as completed in plan state
+        await self._update_plan_state(job_id, "furnace_train", "completed")
         logger.info(f"[job={job_id}] Training complete. Launching Arbiter.")
         await self._set_job_status(job_id, "ARBITER_EVALUATING", "Arbiter")
+        if eval_config.PROFILE_MODE:
+            record_stage(job_id, "furnace", "end")
+            record_stage(job_id, "arbiter", "start")
         await self.redis.set(
             f"job:{job_id}:checkpoint",
             json.dumps({"checkpoint_path": data.get("checkpoint_path", "")}),
+        )
+        # Persist training outcome for mission report
+        await self.redis.set(
+            f"job:{job_id}:training_complete",
+            json.dumps(data, default=str),
         )
 
         arbiter = ArbiterAgent(job_id=job_id)
@@ -451,8 +740,18 @@ class OrchestratorRuntime:
     async def _on_crash_event(self, data: dict) -> None:
         """Handle CRASH_EVENT from Furnace by launching Dissect to patch the error."""
         job_id = data.get("job_id", "?")
+        if eval_config.DISABLE_DISSECT:
+            logger.info(f"[job={job_id}] Dissect disabled — escalating crash")
+            await self._handle_escalate(
+                job_id,
+                "Furnace",
+                f"Crash with Dissect disabled: {data.get('exception_type', '?')}: {data.get('exception_message', '?')}",
+            )
+            return
         logger.info(f"[job={job_id}] Crash event received. Launching Dissect.")
         await self._set_job_status(job_id, "DISSECT_PATCHING", "Dissect")
+        if eval_config.PROFILE_MODE:
+            record_stage(job_id, "dissect", "start")
 
         from agents.dissect.agent import DissectAgent
 
@@ -533,26 +832,17 @@ class OrchestratorRuntime:
                     "Harbor",
                     f"Harbor execution failed: {e}",
                 )
+            # Mark arbiter_evaluate as completed (pass condition) for plan state
+            await self._mark_task_completed(job_id, "arbiter_evaluate", condition="pass")
 
         elif decision == "retry":
             await self._set_job_status(job_id, "FORGE_RETRY", "Forge")
             # Increment retry counter so Forge can deprioritize previously-tried architectures
             await self.redis.incr(f"job:{job_id}:retry_count")
-            logger.info(f"[job={job_id}] Score within 15% — retrying " f"with new architecture")
-            # Re-publish MISSION_BRIEF_READY to re-trigger Forge
-            # with the SAME mission brief. Scout is NOT re-run on
-            # retry per CLAUDE.md Section 13.1.
-            from bus.publisher import publish as _publish
-
-            await _publish(
-                self.redis,
-                STREAM_SCOUT_OUTPUT,
-                MISSION_BRIEF_READY,
-                {
-                    "job_id": job_id,
-                    "mission_brief_redis_key": (f"job:{job_id}:mission_brief"),
-                },
-            )
+            logger.info(f"[job={job_id}] Score within 15% — retrying with new architecture")
+            # Use plan-based dispatch: mark arbiter_evaluate completed with "retry" condition
+            # The plan tells us the next task is forge_retry
+            await self._mark_task_completed(job_id, "arbiter_evaluate", condition="retry")
 
         elif decision == "escalate":
             await self._handle_escalate(
@@ -572,6 +862,12 @@ class OrchestratorRuntime:
 
         await self._set_job_status(job_id, "ESCALATED", source)
 
+        # Mark plan as failed
+        await self._handle_plan_terminal(job_id, "__plan_failed__")
+
+        # Record execution outcome (failure)
+        await self._record_execution_outcome(job_id, deployment_success=False)
+
         report = {
             "job_id": job_id,
             "source_agent": source,
@@ -583,6 +879,12 @@ class OrchestratorRuntime:
         os.makedirs(f"outputs/{job_id}", exist_ok=True)
         with open(f"outputs/{job_id}/diagnostic_{job_id}.json", "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2)
+
+        # Generate mission report for escalated jobs
+        try:
+            await generate_mission_report(job_id, self.redis)
+        except Exception as e:
+            logger.warning(f"[job={job_id}] Mission report generation failed: {e}")
 
         # Kill training container if running (per CLAUDE.md §14 ESCALATE Resolution Path)
         try:
@@ -616,6 +918,22 @@ class OrchestratorRuntime:
         endpoint = data.get("endpoint_url", "?")
         logger.info(f"[job={job_id}] Model live at {endpoint}")
         await self._set_job_status(job_id, "COMPLETED", "Harbor")
+        # Mark plan as completed
+        await self._handle_plan_terminal(job_id, "__plan_complete__")
+
+        # Record execution outcome
+        await self._record_execution_outcome(job_id, deployment_success=True)
+
+        # Generate mission report after successful deployment
+        try:
+            await generate_mission_report(
+                job_id,
+                self.redis,
+                deploy_data=data,
+                pipeline_duration_seconds=None,
+            )
+        except Exception as e:
+            logger.warning(f"[job={job_id}] Mission report generation failed: {e}")
 
     async def _on_drift_alert(self, data: dict) -> None:
         job_id = data.get("job_id", "?")
