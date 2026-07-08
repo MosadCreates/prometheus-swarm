@@ -441,7 +441,7 @@ async def get_error_rate_redis(
 
         # Return all categories
         pattern = f"{REDIS_STATS_PREFIX}:{architecture}:*"
-        keys = await redis_client.keys(pattern)
+        keys = await redis_client.scan_keys(pattern)
         rates = {}
         for key in keys:
             cat = (
@@ -468,7 +468,7 @@ async def get_top_failures_redis(
     """Return top-N failure patterns for a given architecture from Redis."""
     try:
         pattern = f"{REDIS_STATS_PREFIX}:{architecture}:*"
-        keys = await redis_client.keys(pattern)
+        keys = await redis_client.scan_keys(pattern)
         failures = []
         for key in keys:
             cat = (

@@ -1142,7 +1142,7 @@ async def _query_recent_successful_fingerprint(
     """Query Redis for a recent successful fingerprint for this architecture."""
     try:
         pattern = "fingerprint:*:meta"
-        keys = await redis_client.keys(pattern)
+        keys = await redis_client.scan_keys(pattern)
         for key in keys:
             meta = await redis_client.get_json(key)
             if (

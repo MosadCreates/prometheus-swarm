@@ -144,6 +144,21 @@ DISSECT_CASCADE_LEVEL = Counter(
     "Repair distribution by cascade level",
     ["level", "job_id"],
 )
+DISSECT_CASCADE_HITS = Counter(
+    "swarm_dissect_cascade_hits_total",
+    "Successful matches per cascade level",
+    ["level", "category", "job_id"],
+)
+DISSECT_CASCADE_MISSES = Counter(
+    "swarm_dissect_cascade_misses_total",
+    "Non-matches per cascade level (rule didn't fire, template didn't match, etc.)",
+    ["level", "reason", "job_id"],
+)
+DISSECT_CASCADE_ERRORS = Counter(
+    "swarm_dissect_cascade_errors_total",
+    "Unexpected errors thrown by cascade level handlers",
+    ["level", "job_id"],
+)
 DISSECT_LLM_BUDGET_EXHAUSTED = Counter(
     "swarm_dissect_llm_budget_exhausted_total",
     "Times LLM budget was exhausted before repair",
@@ -329,6 +344,9 @@ __all__ = [
     "DISSECT_PATCHES_GENERATED",
     "DISSECT_PATCH_DURATION",
     "DISSECT_CASCADE_LEVEL",
+    "DISSECT_CASCADE_HITS",
+    "DISSECT_CASCADE_MISSES",
+    "DISSECT_CASCADE_ERRORS",
     "DISSECT_LLM_BUDGET_EXHAUSTED",
     "DISSECT_OUTCOMES",
     "HARBOR_DEPLOYS",

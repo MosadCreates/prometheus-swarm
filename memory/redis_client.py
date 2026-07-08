@@ -68,3 +68,23 @@ class RedisClient:
 
     async def lindex(self, list_key: str, index: int) -> str | None:
         return await self._client.lindex(list_key, index)
+
+    async def scan_keys(self, pattern: str, count: int = 100) -> list[str]:
+        """Safe replacement for KEYS using SCAN.
+
+        Iterates the keyspace with SCAN instead of blocking with KEYS.
+        Returns all matching key names.
+        """
+        keys: list[str] = []
+        cursor = 0
+        while True:
+            cursor, batch = await self._client.scan(
+                cursor=cursor, match=pattern, count=count
+            )
+            keys.extend(batch)
+            if cursor == 0:
+                break
+        return keys
+
+    async def delete(self, key: str) -> None:
+        await self._client.delete(key)

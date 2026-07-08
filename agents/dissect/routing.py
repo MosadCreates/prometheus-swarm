@@ -48,7 +48,13 @@ from agents.dissect.taxonomy import (
     has_template,
 )
 from agents.dissect.budget import RepairBudget
-from shared.metrics import DISSECT_PATCHES_GENERATED, DISSECT_OUTCOMES
+from shared.metrics import (
+    DISSECT_PATCHES_GENERATED,
+    DISSECT_OUTCOMES,
+    DISSECT_CASCADE_HITS,
+    DISSECT_CASCADE_MISSES,
+    DISSECT_CASCADE_ERRORS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +80,7 @@ class RoutingResult:
         success: bool = False,
         should_continue: bool = True,
         message: str = "",
+        cascade_path: list[dict[str, Any]] | None = None,
     ):
         self.level = level
         self.level_name = CASCADE_LEVEL_NAMES.get(level, f"LEVEL_{level}")
@@ -82,6 +89,7 @@ class RoutingResult:
         self.success = success
         self.should_continue = should_continue
         self.message = message
+        self.cascade_path = cascade_path if cascade_path is not None else []
 
     @property
     def resolved(self) -> bool:
@@ -263,6 +271,37 @@ async def run_cascade_level_3(
     return RoutingResult(level=3, should_continue=True, message="No matching memory patch")
 
 
+async def _run_level_safe(
+    level: int,
+    category: str,
+    job_id: str,
+    fn,
+    *args,
+    **kwargs,
+) -> RoutingResult:
+    """Run a cascade level with telemetry tracking and graceful error handling."""
+    level_name = CASCADE_LEVEL_NAMES.get(level, f"LEVEL_{level}")
+    try:
+        result = await fn(*args, **kwargs)
+        if result.resolved:
+            logger.info(f"Level {level} ({level_name}) RESOLVED | {result.message}")
+            DISSECT_CASCADE_HITS.labels(level=str(level), category=category, job_id=job_id).inc()
+            return result
+        else:
+            logger.debug(f"Level {level} ({level_name}) MISS | {result.message}")
+            DISSECT_CASCADE_MISSES.labels(
+                level=str(level), reason=result.message[:64], job_id=job_id
+            ).inc()
+            return result
+    except Exception as e:
+        logger.warning(
+            f"Level {level} ({level_name}) ERROR | {e} | "
+            f"category={category} job={job_id}"
+        )
+        DISSECT_CASCADE_ERRORS.labels(level=str(level), job_id=job_id).inc()
+        return RoutingResult(level=level, should_continue=True, message=f"Error: {e}")
+
+
 async def run_cascade(
     category: str,
     script_content: str,
@@ -271,54 +310,97 @@ async def run_cascade(
     dataset_path: str,
     redis_client: Any,
     budget: RepairBudget,
+    job_id: str = "unknown",
 ) -> RoutingResult:
-    """Run the 5-level repair cascade. Exits early on first success."""
+    """Run the 5-level repair cascade. Exits early on first success.
+
+    Each level is wrapped in _run_level_safe so an unexpected error
+    at any level does not block fallthrough to the next. Telemetry
+    counters track hits, misses, and errors per level.
+    """
     start_level = max(
         compute_initial_level(category),
         budget.get_cascade_level_bias(),
     )
 
+    cascade_path: list[dict[str, Any]] = []
+
     logger.info(
-        f"Starting repair cascade | category={category} "
+        f"Starting repair cascade | category={category} job={job_id} "
         f"start_level={CASCADE_LEVEL_NAMES.get(start_level, str(start_level))} "
         f"budget_remaining={budget.budget_remaining_ratio():.2f}"
     )
 
     # Level 0: Deterministic Rules
     if start_level <= 0 and has_rule(category):
-        result = await run_cascade_level_0(category, script_content, exception_message)
+        result = await _run_level_safe(
+            0, category, job_id, run_cascade_level_0,
+            category, script_content, exception_message,
+        )
+        cascade_path.append({"level": 0, "outcome": "hit" if result.resolved else "miss", "message": result.message})
         if result.resolved:
+            result.cascade_path = cascade_path
             return result
+    elif start_level > 0:
+        cascade_path.append({"level": 0, "outcome": "skipped", "reason": f"start_level={start_level}"})
+    else:
+        cascade_path.append({"level": 0, "outcome": "skipped", "reason": "no_rule"})
 
     # Level 1: Compiled Templates
     if start_level <= 1 and has_template(category):
-        result = await run_cascade_level_1(
-            category, script_content, exception_type, exception_message
+        result = await _run_level_safe(
+            1, category, job_id, run_cascade_level_1,
+            category, script_content, exception_type, exception_message,
         )
+        cascade_path.append({"level": 1, "outcome": "hit" if result.resolved else "miss", "message": result.message})
         if result.resolved:
+            result.cascade_path = cascade_path
             return result
+    elif start_level > 1:
+        cascade_path.append({"level": 1, "outcome": "skipped", "reason": f"start_level={start_level}"})
+    else:
+        cascade_path.append({"level": 1, "outcome": "skipped", "reason": "no_template"})
 
     # Level 2: Repair Cache
     if start_level <= 2 and dataset_path:
-        result = await run_cascade_level_2(
-            redis_client, script_content, dataset_path, exception_type, exception_message
+        result = await _run_level_safe(
+            2, category, job_id, run_cascade_level_2,
+            redis_client, script_content, dataset_path, exception_type, exception_message,
         )
+        cascade_path.append({"level": 2, "outcome": "hit" if result.resolved else "miss", "message": result.message})
         if result.resolved:
+            result.cascade_path = cascade_path
             return result
+    elif not dataset_path:
+        cascade_path.append({"level": 2, "outcome": "skipped", "reason": "no_dataset_path"})
+    else:
+        cascade_path.append({"level": 2, "outcome": "skipped", "reason": f"start_level={start_level}"})
 
     # Level 3: Patch Memory
     if start_level <= 3:
-        result = await run_cascade_level_3(
-            script_content, exception_type, exception_message, category
+        result = await _run_level_safe(
+            3, category, job_id, run_cascade_level_3,
+            script_content, exception_type, exception_message, category,
         )
+        cascade_path.append({"level": 3, "outcome": "hit" if result.resolved else "miss", "message": result.message})
         if result.resolved:
+            result.cascade_path = cascade_path
             return result
+    else:
+        cascade_path.append({"level": 3, "outcome": "skipped", "reason": f"start_level={start_level}"})
 
     # Level 4: LLM Reasoning (delegated to agent)
+    cascade_path.append({"level": 4, "outcome": "required", "message": "deterministic levels exhausted"})
+    logger.info(
+        f"Cascade telemetry | job={job_id} category={category} "
+        f"path={' -> '.join(f'L{e["outcome"][0].upper()}{e["level"]}' for e in cascade_path)}"
+    )
+
     return RoutingResult(
         level=4,
         should_continue=True,
         message="All deterministic levels exhausted, LLM required",
+        cascade_path=cascade_path,
     )
 
 
@@ -333,8 +415,22 @@ async def on_llm_success(
     patched_script: str,
     patch_diff: str,
     patch_id: str,
+    cascade_path: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Post-LLM success: promote to template and store in cache."""
+    """Post-LLM success: promote to template and store in cache.
+
+    Records telemetry: cascade path, promotion outcomes, cache storage.
+    """
+    # Log full cascade path for telemetry
+    if cascade_path:
+        path_str = " -> ".join(
+            f"L{e['level']}/{e['outcome'][:4]}" for e in cascade_path
+        )
+        logger.info(
+            f"[job={job_id}] LLM resolved after cascade path: {path_str} "
+            f"category={category}"
+        )
+
     # Level 1: Promote to compiled template
     from agents.dissect.repair_templates import generalize_diff_to_template
 

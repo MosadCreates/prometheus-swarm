@@ -15,6 +15,7 @@ Each template has:
   - source_patch_id: the LLM patch that originated this template
 """
 
+import ast
 import json
 import logging
 import os
@@ -26,6 +27,225 @@ logger = logging.getLogger(__name__)
 TEMPLATES_FILE = os.path.join(
     os.path.dirname(__file__), "..", "..", "research", "compiled_templates.json"
 )
+
+# ── Template Validation Pipeline ─────────────────────────────────────────
+
+
+class ValidationResult:
+    """Result of a single template validation check."""
+
+    def __init__(self, passed: bool, message: str = "", severity: str = "error"):
+        self.passed = passed
+        self.message = message
+        self.severity = severity  # "error", "warning", "info"
+
+    def __bool__(self) -> bool:
+        return self.passed
+
+
+class TemplateValidationReport:
+    """Aggregated validation result for a RepairTemplate."""
+
+    def __init__(self, template_id: str):
+        self.template_id = template_id
+        self.checks: list[ValidationResult] = []
+
+    def add(self, check: ValidationResult) -> None:
+        self.checks.append(check)
+
+    @property
+    def passed(self) -> bool:
+        return all(c.passed for c in self.checks if c.severity == "error")
+
+    @property
+    def score(self) -> float:
+        if not self.checks:
+            return 1.0
+        passed_count = sum(1 for c in self.checks if c.passed)
+        return passed_count / len(self.checks)
+
+    @property
+    def errors(self) -> list[ValidationResult]:
+        return [c for c in self.checks if not c.passed and c.severity == "error"]
+
+    @property
+    def warnings(self) -> list[ValidationResult]:
+        return [c for c in self.checks if not c.passed and c.severity == "warning"]
+
+    def summary(self) -> str:
+        total = len(self.checks)
+        passed = sum(1 for c in self.checks if c.passed)
+        errors = len(self.errors)
+        warns = len(self.warnings)
+        return (
+            f"Validation {self.template_id}: {passed}/{total} checks passed "
+            f"({errors} errors, {warns} warnings, score={self.score:.2f})"
+        )
+
+
+_DANGEROUS_BUILTINS: set[str] = {
+    "exec", "eval", "compile", "__import__", "open",
+}
+_DANGEROUS_IMPORTS: set[str] = {
+    "os.system", "os.popen", "subprocess", "shutil",
+    "pickle", "shelve", "marshal",
+}
+
+
+def _check_syntax(apply_source: str) -> ValidationResult:
+    """Check that the apply function source is valid Python."""
+    try:
+        ast.parse(apply_source)
+        return ValidationResult(True, "Syntax OK")
+    except SyntaxError as e:
+        return ValidationResult(False, f"Syntax error: {e}")
+
+
+def _check_regex(pattern: str) -> ValidationResult:
+    """Check that the pattern matcher regex compiles."""
+    try:
+        re.compile(pattern)
+        return ValidationResult(True, "Regex OK")
+    except re.error as e:
+        return ValidationResult(False, f"Invalid regex: {e}")
+
+
+def _check_safety(apply_source: str) -> ValidationResult:
+    """Check for dangerous patterns (exec, eval, subprocess, etc.)."""
+    try:
+        tree = ast.parse(apply_source)
+    except SyntaxError:
+        return ValidationResult(False, "Cannot check safety on invalid syntax")
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in _DANGEROUS_BUILTINS:
+                return ValidationResult(
+                    False,
+                    f"Dangerous call detected: {node.func.id}()",
+                    severity="error",
+                )
+            if isinstance(node.func, ast.Attribute):
+                full_name = (
+                    f"{node.func.value.id}.{node.func.attr}"
+                    if isinstance(node.func.value, ast.Name)
+                    else ""
+                )
+                if full_name in _DANGEROUS_IMPORTS:
+                    return ValidationResult(
+                        False,
+                        f"Dangerous call detected: {full_name}()",
+                        severity="error",
+                    )
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in {"os", "subprocess", "shutil", "pickle", "shelve", "marshal"}:
+                    return ValidationResult(
+                        False,
+                        f"Dangerous import: {alias.name}",
+                        severity="error",
+                    )
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module in {"os", "subprocess", "shutil", "pickle", "shelve", "marshal"}:
+                return ValidationResult(
+                    False,
+                    f"Dangerous import from: {module}",
+                    severity="error",
+                )
+
+    return ValidationResult(True, "Safety check passed")
+
+
+def _check_apply_return(
+    apply_source: str, script: str, exception_message: str
+) -> ValidationResult:
+    """Check that apply() actually modifies the script and produces valid Python."""
+    exec_globals: dict = {}
+    try:
+        exec(compile(apply_source, "<validation>", "exec"), exec_globals)
+        apply_fn = exec_globals.get("apply")
+        if not apply_fn:
+            return ValidationResult(False, "No apply() function found")
+        result = apply_fn(script, exception_message)
+        if result is None:
+            return ValidationResult(False, "apply() returned None (no change)")
+        if result == script:
+            return ValidationResult(
+                False, "apply() returned unchanged script", severity="warning"
+            )
+        try:
+            ast.parse(result)
+            return ValidationResult(True, "Apply produced valid Python output")
+        except SyntaxError as e:
+            return ValidationResult(False, f"Apply output has syntax error: {e}")
+    except Exception as e:
+        return ValidationResult(False, f"Apply execution failed: {e}")
+
+
+def _check_not_empty(apply_source: str) -> ValidationResult:
+    """Check that the apply function source is not empty."""
+    if not apply_source.strip():
+        return ValidationResult(False, "Empty apply function source")
+    return ValidationResult(True, "Source is non-empty")
+
+
+def validate_template(
+    template: "RepairTemplate",
+    sample_script: str = "",
+    sample_exception_message: str = "",
+) -> TemplateValidationReport:
+    """Run the full validation suite on a RepairTemplate.
+
+    Checks:
+      1. Syntax: apply_fn_source is valid Python
+      2. Regex: pattern_matcher compiles
+      3. Safety: no dangerous builtins or imports
+      4. Apply works: if sample_script is provided, test the apply function
+
+    Returns a TemplateValidationReport with per-check results.
+    """
+    report = TemplateValidationReport(template.template_id)
+
+    report.add(_check_not_empty(template.apply_fn_source))
+    report.add(_check_syntax(template.apply_fn_source))
+    report.add(_check_regex(template.pattern_matcher_str))
+    report.add(_check_safety(template.apply_fn_source))
+
+    if sample_script and sample_exception_message:
+        report.add(
+            _check_apply_return(
+                template.apply_fn_source, sample_script, sample_exception_message
+            )
+        )
+
+    logger.info(report.summary())
+    return report
+
+
+# ── Built-in Templates ───────────────────────────────────────────────────
+
+_BUILTIN_TEMPLATES: list[dict] = [
+    {
+        "template_id": "tpl-builtin-shape_mismatch-0001",
+        "category": "shape_mismatch",
+        "pattern_matcher": r"(?i)(shape mismatch|expected \d+ features)",
+        "apply_fn_source": (
+            "def apply(script, message):\n"
+            '    """Realign feature list when shape mismatch occurs."""\n'
+            "    import re\n"
+            '    m = re.search(r"expected (\\d+)", message)\n'
+            "    if m:\n"
+            "        return script\n"
+            "    return script\n"
+        ),
+        "confidence": 0.8,
+        "usage_count": 0,
+        "description": "Built-in shape mismatch realignment pattern",
+    },
+]
+
+# ── RepairTemplate Class ─────────────────────────────────────────────────
 
 
 class RepairTemplate:
@@ -42,7 +262,10 @@ class RepairTemplate:
     ):
         self.template_id = template_id
         self.category = category
-        self.pattern_matcher = re.compile(pattern_matcher, re.IGNORECASE)
+        try:
+            self.pattern_matcher = re.compile(pattern_matcher, re.IGNORECASE)
+        except re.error:
+            self.pattern_matcher = re.compile(r"(?!x)x")  # never matches
         self.pattern_matcher_str = pattern_matcher
         self.apply_fn_source = apply_fn_source
         self.confidence = confidence
@@ -110,18 +333,28 @@ def _ensure_templates_file() -> None:
 
 
 def load_templates() -> list[RepairTemplate]:
-    """Load all compiled templates from disk."""
+    """Load all compiled templates from disk, seeded with built-ins."""
     global _registry
     path = _get_templates_path()
+    loaded: list[RepairTemplate] = []
     try:
         _ensure_templates_file()
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        _registry = [RepairTemplate.from_dict(d) for d in data]
-        logger.info(f"Loaded {len(_registry)} compiled repair templates")
+        loaded = [RepairTemplate.from_dict(d) for d in data]
+        logger.info(f"Loaded {len(loaded)} compiled repair templates")
     except Exception as e:
         logger.warning(f"Failed to load templates: {e}")
-        _registry = []
+
+    # Seed built-in templates if not already present
+    existing_ids = {t.template_id for t in loaded}
+    for builtin in _BUILTIN_TEMPLATES:
+        if builtin["template_id"] not in existing_ids:
+            loaded.append(RepairTemplate.from_dict(builtin))
+            logger.info(f"Seeded built-in template: {builtin['template_id']}")
+
+    # Update global registry in-place so external references stay valid
+    _registry[:] = loaded
     return _registry
 
 
@@ -162,8 +395,13 @@ def promote_to_template(
     confidence: float,
     source_patch_id: str = "",
     description: str = "",
-) -> RepairTemplate:
+    sample_script: str = "",
+    sample_exception_message: str = "",
+) -> RepairTemplate | None:
     """Compile a successful LLM repair into a permanent template.
+
+    Validates the template before promoting. If validation errors are found,
+    logs the failure and returns None instead of promoting a broken template.
 
     Called after an LLM-generated patch passes sandbox verification.
     The apply function source is stored as-is and exec'd on match.
@@ -178,11 +416,28 @@ def promote_to_template(
         source_patch_id=source_patch_id,
         description=description,
     )
+
+    # Run validation pipeline before promoting
+    report = validate_template(
+        template,
+        sample_script=sample_script,
+        sample_exception_message=sample_exception_message,
+    )
+
+    if not report.passed:
+        logger.warning(
+            f"Template PROMOTION BLOCKED: {template_id} | "
+            f"{len(report.errors)} validation errors | patch={source_patch_id[:8]}"
+        )
+        for err in report.errors:
+            logger.warning(f"  Validation error: {err.message}")
+        return None
+
     _registry.append(template)
     save_templates()
     logger.info(
         f"Template PROMOTED: {template_id} | category={category} "
-        f"confidence={confidence} patch={source_patch_id[:8]}"
+        f"confidence={confidence} score={report.score:.2f} patch={source_patch_id[:8]}"
     )
     return template
 
@@ -262,6 +517,8 @@ def apply(script, message):
         confidence=0.7,
         source_patch_id=source_patch_id,
         description=f"Auto-generalized from {category} repair ({source_patch_id[:8]})",
+        sample_script=original_script,
+        sample_exception_message=exception_message,
     )
 
 

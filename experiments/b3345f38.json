@@ -1,0 +1,24 @@
+{
+  "set_id": "b3345f38",
+  "name": "empty_test",
+  "created_at": "2026-07-08T16:05:54.936888+00:00",
+  "experiments": {
+    "H2": {
+      "experiment_id": "9917778d",
+      "name": "empty_test - B (H2)",
+      "hypothesis": "H2",
+      "created_at": "2026-07-08T16:05:54.936888+00:00",
+      "runs": [],
+      "summary": null
+    }
+  },
+  "comparisons": {},
+  "git_commit": "",
+  "git_branch": "",
+  "python_version": "",
+  "configuration_hash": "",
+  "mission_spec_version": "",
+  "execution_plan_version": "",
+  "planner_version": "",
+  "dataset_problems_hash": ""
+}

@@ -127,6 +127,7 @@ class DissectAgent(BaseAgent):
                 else None
             ),
             budget=self._budget,
+            job_id=self.job_id,
         )
 
         if cascade_result.resolved and cascade_result.level < 4:
@@ -333,6 +334,7 @@ class DissectAgent(BaseAgent):
                     patched_script=patched_code,
                     patch_diff=diff,
                     patch_id=patch_id,
+                    cascade_path=cascade_result.cascade_path if hasattr(cascade_result, "cascade_path") else None,
                 )
 
             await publish(

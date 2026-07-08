@@ -35,10 +35,21 @@ class HealthMonitor:
         key = f"heartbeat:{agent_name}:{job_id}"
         await r.setex(key, HEARTBEAT_TTL, datetime.now(timezone.utc).isoformat())
 
+    async def _scan_keys(self, r: aioredis.Redis, pattern: str, count: int = 100) -> list[str]:
+        """Safe SCAN-based key iteration."""
+        keys: list[str] = []
+        cursor = 0
+        while True:
+            cursor, batch = await r.scan(cursor=cursor, match=pattern, count=count)
+            keys.extend(batch)
+            if cursor == 0:
+                break
+        return keys
+
     async def check_heartbeats(self) -> list[dict[str, Any]]:
         """Check all known heartbeats and return list of stale agents."""
         r = await self._get_redis()
-        keys = await r.keys("heartbeat:*")
+        keys = await self._scan_keys(r, "heartbeat:*")
         stale = []
 
         for key in keys:

@@ -5,7 +5,13 @@ r = redis.Redis("localhost", 6379, decode_responses=True)
 # Keep only the Titanic job
 keep = "4fcfcff1"
 
-keys = r.keys("job:*")
+cursor = 0
+keys: list[str] = []
+while True:
+    cursor, batch = r.scan(cursor=cursor, match="job:*", count=100)
+    keys.extend(batch)
+    if cursor == 0:
+        break
 for k in keys:
     parts = k.split(":", 2)
     jid = parts[1]
