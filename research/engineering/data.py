@@ -93,7 +93,9 @@ def load_latest_experiment_set(
     return load_experiment_set(files[0])
 
 
-def load_experiment_set_by_id(set_id: str, directory: str | Path | None = None) -> ExperimentSet | None:
+def load_experiment_set_by_id(
+    set_id: str, directory: str | Path | None = None
+) -> ExperimentSet | None:
     directory = Path(directory) if directory else _DEFAULT_EXPERIMENTS_DIR
     path = directory / f"{set_id}.json"
     if not path.exists():
@@ -202,7 +204,9 @@ def _build_template_quality(
         for exp in exp_set.experiments.values():
             for run in exp.runs:
                 rd = run.model_dump()
-                arch = rd.get("execution_outcome", {}).get("architecture", rd.get("architecture", ""))
+                arch = rd.get("execution_outcome", {}).get(
+                    "architecture", rd.get("architecture", "")
+                )
                 if not arch:
                     continue
                 arch_map.setdefault(arch, []).append(rd)
@@ -215,9 +219,15 @@ def _build_template_quality(
     result: dict[str, TemplateQuality] = {}
     for arch, runs in arch_map.items():
         passes = sum(1 for r in runs if r.get("decision") == "pass" or r.get("status") == "pass")
-        failures = sum(1 for r in runs if r.get("status") in ("crash", "failed", "escalate", "error"))
+        failures = sum(
+            1 for r in runs if r.get("status") in ("crash", "failed", "escalate", "error")
+        )
         total = len(runs)
-        metrics = [r.get("best_val_metric", r.get("val_metric")) for r in runs if r.get("best_val_metric") is not None]
+        metrics = [
+            r.get("best_val_metric", r.get("val_metric"))
+            for r in runs
+            if r.get("best_val_metric") is not None
+        ]
         metrics = [float(m) for m in metrics]
         errors: dict[str, int] = {}
         for r in runs:
@@ -250,7 +260,9 @@ def _build_forge_reliability(
         for exp in exp_set.experiments.values():
             for run in exp.runs:
                 rd = run.model_dump()
-                arch = rd.get("execution_outcome", {}).get("architecture", rd.get("architecture", ""))
+                arch = rd.get("execution_outcome", {}).get(
+                    "architecture", rd.get("architecture", "")
+                )
                 if arch:
                     arch_selections[arch] = arch_selections.get(arch, 0) + 1
 
@@ -335,7 +347,7 @@ def _build_dissect_effectiveness(
                 first_pass_by_job[job_id] = -1 if oc != "success" else 1
             # Track multiple occurrences if this is truly the first entry for this job
             if first_pass_by_job[job_id] == 0:
-                first_pass_successes += (1 if oc == "success" else 0)
+                first_pass_successes += 1 if oc == "success" else 0
 
         conf = e.get("confidence_score")
         if conf is not None:
@@ -346,8 +358,7 @@ def _build_dissect_effectiveness(
             lines_changed.append(int(lc))
 
     category_success_rates = {
-        cat: (suc / tot if tot > 0 else 0.0)
-        for cat, (tot, suc) in category_success.items()
+        cat: (suc / tot if tot > 0 else 0.0) for cat, (tot, suc) in category_success.items()
     }
 
     # Recalculate first pass properly
@@ -360,7 +371,8 @@ def _build_dissect_effectiveness(
 
     first_pass_total = len(first_pass_attempts_per_job)
     first_pass_successes = sum(
-        1 for attempts in first_pass_attempts_per_job.values()
+        1
+        for attempts in first_pass_attempts_per_job.values()
         if any(a.get("patch_outcome") == "success" for a in attempts)
     )
 
@@ -408,7 +420,9 @@ def _build_dissect_effectiveness(
         classification_methods=class_methods,
         attempt_outcome_distribution=attempt_dist,
         patches_by_job=[PatchLogEntry(**e) for e in patch_entries],
-        first_pass_success_rate=first_pass_successes / first_pass_total if first_pass_total > 0 else 0.0,
+        first_pass_success_rate=(
+            first_pass_successes / first_pass_total if first_pass_total > 0 else 0.0
+        ),
         avg_attempts_per_job=avg_attempts,
         total_first_attempts=first_pass_total,
         first_attempt_successes=first_pass_successes,
@@ -468,8 +482,12 @@ def _build_llm_usage(
         if "H1" in exp_set.experiments:
             calls_by_agent["scout"] = len(exp_set.experiments["H1"].runs)
             calls_by_agent["forge"] = len(exp_set.experiments["H1"].runs)
-        estimated_input_tokens = calls_by_agent.get("scout", 0) * 2000 + calls_by_agent.get("forge", 0) * 1500
-        estimated_output_tokens = calls_by_agent.get("scout", 0) * 500 + calls_by_agent.get("forge", 0) * 800
+        estimated_input_tokens = (
+            calls_by_agent.get("scout", 0) * 2000 + calls_by_agent.get("forge", 0) * 1500
+        )
+        estimated_output_tokens = (
+            calls_by_agent.get("scout", 0) * 500 + calls_by_agent.get("forge", 0) * 800
+        )
         total_calls = sum(calls_by_agent.values())
         return LlmUsage(
             total_llm_calls=total_calls,
@@ -477,7 +495,8 @@ def _build_llm_usage(
             total_output_tokens=estimated_output_tokens,
             estimated_cost_usd=round(
                 estimated_input_tokens / 1_000_000 * _EST_INPUT_COST_PER_M
-                + estimated_output_tokens / 1_000_000 * _EST_OUTPUT_COST_PER_M, 2
+                + estimated_output_tokens / 1_000_000 * _EST_OUTPUT_COST_PER_M,
+                2,
             ),
             calls_by_agent=calls_by_agent,
         )
@@ -506,7 +525,11 @@ def _build_knowledge_progress(
 
     unique_patches = len(set(e.get("patch_id", "") for e in patch_entries if e.get("patch_id")))
     unique_categories = len(
-        set(e.get("error_taxonomy_category", "") for e in patch_entries if e.get("error_taxonomy_category"))
+        set(
+            e.get("error_taxonomy_category", "")
+            for e in patch_entries
+            if e.get("error_taxonomy_category")
+        )
     )
 
     timestamps = [e.get("timestamp", "") for e in patch_entries if e.get("timestamp")]
@@ -577,7 +600,9 @@ def _build_performance_profile(
                     seen[pid] = PerformanceProfile(problem_id=pid)
                 p = seen[pid]
                 p.total_duration_s = max(p.total_duration_s, run.system_metrics.duration_seconds)
-                p.training_duration_s = max(p.training_duration_s or 0, run.system_metrics.wall_clock_time_s)
+                p.training_duration_s = max(
+                    p.training_duration_s or 0, run.system_metrics.wall_clock_time_s
+                )
                 if run.system_metrics.crashes:
                     p.crash_count = max(p.crash_count, run.system_metrics.crashes)
                 rd = run.model_dump()
@@ -586,7 +611,9 @@ def _build_performance_profile(
                     p.status = "pass"
                 elif p.status != "pass":
                     p.status = status
-                metric = rd.get("research_metrics", {}).get("final_metric", rd.get("best_val_metric"))
+                metric = rd.get("research_metrics", {}).get(
+                    "final_metric", rd.get("best_val_metric")
+                )
                 if metric is not None:
                     p.val_metric = max(p.val_metric or 0, float(metric))
 
@@ -671,15 +698,19 @@ def _build_root_cause_report(
                 status = rd.get("execution_outcome", {}).get("status", rd.get("status", ""))
                 if status in ("crash", "failed", "escalate", "error"):
                     seen_failures.add(pid)
-                    arch = rd.get("execution_outcome", {}).get("architecture", rd.get("architecture", "unknown"))
+                    arch = rd.get("execution_outcome", {}).get(
+                        "architecture", rd.get("architecture", "unknown")
+                    )
                     failures_by_arch[arch] = failures_by_arch.get(arch, 0) + 1
                     err = rd.get("execution_outcome", {}).get("error", rd.get("error", ""))
                     if err:
-                        top_errors.append({
-                            "problem_id": pid,
-                            "architecture": arch,
-                            "error": err[:200],
-                        })
+                        top_errors.append(
+                            {
+                                "problem_id": pid,
+                                "architecture": arch,
+                                "error": err[:200],
+                            }
+                        )
 
     # Source 2: Benchmark results
     if benchmark_results:
@@ -692,11 +723,13 @@ def _build_root_cause_report(
                 failures_by_arch[arch] = failures_by_arch.get(arch, 0) + 1
                 err = r.get("error", "")
                 if err:
-                    top_errors.append({
-                        "problem_id": pid,
-                        "architecture": arch,
-                        "error": err[:200],
-                    })
+                    top_errors.append(
+                        {
+                            "problem_id": pid,
+                            "architecture": arch,
+                            "error": err[:200],
+                        }
+                    )
                     etype = err.split(":")[0].strip() if ":" in err else err[:40].strip()
                     failure_patterns[etype] += 1
 
@@ -711,12 +744,14 @@ def _build_root_cause_report(
                 if err_type:
                     failure_patterns[err_type] += 1
                 if oc == "escalated":
-                    top_errors.append({
-                        "problem_id": e.get("job_id", "")[:20],
-                        "architecture": e.get("error_taxonomy_category", "unknown"),
-                        "error": f"{err_type}: {e.get('exception_message', '')[:150]}",
-                        "attempt_number": e.get("attempt_number", 3),
-                    })
+                    top_errors.append(
+                        {
+                            "problem_id": e.get("job_id", "")[:20],
+                            "architecture": e.get("error_taxonomy_category", "unknown"),
+                            "error": f"{err_type}: {e.get('exception_message', '')[:150]}",
+                            "attempt_number": e.get("attempt_number", 3),
+                        }
+                    )
 
     top_errors = top_errors[:10]
     total_problems = max(len(seen_problems), 1)
@@ -727,10 +762,16 @@ def _build_root_cause_report(
     # Generate common failure patterns
     common_patterns = [f"{pattern}: {count}x" for pattern, count in failure_patterns.most_common(5)]
 
-    recommendations = _generate_recommendations_patch(failures_by_arch, failures_by_cat, failure_patterns)
+    recommendations = _generate_recommendations_patch(
+        failures_by_arch, failures_by_cat, failure_patterns
+    )
 
     return RootCauseReport(
-        total_problems=total_problems if total_problems > 0 else (len(failure_patterns) if failure_patterns else 1),
+        total_problems=(
+            total_problems
+            if total_problems > 0
+            else (len(failure_patterns) if failure_patterns else 1)
+        ),
         total_failures=failure_count,
         failure_rate=failure_count / max(total_problems, 1),
         failures_by_category=failures_by_cat,
@@ -752,11 +793,15 @@ def _generate_recommendations_patch(
 
     if failures_by_arch:
         worst_arch = max(failures_by_arch, key=failures_by_arch.get)
-        recs.append(f"Prioritize fixing {worst_arch} templates ({failures_by_arch[worst_arch]} failures)")
+        recs.append(
+            f"Prioritize fixing {worst_arch} templates ({failures_by_arch[worst_arch]} failures)"
+        )
 
     if failures_by_cat:
         worst_cat = max(failures_by_cat, key=failures_by_cat.get)
-        recs.append(f"Focus Dissect training on {worst_cat} category ({failures_by_cat[worst_cat]} unresolved failures)")
+        recs.append(
+            f"Focus Dissect training on {worst_cat} category ({failures_by_cat[worst_cat]} unresolved failures)"
+        )
 
     if failure_patterns:
         top_type = failure_patterns.most_common(1)[0]
@@ -773,7 +818,7 @@ def _extract_job_modality(job_id: str, problems: list[dict[str, Any]] | None) ->
     if not problems:
         return "unknown"
     prefix = job_id.split("-")[0] if "-" in job_id else job_id[:4]
-    for p in (problems or []):
+    for p in problems or []:
         pid = p.get("problem_id", "").lower()
         if pid == prefix.lower():
             return p.get("modality", "unknown")
@@ -812,8 +857,12 @@ def _build_benchmark_comparison(
     b_pass_rate = b_passes / len(cond_b) if cond_b else 0
     c_pass_rate = c_passes / len(cond_c) if cond_c else 0
 
-    b_metrics = [r.best_val_metric for r in cond_b if r.best_val_metric is not None and r.best_val_metric > 0]
-    c_metrics = [r.best_val_metric for r in cond_c if r.best_val_metric is not None and r.best_val_metric > 0]
+    b_metrics = [
+        r.best_val_metric for r in cond_b if r.best_val_metric is not None and r.best_val_metric > 0
+    ]
+    c_metrics = [
+        r.best_val_metric for r in cond_c if r.best_val_metric is not None and r.best_val_metric > 0
+    ]
     b_avg_metric = sum(b_metrics) / len(b_metrics) if b_metrics else None
     c_avg_metric = sum(c_metrics) / len(c_metrics) if c_metrics else None
 
@@ -830,16 +879,22 @@ def _build_benchmark_comparison(
         matching = [r_c for r_c in cond_c if r_c.problem_id == r_b.problem_id]
         if matching:
             r_c = matching[0]
-            per_problem.append({
-                "problem_id": r_b.problem_id,
-                "B_status": r_b.status,
-                "C_status": r_c.status,
-                "B_metric": r_b.best_val_metric,
-                "C_metric": r_c.best_val_metric,
-                "B_duration": r_b.duration_seconds,
-                "C_duration": r_c.duration_seconds,
-                "delta_metric": (r_c.best_val_metric or 0) - (r_b.best_val_metric or 0) if r_c.best_val_metric and r_b.best_val_metric else None,
-            })
+            per_problem.append(
+                {
+                    "problem_id": r_b.problem_id,
+                    "B_status": r_b.status,
+                    "C_status": r_c.status,
+                    "B_metric": r_b.best_val_metric,
+                    "C_metric": r_c.best_val_metric,
+                    "B_duration": r_b.duration_seconds,
+                    "C_duration": r_c.duration_seconds,
+                    "delta_metric": (
+                        (r_c.best_val_metric or 0) - (r_b.best_val_metric or 0)
+                        if r_c.best_val_metric and r_b.best_val_metric
+                        else None
+                    ),
+                }
+            )
 
     pass_rate_delta = c_pass_rate - b_pass_rate
     metric_delta = (c_avg_metric - b_avg_metric) if c_avg_metric and b_avg_metric else None
@@ -867,7 +922,10 @@ def _build_benchmark_comparison(
     for pp in per_problem:
         if pp.get("B_status") in ("crash", "failed") and pp.get("C_status") in ("pass", "success"):
             improvements.append(f"{pp['problem_id']}: recovered from crash to pass with Dissect")
-        elif pp.get("B_status") in ("pass", "success") and pp.get("C_status") in ("crash", "failed"):
+        elif pp.get("B_status") in ("pass", "success") and pp.get("C_status") in (
+            "crash",
+            "failed",
+        ):
             regressions.append(f"{pp['problem_id']}: regressed from pass to crash with Dissect")
 
     return BenchmarkComparison(
@@ -899,11 +957,10 @@ def _get_stage_for_category(category: str) -> tuple[FailureLifecycleStage, bool,
 
     for entry in TAXONOMY:
         if entry.category == category:
-
             forge_prevention = category in (
-                "encoding_error",       # utf-8 read added to Forge scripts
-                "empty_dataset",        # empty check added to Forge scripts
-                "dtype_mismatch",       # numeric coercion added to Forge scripts
+                "encoding_error",  # utf-8 read added to Forge scripts
+                "empty_dataset",  # empty check added to Forge scripts
+                "dtype_mismatch",  # numeric coercion added to Forge scripts
             )
 
             if forge_prevention and entry.has_rule:
@@ -935,16 +992,18 @@ def _build_failure_lifecycle(
         return FailureLifecycleReport()
 
     # Group by category
-    cat_data: dict[str, dict[str, Any]] = defaultdict(lambda: {
-        "entries": [],
-        "first_seen": None,
-        "last_seen": None,
-        "resolved_by_llm": 0,
-        "resolved_by_template": 0,
-        "resolved_by_rule": 0,
-        "successful": 0,
-        "total": 0,
-    })
+    cat_data: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {
+            "entries": [],
+            "first_seen": None,
+            "last_seen": None,
+            "resolved_by_llm": 0,
+            "resolved_by_template": 0,
+            "resolved_by_rule": 0,
+            "successful": 0,
+            "total": 0,
+        }
+    )
 
     for e in patch_entries:
         cat = e.get("error_taxonomy_category", "unknown")
@@ -969,7 +1028,9 @@ def _build_failure_lifecycle(
         # Track resolution method — these correspond to cascade levels
         if method == "llm":
             cd["resolved_by_llm"] += 1
-        elif repair_strategy and ("rule" in repair_strategy.lower() or "template" in repair_strategy.lower()):
+        elif repair_strategy and (
+            "rule" in repair_strategy.lower() or "template" in repair_strategy.lower()
+        ):
             cd["resolved_by_template"] += 1
         else:
             cd["resolved_by_llm"] += 1  # default to LLM
@@ -992,7 +1053,9 @@ def _build_failure_lifecycle(
                 pass
 
         # Determine how many LLM calls could be saved
-        llm_savable = cd["resolved_by_llm"] if (has_rule or has_template or forge_implemented) else 0
+        llm_savable = (
+            cd["resolved_by_llm"] if (has_rule or has_template or forge_implemented) else 0
+        )
         total_llm_savable += llm_savable
 
         # Recommendation
@@ -1007,26 +1070,30 @@ def _build_failure_lifecycle(
         else:
             next_rec = "Add to taxonomy as deterministic rule; classify patterns from patch_log"
 
-        categories.append(FailureLifecycleEntry(
-            category=cat_name,
-            total_occurrences=cd["total"],
-            first_seen=cd["first_seen"],
-            last_seen=cd["last_seen"],
-            resolved_by_llm=cd["resolved_by_llm"],
-            resolved_by_template=cd.get("resolved_by_template", 0),
-            resolved_by_rule=cd.get("resolved_by_rule", 0),
-            forge_prevention_applicable=has_rule or has_template,
-            forge_prevention_implemented=forge_implemented,
-            still_recurring=current_still_recurring,
-            current_stage=stage,
-            next_recommendation=next_rec,
-            success_rate=round(success_rate, 3),
-            llm_calls_saved_if_deterministic=llm_savable,
-        ))
+        categories.append(
+            FailureLifecycleEntry(
+                category=cat_name,
+                total_occurrences=cd["total"],
+                first_seen=cd["first_seen"],
+                last_seen=cd["last_seen"],
+                resolved_by_llm=cd["resolved_by_llm"],
+                resolved_by_template=cd.get("resolved_by_template", 0),
+                resolved_by_rule=cd.get("resolved_by_rule", 0),
+                forge_prevention_applicable=has_rule or has_template,
+                forge_prevention_implemented=forge_implemented,
+                still_recurring=current_still_recurring,
+                current_stage=stage,
+                next_recommendation=next_rec,
+                success_rate=round(success_rate, 3),
+                llm_calls_saved_if_deterministic=llm_savable,
+            )
+        )
 
     forge_count = sum(1 for c in categories if c.forge_prevention_implemented)
     rule_count = sum(1 for c in categories if c.current_stage == FailureLifecycleStage.has_rule)
-    template_count = sum(1 for c in categories if c.current_stage == FailureLifecycleStage.has_template)
+    template_count = sum(
+        1 for c in categories if c.current_stage == FailureLifecycleStage.has_template
+    )
     llm_only_count = sum(1 for c in categories if c.current_stage == FailureLifecycleStage.llm_only)
 
     return FailureLifecycleReport(
@@ -1073,8 +1140,10 @@ def build_engineering_summary(
     null_set = ExperimentSet(name="empty")
     exp_set = exp_set or null_set
 
-    num_conditions = len(set(r.get("condition", "") for r in benchmark_results)) if benchmark_results else max(
-        len([k for k in ("H1", "H2", "H3") if k in (exp_set.experiments or {})]), 1
+    num_conditions = (
+        len(set(r.get("condition", "") for r in benchmark_results))
+        if benchmark_results
+        else max(len([k for k in ("H1", "H2", "H3") if k in (exp_set.experiments or {})]), 1)
     )
 
     config = BenchmarkConfig(

@@ -1,0 +1,41 @@
+PHASE 0 — EXECUTION METHOD DOCUMENTATION
+==========================================
+Generated: 2026-07-09
+
+CURRENT EXECUTION METHOD FOR research/run_benchmark.py:
+
+The benchmark runner uses THREE distinct mechanisms to simulate the agent pipeline:
+
+1. Scout — DIRECT CLASS CALL (no subprocess, no orchestrator)
+   - Instantiates ScoutAgent directly via `agents.scout.agent.ScoutAgent`
+   - Calls `.run_with_data()` directly — no Redis Streams, no orchestrator
+
+2. Forge — DIRECT CLASS CALL (no subprocess, no orchestrator)
+   - Instantiates ForgeAgent directly via `agents.forge.agent.ForgeAgent`
+   - Calls `.run_with_brief()` directly — no Redis Streams, no orchestrator
+
+3. Training — SUBPROCESS (asyncio.create_subprocess_exec)
+   - Runs training script via `python scripts/training_script_{job_id}.py`
+   - NOT via Docker container (as production does)
+   - Key functions using subprocess: _run_subprocess, run_training_script
+
+4. Evaluation — DIRECT TOOL FUNCTION CALLS
+   - Imports arbiter tools directly: compute_classification_metrics, make_decision
+   - No agent instantiation — pure function calls
+
+WHAT IS NOT USED:
+  - Orchestrator runtime (orchestrator/runtime.py) — NOT called
+  - Furnace agent — NOT called (training is subprocess, not Furnace)
+  - Dissect agent — NOT called (Condition B = no Dissect)
+  - Harbor agent — NOT called
+  - Redis Streams event bus — NOT used (agents communicate directly)
+  - Docker containers — NOT used (training is local subprocess)
+
+SMOKE TEST RESULTS: TC01 Condition B
+  - Status: pass
+  - Architecture: lightgbm
+  - Best val metric (AUC): 0.7552
+  - Duration: 3.04 seconds
+  - Decision: pass
+  - Human interventions: 0
+  - Crashes: 0

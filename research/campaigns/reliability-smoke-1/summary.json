@@ -1,0 +1,52 @@
+{
+  "campaign_name": "reliability-smoke-1",
+  "num_runs": 1,
+  "num_problems": 7,
+  "condition": "C",
+  "run_metrics": [
+    {
+      "total_patches": 3,
+      "llm_calls": 0,
+      "regex_calls": 3,
+      "successful_patches": 0,
+      "rollbacks": 2,
+      "escalations": 1,
+      "patch_success_rate": 0.0,
+      "cascade_distribution": {
+        "level0_rule": 3
+      },
+      "cat_distribution": {
+        "missing_column": 3
+      },
+      "attempt_distribution": {
+        "1": 3
+      },
+      "estimated_input_tokens": 0,
+      "estimated_output_tokens": 0,
+      "estimated_cost_usd": 0.0,
+      "pass_count": 6,
+      "fail_count": 1,
+      "total_duration_s": 69.84,
+      "pass_rate": 0.8571,
+      "unique_errors_seen": 1,
+      "llm_fallback_rate": 0.0
+    }
+  ],
+  "trends": {
+    "llm_calls": [
+      0
+    ],
+    "pass_rate": [
+      0.8571
+    ],
+    "cost": [
+      0.0
+    ],
+    "llm_fallback_rate": [
+      0.0
+    ],
+    "patch_success_rate": [
+      0.0
+    ]
+  }
+}

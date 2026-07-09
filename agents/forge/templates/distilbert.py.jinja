@@ -33,7 +33,7 @@ TARGET_COL = "{{ target_column }}"
 OUTPUT_DIR = os.path.join(os.getenv("OUTPUTS_DIR", "./outputs"), JOB_ID, "checkpoints")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-df = pd.read_csv(DATA_PATH)
+df = pd.read_csv(DATA_PATH, sep="{{ data_delimiter }}")
 text_col = [c for c in df.columns if c != TARGET_COL and df[c].dtype == "object"][0]
 texts = df[text_col].astype(str).tolist()
 labels = df[TARGET_COL].values

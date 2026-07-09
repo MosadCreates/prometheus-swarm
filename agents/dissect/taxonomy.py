@@ -42,6 +42,9 @@ class TaxonomyEntry:
     has_template: bool = False
     has_rule: bool = False
     sub_strategies: list[str] | None = None
+    terminal: bool = False
+    preferred_strategy: str = "cascade"
+    pipeline_stage: str = "training"
 
 
 TAXONOMY: list[TaxonomyEntry] = [
@@ -55,6 +58,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         has_template=True,
         has_rule=False,
         sub_strategies=["reindex", "reencode", "slice_features"],
+        preferred_strategy="template",
     ),
     TaxonomyEntry(
         category="sparse_matrix",
@@ -65,6 +69,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         cascade_level=0,
         has_rule=True,
         sub_strategies=["to_dense", "replace_smote"],
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="oom",
@@ -75,6 +80,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         cascade_level=0,
         has_rule=True,
         sub_strategies=["halve_batch", "chunked_loading"],
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="cuda_oom",
@@ -85,6 +91,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         cascade_level=0,
         has_rule=True,
         sub_strategies=["halve_batch", "gradient_checkpointing", "cpu_fallback"],
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="missing_column",
@@ -96,6 +103,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         has_template=True,
         has_rule=False,
         sub_strategies=["derive", "rename", "drop", "abort"],
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="dtype_mismatch",
@@ -111,6 +119,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         cascade_level=0,
         has_rule=True,
         sub_strategies=["astype", "infer_dtype", "convert_numeric", "label_encode"],
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="convergence_failure",
@@ -126,6 +135,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         cascade_level=0,
         has_rule=True,
         sub_strategies=["increase_iter", "switch_solver", "reduce_reg", "increase_timeout"],
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="import_error",
@@ -135,6 +145,8 @@ TAXONOMY: list[TaxonomyEntry] = [
         deterministic=True,
         cascade_level=0,
         has_rule=True,
+        terminal=True,
+        preferred_strategy="terminal",
     ),
     TaxonomyEntry(
         category="nan_propagation",
@@ -144,6 +156,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         deterministic=True,
         cascade_level=0,
         has_rule=True,
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="checkpoint_corruption",
@@ -153,6 +166,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         deterministic=True,
         cascade_level=0,
         has_rule=True,
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="feature_mismatch",
@@ -168,6 +182,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         has_template=True,
         has_rule=False,
         sub_strategies=["reindex", "reencode", "slice_features"],
+        preferred_strategy="template",
     ),
     TaxonomyEntry(
         category="index_error",
@@ -181,6 +196,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         deterministic=True,
         cascade_level=0,
         has_rule=True,
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="zero_division",
@@ -194,6 +210,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         deterministic=True,
         cascade_level=0,
         has_rule=True,
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="empty_dataset",
@@ -205,6 +222,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         has_template=True,
         has_rule=False,
         sub_strategies=["fix_split", "disable_filter", "synthetic_data"],
+        preferred_strategy="template",
     ),
     TaxonomyEntry(
         category="invalid_axis",
@@ -214,6 +232,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         deterministic=True,
         cascade_level=0,
         has_rule=True,
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="optimizer_divergence",
@@ -224,6 +243,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         cascade_level=0,
         has_rule=True,
         sub_strategies=["halve_lr", "gradient_clip", "check_nan_input"],
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="encoding_error",
@@ -233,6 +253,8 @@ TAXONOMY: list[TaxonomyEntry] = [
         deterministic=True,
         cascade_level=0,
         has_rule=True,
+        terminal=True,
+        preferred_strategy="terminal",
     ),
     TaxonomyEntry(
         category="permission_error",
@@ -248,6 +270,8 @@ TAXONOMY: list[TaxonomyEntry] = [
         deterministic=True,
         cascade_level=0,
         has_rule=True,
+        terminal=True,
+        preferred_strategy="terminal",
     ),
     TaxonomyEntry(
         category="label_mismatch",
@@ -259,6 +283,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         has_template=True,
         has_rule=False,
         sub_strategies=["add_missing_class", "refit_encoder", "min_class_threshold"],
+        preferred_strategy="template",
     ),
     TaxonomyEntry(
         category="pickle_version_mismatch",
@@ -273,6 +298,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         deterministic=True,
         cascade_level=0,
         has_rule=True,
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="name_error",
@@ -289,6 +315,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         deterministic=True,
         cascade_level=0,
         has_rule=True,
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="syntax_error",
@@ -304,6 +331,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         cascade_level=0,
         has_rule=True,
         sub_strategies=["reorder_args", "ast_fix", "add_missing_paren"],
+        preferred_strategy="rule",
     ),
     TaxonomyEntry(
         category="novel_error",
@@ -315,6 +343,7 @@ TAXONOMY: list[TaxonomyEntry] = [
         deterministic=False,
         cascade_level=4,
         has_rule=False,
+        preferred_strategy="llm",
     ),
 ]
 
@@ -443,6 +472,27 @@ def can_use_deterministic_repair(category: str) -> bool:
         if entry.category == category:
             return entry.has_rule or entry.has_template
     return False
+
+
+def is_terminal(category: str) -> bool:
+    for entry in TAXONOMY:
+        if entry.category == category:
+            return entry.terminal
+    return False
+
+
+def get_preferred_strategy(category: str) -> str:
+    for entry in TAXONOMY:
+        if entry.category == category:
+            return entry.preferred_strategy
+    return "cascade"
+
+
+def get_pipeline_stage(category: str) -> str:
+    for entry in TAXONOMY:
+        if entry.category == category:
+            return entry.pipeline_stage
+    return "training"
 
 
 def get_sub_strategies(category: str) -> list[str]:

@@ -116,6 +116,7 @@ def _build_variables(
 
     file_path = data_path or dataset.get("file_path", "data.csv")
     data_filename = os.path.basename(file_path)
+    data_delimiter = dataset.get("delimiter", ",")
 
     target_column = mission_brief.get("target_column")
     if not target_column:
@@ -124,6 +125,7 @@ def _build_variables(
     config = {
         "job_id": job_id,
         "data_filename": data_filename,
+        "data_delimiter": data_delimiter,
         "target_column": target_column,
         "task_type": _classify_task_type(mission_brief.get("task_type", "classification")),
         "evaluation_metric": mission_brief.get("evaluation_metric") or "auc_roc",
@@ -176,7 +178,9 @@ def validate_script_rich(script: str) -> dict[str, Any]:
 
     # Content checks
     has_result_json = "result.json" in script
-    has_training_complete = 'print("TRAINING_COMPLETE' in script or 'print(\'TRAINING_COMPLETE' in script
+    has_training_complete = (
+        'print("TRAINING_COMPLETE' in script or "print('TRAINING_COMPLETE" in script
+    )
 
     # Run static analysis
     findings_raw = validate_script_static(script) if syntax_ok else []
@@ -192,17 +196,52 @@ def validate_script_rich(script: str) -> dict[str, Any]:
     }
 
 
-async def _report_error_stats(redis_client: Any, architecture: str, job_id: str) -> None:
-    """Query Redis error stats and log known high-failure categories."""
-    from agents.forge.quality_feedback import get_top_failures_redis
+async def _report_error_stats(architecture: str, job_id: str) -> None:
+    """Query Redis error stats and log known high-failure categories.
 
-    top_failures = await get_top_failures_redis(redis_client, architecture, n=5)
-    if top_failures:
-        stats_str = "; ".join(
-            f"{f['category']} ({f['count']}x)" for f in top_failures if f["count"] >= 2
-        )
-        if stats_str:
-            logger.warning(f"[job={job_id}] Known failure patterns for {architecture}: {stats_str}")
+    Uses a sync Redis connection (via redis.Redis) to avoid racing with
+    the caller closing forge.redis, and to avoid pending-task-destroyed
+    errors when the event loop shuts down before the fire-and-forget
+    task completes.
+    """
+    import os
+
+    import redis as sync_redis
+
+    host = os.getenv("REDIS_HOST", "localhost")
+    port = int(os.getenv("REDIS_PORT", 6379))
+    password = os.getenv("REDIS_PASSWORD") or None
+
+    try:
+        r = sync_redis.Redis(host=host, port=port, password=password, decode_responses=True)
+        r.ping()
+        from agents.forge.quality_feedback import REDIS_STATS_PREFIX
+
+        pattern = f"{REDIS_STATS_PREFIX}:{architecture}:*"
+        keys = r.keys(pattern)
+        failures = []
+        for key in keys:
+            cat = (
+                key.split(f"{REDIS_STATS_PREFIX}:{architecture}:")[-1]
+                if f"{REDIS_STATS_PREFIX}:{architecture}:" in key
+                else ""
+            )
+            if cat:
+                count = int(r.hget(key, "count") or 0)
+                failures.append({"category": cat, "count": count})
+        failures.sort(key=lambda x: -x["count"])
+        top = failures[:5]
+        if top:
+            stats_str = "; ".join(
+                f"{f['category']} ({f['count']}x)" for f in top if f["count"] >= 2
+            )
+            if stats_str:
+                logger.warning(
+                    f"[job={job_id}] Known failure patterns for " f"{architecture}: {stats_str}"
+                )
+        r.close()
+    except Exception:
+        pass
 
 
 def select_and_render(
@@ -273,12 +312,16 @@ def select_and_render(
     if redis_client is not None:
         try:
             from agents.forge.prevention import (
-                load_prevention_rules,
+                load_all_prevention_rules,
+                sync_load_prevention_rules,
                 apply_all_prevention_rules,
             )
             from shared.metrics import FORGE_PREVENTIONS_APPLIED
 
-            rules = load_prevention_rules(redis_client, architecture)
+            # Log cross-architecture rules once for observability
+            load_all_prevention_rules(redis_client)
+
+            rules = sync_load_prevention_rules(redis_client, architecture)
             if rules:
                 patched = apply_all_prevention_rules(script, rules)
                 if patched != script:
@@ -301,18 +344,18 @@ def select_and_render(
             logger.debug(f"Prevention rules skipped: {e}")
 
     # ── Log known high-failure categories from error stats (Gap 3) ──────
-    if redis_client is not None:
-        try:
-            import asyncio
-            from agents.forge.quality_feedback import get_top_failures_redis
+    # Fire-and-forget — _report_error_stats creates its own Redis connection
+    # so it doesn't race with the caller closing forge.redis.
+    try:
+        import asyncio
 
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                task = asyncio.create_task(_report_error_stats(redis_client, architecture, job_id))
-            else:
-                loop.run_until_complete(_report_error_stats(redis_client, architecture, job_id))
-        except Exception:
-            pass
+        loop = asyncio.get_event_loop()
+        if loop.is_running() and not loop.is_closed():
+            asyncio.create_task(_report_error_stats(architecture, job_id))
+        elif not loop.is_closed():
+            loop.run_until_complete(_report_error_stats(architecture, job_id))
+    except (RuntimeError, Exception):
+        pass
 
     logger.info(
         f"[job={job_id}] Rendered template {template_name} "

@@ -248,6 +248,24 @@ PIPELINE_GATE_STATUS = Gauge(
     ["gate_name"],
 )
 
+# ─── Quality Feedback metrics ────────────────────────────────────────────
+QUALITY_FEEDBACK_QUERIES = Counter(
+    "swarm_quality_feedback_queries_total",
+    "Quality feedback query count by operation and outcome",
+    ["operation", "success"],
+)
+QUALITY_FEEDBACK_LATENCY = Histogram(
+    "swarm_quality_feedback_latency_seconds",
+    "Latency of quality feedback operations",
+    ["operation"],
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.5, 1.0),
+)
+QUALITY_FEEDBACK_RECONNECTS_TOTAL = Counter(
+    "swarm_quality_feedback_reconnects_total",
+    "Number of times quality feedback reconnected to Redis (stale connection indicator)",
+    ["operation"],
+)
+
 # ─── Redis stream metrics ────────────────────────────────────────────────
 REDIS_STREAM_MESSAGES = Counter(
     "swarm_redis_stream_messages_total",
@@ -365,4 +383,7 @@ __all__ = [
     "REDIS_STREAM_MESSAGES",
     "REDIS_STREAM_LAG",
     "REDIS_STREAM_PENDING",
+    "QUALITY_FEEDBACK_QUERIES",
+    "QUALITY_FEEDBACK_LATENCY",
+    "QUALITY_FEEDBACK_RECONNECTS_TOTAL",
 ]

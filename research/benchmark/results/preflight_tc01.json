@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-07-09T20:19:06Z",
+  "metadata": {
+    "git_commit": "9fa28f0",
+    "platform": "Windows",
+    "condition": "both",
+    "problems_file": "research\\benchmark\\problems.json",
+    "execution_method": "real_orchestrator_docker"
+  },
+  "condition_b": {
+    "total_problems": 1,
+    "passed": 1,
+    "crashed": 0,
+    "escalated": 0,
+    "avg_metric": 0.755204,
+    "avg_duration_seconds": 30.79,
+    "total_human_interventions": 0,
+    "results": [
+      {
+        "problem_id": "TC01",
+        "condition": "B_no_dissect",
+        "status": "pass",
+        "job_id": "bench-tc01-8d4d9a",
+        "best_val_metric": 0.7552042160737813,
+        "decision": "",
+        "duration_seconds": 30.79,
+        "crash_count": 0,
+        "human_interventions": 0,
+        "architecture": "lightgbm",
+        "error": null
+      }
+    ]
+  },
+  "condition_c": {
+    "total_problems": 1,
+    "passed": 1,
+    "crashed": 0,
+    "escalated": 0,
+    "avg_metric": 0.755204,
+    "avg_duration_seconds": 13.06,
+    "total_human_interventions": 0,
+    "results": [
+      {
+        "problem_id": "TC01",
+        "condition": "C_with_dissect",
+        "status": "pass",
+        "job_id": "bench-tc01-8d4d9a",
+        "best_val_metric": 0.7552042160737813,
+        "decision": "",
+        "duration_seconds": 13.06,
+        "crash_count": 0,
+        "human_interventions": 0,
+        "architecture": "lightgbm",
+        "error": null
+      }
+    ]
+  },
+  "comparison": {
+    "pass_rate_b": 1.0,
+    "pass_rate_c": 1.0,
+    "improvement_pp": 0.0
+  }
+}

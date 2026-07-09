@@ -144,9 +144,10 @@ class TestSyncToFile:
             assert data["top_failures"][0]["count"] == 3
         os.unlink(path)
 
-    def test_record_repair_fallback_calls_sync_to_file(self):
+    @pytest.mark.asyncio
+    async def test_record_repair_fallback_calls_sync_to_file(self):
         with patch("agents.forge.quality_feedback._sync_to_file") as mock_sync:
-            record_repair("job-1", "dtype_mismatch", "lightgbm", False)
+            await record_repair("job-1", "dtype_mismatch", "lightgbm", False)
             mock_sync.assert_called_once()
 
 
@@ -199,10 +200,12 @@ class TestRecordRepairRedis:
     @pytest.mark.asyncio
     async def test_get_error_rate_all_categories(self):
         mock_redis = AsyncMock()
-        mock_redis.keys.return_value = [
-            "forge:error_stats:lightgbm:dtype_mismatch",
-            "forge:error_stats:lightgbm:missing_column",
-        ]
+        mock_redis.scan_keys = AsyncMock(
+            return_value=[
+                "forge:error_stats:lightgbm:dtype_mismatch",
+                "forge:error_stats:lightgbm:missing_column",
+            ]
+        )
         mock_redis.hget.side_effect = lambda k, f: {
             ("forge:error_stats:totals", "lightgbm:total_scripts"): "10",
             ("forge:error_stats:lightgbm:dtype_mismatch", "count"): "3",
@@ -218,10 +221,12 @@ class TestRecordRepairRedis:
     @pytest.mark.asyncio
     async def test_get_top_failures_redis(self):
         mock_redis = AsyncMock()
-        mock_redis.keys.return_value = [
-            "forge:error_stats:lightgbm:dtype_mismatch",
-            "forge:error_stats:lightgbm:missing_column",
-        ]
+        mock_redis.scan_keys = AsyncMock(
+            return_value=[
+                "forge:error_stats:lightgbm:dtype_mismatch",
+                "forge:error_stats:lightgbm:missing_column",
+            ]
+        )
         mock_redis.hget.side_effect = lambda k, f: {
             ("forge:error_stats:lightgbm:dtype_mismatch", "count"): "5",
             ("forge:error_stats:lightgbm:missing_column", "count"): "2",
@@ -234,12 +239,12 @@ class TestRecordRepairRedis:
 
     @pytest.mark.asyncio
     async def test_auto_prevention_fires_at_threshold(self):
-        """Count >= 3 and rate >= 30% triggers auto-prevention."""
+        """Count >= 2 and rate >= 20% triggers auto-prevention."""
         mock_redis = AsyncMock()
 
         async def hget(k, f):
             m = {
-                ("forge:error_stats:lightgbm:dtype_mismatch", "count"): "3",
+                ("forge:error_stats:lightgbm:dtype_mismatch", "count"): "2",
                 ("forge:error_stats:totals", "lightgbm:total_scripts"): "5",
             }
             return m.get((k, f))

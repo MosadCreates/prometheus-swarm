@@ -7,14 +7,14 @@ from memory.collections.patch_memory import store_patch, query_similar_patches
 
 
 @patch("memory.collections.patch_memory.ChromaClient")
-@patch("sentence_transformers.SentenceTransformer")
-def test_store_patch_success(mock_st, mock_chroma):
+@patch("memory.embeddings.get_embedding_model")
+def test_store_patch_success(mock_get_model, mock_chroma):
     """store_patch should encode text and add to ChromaDB collection."""
     import numpy as np
 
     mock_model = MagicMock()
     mock_model.encode.return_value = np.array([0.1, 0.2, 0.3])
-    mock_st.return_value = mock_model
+    mock_get_model.return_value = mock_model
 
     mock_collection = MagicMock()
     mock_chroma_instance = MagicMock()
@@ -34,22 +34,23 @@ def test_store_patch_success(mock_st, mock_chroma):
     )
 
     mock_model.encode.assert_called_once()
-    mock_collection.add.assert_called_once()
-    args, kwargs = mock_collection.add.call_args
-    assert kwargs["ids"] == [patch_id]
+    mock_collection.upsert.assert_called_once()
+    args, kwargs = mock_collection.upsert.call_args
+    # ID is now a content hash (deterministic), not the passed patch_id
+    assert len(kwargs["ids"][0]) == 32, "ID should be a SHA-256 hex digest (32 chars)"
     assert kwargs["metadatas"][0]["category"] == "shape_mismatch"
     assert kwargs["metadatas"][0]["outcome"] == "success"
 
 
 @patch("memory.collections.patch_memory.ChromaClient")
-@patch("sentence_transformers.SentenceTransformer")
-def test_store_patch_outcome_escalated(mock_st, mock_chroma):
+@patch("memory.embeddings.get_embedding_model")
+def test_store_patch_outcome_escalated(mock_get_model, mock_chroma):
     """store_patch should record escalated outcomes."""
     import numpy as np
 
     mock_model = MagicMock()
     mock_model.encode.return_value = np.array([0.1, 0.2, 0.3])
-    mock_st.return_value = mock_model
+    mock_get_model.return_value = mock_model
 
     mock_collection = MagicMock()
     mock_chroma_instance = MagicMock()
@@ -67,19 +68,19 @@ def test_store_patch_outcome_escalated(mock_st, mock_chroma):
         outcome="escalated",
     )
 
-    args, kwargs = mock_collection.add.call_args
+    args, kwargs = mock_collection.upsert.call_args
     assert kwargs["metadatas"][0]["outcome"] == "escalated"
 
 
 @patch("memory.collections.patch_memory.ChromaClient")
-@patch("sentence_transformers.SentenceTransformer")
-def test_query_similar_patches_returns_list(mock_st, mock_chroma):
+@patch("memory.embeddings.get_embedding_model")
+def test_query_similar_patches_returns_list(mock_get_model, mock_chroma):
     """query_similar_patches should return a list of patch dicts."""
     import numpy as np
 
     mock_model = MagicMock()
     mock_model.encode.return_value = np.array([0.1, 0.2, 0.3])
-    mock_st.return_value = mock_model
+    mock_get_model.return_value = mock_model
 
     mock_collection = MagicMock()
     mock_collection.query.return_value = {
@@ -114,14 +115,14 @@ def test_query_similar_patches_returns_list(mock_st, mock_chroma):
 
 
 @patch("memory.collections.patch_memory.ChromaClient")
-@patch("sentence_transformers.SentenceTransformer")
-def test_query_similar_patches_empty_when_no_results(mock_st, mock_chroma):
+@patch("memory.embeddings.get_embedding_model")
+def test_query_similar_patches_empty_when_no_results(mock_get_model, mock_chroma):
     """query_similar_patches should return empty list when ChromaDB returns nothing."""
     import numpy as np
 
     mock_model = MagicMock()
     mock_model.encode.return_value = np.array([0.1, 0.2, 0.3])
-    mock_st.return_value = mock_model
+    mock_get_model.return_value = mock_model
 
     mock_collection = MagicMock()
     mock_collection.query.return_value = {"ids": [[]], "metadatas": None, "distances": [[]]}
@@ -134,14 +135,14 @@ def test_query_similar_patches_empty_when_no_results(mock_st, mock_chroma):
 
 
 @patch("memory.collections.patch_memory.ChromaClient")
-@patch("sentence_transformers.SentenceTransformer")
-def test_query_similar_patches_with_category_filter(mock_st, mock_chroma):
+@patch("memory.embeddings.get_embedding_model")
+def test_query_similar_patches_with_category_filter(mock_get_model, mock_chroma):
     """query_similar_patches should pass category filter to ChromaDB query."""
     import numpy as np
 
     mock_model = MagicMock()
     mock_model.encode.return_value = np.array([0.1, 0.2, 0.3])
-    mock_st.return_value = mock_model
+    mock_get_model.return_value = mock_model
 
     mock_collection = MagicMock()
     mock_collection.query.return_value = {
@@ -161,10 +162,10 @@ def test_query_similar_patches_with_category_filter(mock_st, mock_chroma):
 
 @patch("memory.collections.patch_memory.ChromaClient")
 def test_store_patch_silent_on_embedding_failure(mock_chroma):
-    """store_patch should not raise when SentenceTransformer fails."""
+    """store_patch should not raise when embedding fails."""
     with patch(
-        "sentence_transformers.SentenceTransformer",
-        side_effect=ImportError("model not found"),
+        "memory.embeddings.get_embedding_model",
+        return_value=None,
     ):
         store_patch(
             patch_id=str(uuid.uuid4()),

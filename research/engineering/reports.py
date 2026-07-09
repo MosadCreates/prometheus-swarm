@@ -116,12 +116,14 @@ def write_engineering_summary_md(summary: EngineeringSummary) -> Path:
     ]
 
     # Overview table
-    lines.extend([
-        "## Overview",
-        "",
-        "| Metric | Value |",
-        "|---|---|",
-    ])
+    lines.extend(
+        [
+            "## Overview",
+            "",
+            "| Metric | Value |",
+            "|---|---|",
+        ]
+    )
     ds = summary.dissect_effectiveness
     lines.append(f"| Patch success rate | {ds.patch_success_rate:.1%} |")
     lines.append(f"| Total patches attempted | {ds.total_patches_attempted} |")
@@ -135,7 +137,9 @@ def write_engineering_summary_md(summary: EngineeringSummary) -> Path:
     lines.append(f"| LLM estimated cost | ${summary.llm_usage.estimated_cost_usd:.2f} |")
     lines.append(f"| LLM total calls | {summary.llm_usage.total_llm_calls} |")
     lines.append(f"| Patch memory size | {summary.knowledge_progress.patch_memory_size} |")
-    lines.append(f"| Unique error categories | {summary.knowledge_progress.unique_error_categories_seen} |")
+    lines.append(
+        f"| Unique error categories | {summary.knowledge_progress.unique_error_categories_seen} |"
+    )
     rc = summary.root_cause_report
     lines.append(f"| Failure rate | {rc.failure_rate:.1%} |")
     pp = summary.performance_profile
@@ -148,12 +152,14 @@ def write_engineering_summary_md(summary: EngineeringSummary) -> Path:
 
     # Phase 4: Cascade level distribution
     if ds.cascade_hit_distribution:
-        lines.extend([
-            "## Cascade Level Distribution (Phase 4)",
-            "",
-            "| Level | Hits | Description |",
-            "|---|---|---|",
-        ])
+        lines.extend(
+            [
+                "## Cascade Level Distribution (Phase 4)",
+                "",
+                "| Level | Hits | Description |",
+                "|---|---|---|",
+            ]
+        )
         level_desc = {
             "level0_rule": "Deterministic rules (regex)",
             "level3_memory": "Patch memory hit",
@@ -167,12 +173,14 @@ def write_engineering_summary_md(summary: EngineeringSummary) -> Path:
 
     # Template quality per architecture
     if summary.template_quality:
-        lines.extend([
-            "## Template Quality by Architecture",
-            "",
-            "| Architecture | Generations | Passes | Failures | Error Rate | Avg Metric |",
-            "|---|---|---|---|---|---|",
-        ])
+        lines.extend(
+            [
+                "## Template Quality by Architecture",
+                "",
+                "| Architecture | Generations | Passes | Failures | Error Rate | Avg Metric |",
+                "|---|---|---|---|---|---|",
+            ]
+        )
         for arch, tq in sorted(summary.template_quality.items()):
             metric_str = f"{tq.avg_val_metric:.4f}" if tq.avg_val_metric is not None else "--"
             lines.append(
@@ -184,12 +192,14 @@ def write_engineering_summary_md(summary: EngineeringSummary) -> Path:
     # Forge reliability
     fr = summary.forge_reliability
     if fr.architecture_selections:
-        lines.extend([
-            "## Forge Reliability",
-            "",
-            "| Architecture | Selections |",
-            "|---|---|",
-        ])
+        lines.extend(
+            [
+                "## Forge Reliability",
+                "",
+                "| Architecture | Selections |",
+                "|---|---|",
+            ]
+        )
         for arch, count in sorted(fr.architecture_selections.items()):
             lines.append(f"| {arch} | {count} |")
         lines.append("")
@@ -197,12 +207,14 @@ def write_engineering_summary_md(summary: EngineeringSummary) -> Path:
     # Dissect effectiveness by error category (Phase 1)
     ds = summary.dissect_effectiveness
     if ds.error_category_distribution:
-        lines.extend([
-            "## Dissect Effectiveness by Error Category",
-            "",
-            "| Category | Occurrences | Success Rate |",
-            "|---|---|---|",
-        ])
+        lines.extend(
+            [
+                "## Dissect Effectiveness by Error Category",
+                "",
+                "| Category | Occurrences | Success Rate |",
+                "|---|---|---|",
+            ]
+        )
         for cat, count in sorted(ds.error_category_distribution.items()):
             sr = ds.error_category_success_rates.get(cat, 0.0)
             lines.append(f"| {cat} | {count} | {sr:.1%} |")
@@ -210,26 +222,30 @@ def write_engineering_summary_md(summary: EngineeringSummary) -> Path:
 
     # Phase 6: Attempt outcome distribution
     if ds.attempt_outcome_distribution:
-        lines.extend([
-            "## Patch Attempt Distribution (Phase 6)",
-            "",
-            "| Attempt Number | Count |",
-            "|---|---|",
-        ])
+        lines.extend(
+            [
+                "## Patch Attempt Distribution (Phase 6)",
+                "",
+                "| Attempt Number | Count |",
+                "|---|---|",
+            ]
+        )
         for att, count in sorted(ds.attempt_outcome_distribution.items()):
             lines.append(f"| {att} | {count} |")
         lines.append("")
 
     # Phase 5: LLM usage
     llm = summary.llm_usage
-    lines.extend([
-        "## LLM Usage (Phase 5)",
-        "",
-        f"- **Total calls:** {llm.total_llm_calls}",
-        f"- **Input tokens:** {llm.total_input_tokens:,}",
-        f"- **Output tokens:** {llm.total_output_tokens:,}",
-        f"- **Estimated cost:** ${llm.estimated_cost_usd:.2f}",
-    ])
+    lines.extend(
+        [
+            "## LLM Usage (Phase 5)",
+            "",
+            f"- **Total calls:** {llm.total_llm_calls}",
+            f"- **Input tokens:** {llm.total_input_tokens:,}",
+            f"- **Output tokens:** {llm.total_output_tokens:,}",
+            f"- **Estimated cost:** ${llm.estimated_cost_usd:.2f}",
+        ]
+    )
     if llm.llm_fallback_rate > 0:
         lines.append(f"- **Regex fallback rate:** {llm.llm_fallback_rate:.1%}")
     if llm.avg_cost_per_call_usd:
@@ -244,16 +260,18 @@ def write_engineering_summary_md(summary: EngineeringSummary) -> Path:
 
     # Phase 7: Knowledge progress
     kp = summary.knowledge_progress
-    lines.extend([
-        "## Knowledge Progress (Phase 7)",
-        "",
-        f"- **Patch memory entries:** {kp.patch_memory_size}",
-        f"- **Unique patches:** {kp.unique_patches}",
-        f"- **Unique error categories:** {kp.unique_error_categories_seen}",
-        f"- **Total jobs in patch log:** {kp.total_jobs_in_patch_log}",
-        f"- **Avg patches per job:** {kp.patches_per_job_avg:.1f}",
-        f"- **Max patches per job:** {kp.patches_per_job_max}",
-    ])
+    lines.extend(
+        [
+            "## Knowledge Progress (Phase 7)",
+            "",
+            f"- **Patch memory entries:** {kp.patch_memory_size}",
+            f"- **Unique patches:** {kp.unique_patches}",
+            f"- **Unique error categories:** {kp.unique_error_categories_seen}",
+            f"- **Total jobs in patch log:** {kp.total_jobs_in_patch_log}",
+            f"- **Avg patches per job:** {kp.patches_per_job_avg:.1f}",
+            f"- **Max patches per job:** {kp.patches_per_job_max}",
+        ]
+    )
     if kp.patch_memory_growth_rate:
         lines.append(f"- **Growth rate:** {kp.patch_memory_growth_rate:.1f} patches/hour")
     if kp.oldest_patch_timestamp:
@@ -263,21 +281,25 @@ def write_engineering_summary_md(summary: EngineeringSummary) -> Path:
     lines.append("")
 
     # Phase 8: Performance profile
-    lines.extend([
-        "## Performance Summary (Phase 8)",
-        "",
-        f"- **Average total duration:** {pp.avg_total_duration_s:.1f}s",
-        f"- **Median total duration:** {pp.median_total_duration_s:.1f}s",
-        f"- **Total problems profiled:** {len(pp.profiles)}",
-        "",
-    ])
+    lines.extend(
+        [
+            "## Performance Summary (Phase 8)",
+            "",
+            f"- **Average total duration:** {pp.avg_total_duration_s:.1f}s",
+            f"- **Median total duration:** {pp.median_total_duration_s:.1f}s",
+            f"- **Total problems profiled:** {len(pp.profiles)}",
+            "",
+        ]
+    )
 
     # Phase 2: Root cause
-    lines.extend([
-        "## Root Cause Analysis (Phase 2)",
-        "",
-        f"- **Total failures:** {rc.total_failures}/{rc.total_problems} ({rc.failure_rate:.1%})",
-    ])
+    lines.extend(
+        [
+            "## Root Cause Analysis (Phase 2)",
+            "",
+            f"- **Total failures:** {rc.total_failures}/{rc.total_problems} ({rc.failure_rate:.1%})",
+        ]
+    )
     if rc.failures_by_category:
         lines.append("")
         lines.append("| Error Category | Failures |")
@@ -305,12 +327,14 @@ def write_engineering_summary_md(summary: EngineeringSummary) -> Path:
     # Phase 9: Benchmark comparison
     bc = summary.benchmark_comparison
     if bc:
-        lines.extend([
-            "## Benchmark Comparison (Phase 9)",
-            "",
-            f"- **Condition B (no Dissect):** {len(bc.condition_b)} problems",
-            f"- **Condition C (with Dissect):** {len(bc.condition_c)} problems",
-        ])
+        lines.extend(
+            [
+                "## Benchmark Comparison (Phase 9)",
+                "",
+                f"- **Condition B (no Dissect):** {len(bc.condition_b)} problems",
+                f"- **Condition C (with Dissect):** {len(bc.condition_c)} problems",
+            ]
+        )
         if bc.pass_rate_delta_pp is not None:
             lines.append(f"- **Pass rate delta:** {bc.pass_rate_delta_pp:+.1f}pp")
         if bc.avg_metric_delta is not None:
@@ -330,9 +354,15 @@ def write_engineering_summary_md(summary: EngineeringSummary) -> Path:
                 c_s = ppc.get("C_status", "")
                 b_m = f"{ppc['B_metric']:.4f}" if ppc.get("B_metric") else "--"
                 c_m = f"{ppc['C_metric']:.4f}" if ppc.get("C_metric") else "--"
-                delta = f"{ppc['delta_metric']:+.4f}" if ppc.get("delta_metric") is not None else "--"
-                icon = "✓" if c_s == "pass" else "✗" if c_s in ("crash", "failed", "escalate") else "?"
-                lines.append(f"| {ppc['problem_id']} | {b_s} | {c_s} {icon} | {b_m} | {c_m} | {delta} |")
+                delta = (
+                    f"{ppc['delta_metric']:+.4f}" if ppc.get("delta_metric") is not None else "--"
+                )
+                icon = (
+                    "✓" if c_s == "pass" else "✗" if c_s in ("crash", "failed", "escalate") else "?"
+                )
+                lines.append(
+                    f"| {ppc['problem_id']} | {b_s} | {c_s} {icon} | {b_m} | {c_m} | {delta} |"
+                )
             lines.append("")
 
         if bc.improvements:
@@ -349,12 +379,14 @@ def write_engineering_summary_md(summary: EngineeringSummary) -> Path:
     # Phase 10: Failure lifecycle
     fl = summary.failure_lifecycle
     if fl.categories:
-        lines.extend([
-            "## Failure Lifecycle — LLM Elimination Pipeline (Phase 10)",
-            "",
-            "| Category | Occurrences | Stage | LLM Calls | Savable | Success Rate | Recommendation |",
-            "|---|---|---|---|---|---|---|",
-        ])
+        lines.extend(
+            [
+                "## Failure Lifecycle — LLM Elimination Pipeline (Phase 10)",
+                "",
+                "| Category | Occurrences | Stage | LLM Calls | Savable | Success Rate | Recommendation |",
+                "|---|---|---|---|---|---|---|",
+            ]
+        )
         for c in fl.categories:
             lines.append(
                 f"| {c.category} | {c.total_occurrences} | {c.current_stage} | "
@@ -362,16 +394,18 @@ def write_engineering_summary_md(summary: EngineeringSummary) -> Path:
                 f"{c.success_rate:.0%} | {c.next_recommendation} |"
             )
         lines.append("")
-        lines.extend([
-            "### Summary",
-            "",
-            f"- **Total LLM calls that could be saved if deterministic:** {fl.total_llm_calls_savable}",
-            f"- **Categories with forge prevention:** {fl.forge_prevention_count}",
-            f"- **Categories with deterministic rules:** {fl.rule_count}",
-            f"- **Categories with templates:** {fl.template_count}",
-            f"- **Categories still LLM-only:** {fl.llm_only_count}",
-            "",
-        ])
+        lines.extend(
+            [
+                "### Summary",
+                "",
+                f"- **Total LLM calls that could be saved if deterministic:** {fl.total_llm_calls_savable}",
+                f"- **Categories with forge prevention:** {fl.forge_prevention_count}",
+                f"- **Categories with deterministic rules:** {fl.rule_count}",
+                f"- **Categories with templates:** {fl.template_count}",
+                f"- **Categories still LLM-only:** {fl.llm_only_count}",
+                "",
+            ]
+        )
 
     lines.append("---")
     lines.append("*Report generated by Prometheus Swarm Engineering Dashboard (Phases 1-10)*")
@@ -410,13 +444,15 @@ def write_forge_improvements(summary: EngineeringSummary) -> Path:
     lines.append("")
 
     if summary.template_quality:
-        lines.extend([
-            "",
-            "## Template Quality Metrics",
-            "",
-            "| Architecture | Generations | Passes | Failures | Error Rate | Avg Metric | Median Metric |",
-            "|---|---|---|---|---|---|---|",
-        ])
+        lines.extend(
+            [
+                "",
+                "## Template Quality Metrics",
+                "",
+                "| Architecture | Generations | Passes | Failures | Error Rate | Avg Metric | Median Metric |",
+                "|---|---|---|---|---|---|---|",
+            ]
+        )
         for arch, tq in sorted(summary.template_quality.items()):
             avg_str = f"{tq.avg_val_metric:.4f}" if tq.avg_val_metric is not None else "--"
             med_str = f"{tq.median_val_metric:.4f}" if tq.median_val_metric is not None else "--"
@@ -427,24 +463,28 @@ def write_forge_improvements(summary: EngineeringSummary) -> Path:
         lines.append("")
 
     if fr.cascade_hits:
-        lines.extend([
-            "",
-            "## Cascade Level Hit Distribution",
-            "",
-            "| Level | Hits |",
-            "|---|---|",
-        ])
+        lines.extend(
+            [
+                "",
+                "## Cascade Level Hit Distribution",
+                "",
+                "| Level | Hits |",
+                "|---|---|",
+            ]
+        )
         for level, count in sorted(fr.cascade_hits.items()):
             lines.append(f"| {level} | {count} |")
         lines.append("")
 
-    lines.extend([
-        "",
-        "## Strategy Distribution",
-        "",
-        "| Strategy | Count |",
-        "|---|---|",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Strategy Distribution",
+            "",
+            "| Strategy | Count |",
+            "|---|---|",
+        ]
+    )
     for strategy, count in sorted(fr.strategy_distribution.items()):
         lines.append(f"| {strategy} | {count} |")
     lines.append("")
@@ -482,38 +522,44 @@ def write_dissect_improvements(summary: EngineeringSummary) -> Path:
     lines.append("")
 
     # Phase 6: First-pass success
-    lines.extend([
-        "",
-        "## First-Pass Success (Phase 6)",
-        "",
-        f"- **First-pass success rate:** {ds.first_pass_success_rate:.1%}",
-        f"- **First attempts:** {ds.total_first_attempts}",
-        f"- **First attempt successes:** {ds.first_attempt_successes}",
-        f"- **Avg attempts per job:** {ds.avg_attempts_per_job:.2f}",
-    ])
+    lines.extend(
+        [
+            "",
+            "## First-Pass Success (Phase 6)",
+            "",
+            f"- **First-pass success rate:** {ds.first_pass_success_rate:.1%}",
+            f"- **First attempts:** {ds.total_first_attempts}",
+            f"- **First attempt successes:** {ds.first_attempt_successes}",
+            f"- **Avg attempts per job:** {ds.avg_attempts_per_job:.2f}",
+        ]
+    )
     lines.append("")
 
     if ds.error_category_distribution:
-        lines.extend([
-            "",
-            "## Error Category Distribution",
-            "",
-            "| Category | Occurrences | Success Rate |",
-            "|---|---|---|",
-        ])
+        lines.extend(
+            [
+                "",
+                "## Error Category Distribution",
+                "",
+                "| Category | Occurrences | Success Rate |",
+                "|---|---|---|",
+            ]
+        )
         for cat, count in sorted(ds.error_category_distribution.items()):
             sr = ds.error_category_success_rates.get(cat, 0.0)
             lines.append(f"| {cat} | {count} | {sr:.1%} |")
         lines.append("")
 
     if ds.classification_methods:
-        lines.extend([
-            "",
-            "## Classification Methods (Phase 5)",
-            "",
-            "| Method | Count | Estimated Cost |",
-            "|---|---|---|",
-        ])
+        lines.extend(
+            [
+                "",
+                "## Classification Methods (Phase 5)",
+                "",
+                "| Method | Count | Estimated Cost |",
+                "|---|---|---|",
+            ]
+        )
         for method, count in sorted(ds.classification_methods.items()):
             if method in ("llm", "llm_classification"):
                 cost_est = f"${count * 3000 * 3 / 1_000_000 + count * 800 * 15 / 1_000_000:.2f}"
@@ -524,13 +570,15 @@ def write_dissect_improvements(summary: EngineeringSummary) -> Path:
 
     # Phase 4: Cascade level distribution
     if ds.cascade_hit_distribution:
-        lines.extend([
-            "",
-            "## Cascade Level Distribution (Phase 4)",
-            "",
-            "| Level | Hits | Description |",
-            "|---|---|---|",
-        ])
+        lines.extend(
+            [
+                "",
+                "## Cascade Level Distribution (Phase 4)",
+                "",
+                "| Level | Hits | Description |",
+                "|---|---|---|",
+            ]
+        )
         level_desc = {
             "level0_rule": "Deterministic rule (regex match)",
             "level3_memory": "Patch memory query hit (K=3)",
@@ -543,15 +591,21 @@ def write_dissect_improvements(summary: EngineeringSummary) -> Path:
         lines.append("")
 
     if ds.attempt_outcome_distribution:
-        lines.extend([
-            "",
-            "## Outcome by Attempt Number (Phase 6)",
-            "",
-            "| Attempt | Count | Outcome |",
-            "|---|---|---|",
-        ])
+        lines.extend(
+            [
+                "",
+                "## Outcome by Attempt Number (Phase 6)",
+                "",
+                "| Attempt | Count | Outcome |",
+                "|---|---|---|",
+            ]
+        )
         for attempt, count in sorted(ds.attempt_outcome_distribution.items()):
-            outcome_desc = "First attempt" if attempt == "1" else "Second attempt" if attempt == "2" else "Final attempt"
+            outcome_desc = (
+                "First attempt"
+                if attempt == "1"
+                else "Second attempt" if attempt == "2" else "Final attempt"
+            )
             lines.append(f"| {attempt} | {count} | {outcome_desc} |")
         lines.append("")
 
@@ -658,6 +712,7 @@ def generate_all_reports(
 
     if exp_set_path:
         from research.engineering.data import load_experiment_set_by_id
+
         exp_set_id = Path(exp_set_path).stem
         exp_set = load_experiment_set_by_id(exp_set_id)
     else:

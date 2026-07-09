@@ -1,0 +1,93 @@
+[
+  {
+    "problem_id": "TC01",
+    "condition": "C_with_dissect",
+    "status": "pass",
+    "job_id": "bench-tc01-8ecf30",
+    "best_val_metric": 0.7552042160737813,
+    "decision": "pass",
+    "duration_seconds": 2.57,
+    "crash_count": 0,
+    "human_interventions": 0,
+    "architecture": "lightgbm",
+    "error": null
+  },
+  {
+    "problem_id": "TC05",
+    "condition": "C_with_dissect",
+    "status": "pass",
+    "job_id": "bench-tc05-6175a1",
+    "best_val_metric": 0.998015873015873,
+    "decision": "pass",
+    "duration_seconds": 2.62,
+    "crash_count": 0,
+    "human_interventions": 0,
+    "architecture": "lightgbm",
+    "error": null
+  },
+  {
+    "problem_id": "TC06",
+    "condition": "C_with_dissect",
+    "status": "escalate",
+    "job_id": "bench-tc06-643360",
+    "best_val_metric": 0.0,
+    "decision": "",
+    "duration_seconds": 26.83,
+    "crash_count": 0,
+    "human_interventions": 1,
+    "architecture": "lightgbm",
+    "error": "KeyError: 'y'"
+  },
+  {
+    "problem_id": "TC11",
+    "condition": "C_with_dissect",
+    "status": "pass",
+    "job_id": "bench-tc11-b1df9a",
+    "best_val_metric": 0.9134207970610867,
+    "decision": "pass",
+    "duration_seconds": 5.94,
+    "crash_count": 0,
+    "human_interventions": 0,
+    "architecture": "lightgbm",
+    "error": null
+  },
+  {
+    "problem_id": "TC12",
+    "condition": "C_with_dissect",
+    "status": "pass",
+    "job_id": "bench-tc12-60d362",
+    "best_val_metric": 0.8057506006355112,
+    "decision": "pass",
+    "duration_seconds": 3.06,
+    "crash_count": 0,
+    "human_interventions": 0,
+    "architecture": "lightgbm",
+    "error": null
+  },
+  {
+    "problem_id": "TR01",
+    "condition": "C_with_dissect",
+    "status": "pass",
+    "job_id": "bench-tr01-29868e",
+    "best_val_metric": 0.46351720797890145,
+    "decision": "pass",
+    "duration_seconds": 2.66,
+    "crash_count": 0,
+    "human_interventions": 0,
+    "architecture": "lightgbm",
+    "error": null
+  },
+  {
+    "problem_id": "TR05",
+    "condition": "C_with_dissect",
+    "status": "pass",
+    "job_id": "bench-tr05-1a9aeb",
+    "best_val_metric": 3.2322573777573056,
+    "decision": "pass",
+    "duration_seconds": 2.67,
+    "crash_count": 0,
+    "human_interventions": 0,
+    "architecture": "lightgbm",
+    "error": null
+  }
+]

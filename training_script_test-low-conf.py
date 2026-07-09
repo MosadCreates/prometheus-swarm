@@ -22,17 +22,21 @@ import lightgbm as lgb
 warnings.filterwarnings("ignore")
 
 import random
+
 random.seed(42)
 np.random.seed(42)
 
 _search_space_json = os.getenv("SEARCH_SPACE_JSON")
-_use_optuna = bool(_search_space_json and _search_space_json.strip() not in ("", "null", "false", "0"))
+_use_optuna = bool(
+    _search_space_json and _search_space_json.strip() not in ("", "null", "false", "0")
+)
 if _use_optuna:
     import optuna
+
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")
-df = pd.read_csv(os.path.join(_data_dir, "data.csv"), encoding="utf-8")
+df = pd.read_csv(os.path.join(_data_dir, "data.csv"), sep=",", encoding="utf-8")
 target = df.pop("Survived")
 
 mask = target.notna()
@@ -53,19 +57,25 @@ if _n_samples < 2:
 else:
     _use_stratify = _n_classes > 1 and _n_samples >= 4
     X_train, X_test, y_train, y_test = train_test_split(
-        df, target, test_size=0.2, random_state=42,
-        stratify=target if _use_stratify else None
+        df, target, test_size=0.2, random_state=42, stratify=target if _use_stratify else None
     )
 
 numeric_cols = X_train.select_dtypes(include="number").columns.tolist()
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
-preprocessor = ColumnTransformer([
-    ("num", "passthrough", numeric_cols),
-    ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), categorical_cols),
-])
+preprocessor = ColumnTransformer(
+    [
+        ("num", "passthrough", numeric_cols),
+        (
+            "cat",
+            OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1),
+            categorical_cols,
+        ),
+    ]
+)
 
 if _use_optuna:
+
     def _objective(trial):
         params = {}
         for _name, _spec in _search_space.items():
@@ -75,7 +85,9 @@ if _use_optuna:
                 params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
         params["random_state"] = 42
         params["verbose"] = -1
-        _model = Pipeline([("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))])
+        _model = Pipeline(
+            [("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))]
+        )
         # FAILSAFE: column validation -- verify expected features exist
         _expected_cols = list(dict.fromkeys(_numeric_cols + _cat_cols))
         _missing_cols = [c for c in _expected_cols if c not in X_train.columns]
@@ -84,11 +96,12 @@ if _use_optuna:
                 f"FAILSAFE: missing {len(_missing_cols)} expected columns: {_missing_cols} | "
                 f"available={list(X_train.columns)[:10]}..."
             )
-        
+
         # FAILSAFE: ensure X_train has rows after NaN filtering
         if len(X_train) == 0:
-            raise ValueError("FAILSAFE: X_train has 0 rows -- all data was dropped during NaN filtering")
-        
+            raise ValueError(
+                "FAILSAFE: X_train has 0 rows -- all data was dropped during NaN filtering"
+            )
 
         _model.fit(X_train, y_train)
         _y_pred = _model.predict_proba(X_test)[:, 1]
@@ -103,10 +116,12 @@ else:
     best_params = {"n_estimators": 100, "random_state": 42, "verbose": -1}
 
 estimator = lgb.LGBMClassifier(**best_params)
-model = Pipeline([
-    ("preprocessor", preprocessor),
-    ("estimator", estimator),
-])
+model = Pipeline(
+    [
+        ("preprocessor", preprocessor),
+        ("estimator", estimator),
+    ]
+)
 model.fit(X_train, y_train)
 
 y_pred = model.predict(X_test)

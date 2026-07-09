@@ -10,9 +10,20 @@ KNOWN LIMITATION: FurnaceAgent has a built-in Dissect wait loop
 (600s xread block). If training crashes, Furnace will hang for
 ~10 minutes before returning control. This is accepted for v1
 and will be addressed when Dissect recovery is integrated.
+
+DEPRECATED: Use orchestrator.job_runner.run_job() instead.
+This module will be removed in a future version.
 """
 
 import json
+import warnings
+
+warnings.warn(
+    "pipeline.py is deprecated. Use orchestrator.job_runner.run_job() instead. "
+    "This module will be removed in a future version.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 import logging
 import os
 from typing import Any

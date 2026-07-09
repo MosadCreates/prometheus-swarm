@@ -1,0 +1,46 @@
+{
+  "campaign_name": "verify-v3-fix2",
+  "num_runs": 1,
+  "num_problems": 2,
+  "condition": "C",
+  "run_metrics": [
+    {
+      "total_patches": 0,
+      "llm_calls": 0,
+      "regex_calls": 0,
+      "successful_patches": 0,
+      "rollbacks": 0,
+      "escalations": 0,
+      "patch_success_rate": 0.0,
+      "cascade_distribution": {},
+      "cat_distribution": {},
+      "attempt_distribution": {},
+      "estimated_input_tokens": 0,
+      "estimated_output_tokens": 0,
+      "estimated_cost_usd": 0.0,
+      "pass_count": 2,
+      "fail_count": 0,
+      "total_duration_s": 6.19,
+      "pass_rate": 1.0,
+      "unique_errors_seen": 0,
+      "llm_fallback_rate": 0.0
+    }
+  ],
+  "trends": {
+    "llm_calls": [
+      0
+    ],
+    "pass_rate": [
+      1.0
+    ],
+    "cost": [
+      0.0
+    ],
+    "llm_fallback_rate": [
+      0.0
+    ],
+    "patch_success_rate": [
+      0.0
+    ]
+  }
+}

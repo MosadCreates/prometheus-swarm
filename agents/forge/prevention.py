@@ -18,6 +18,7 @@ Redis key: forge:prevention_rules:{architecture}
 Type: List of JSON-encoded PreventionRule dicts
 """
 
+import ast
 import json
 import logging
 import os
@@ -25,6 +26,8 @@ import re
 import time
 import uuid
 from typing import Any
+
+import redis  # sync Redis client for ThreadPoolExecutor-safe access
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +176,116 @@ async def load_prevention_rules(
     return rules
 
 
+def sync_load_prevention_rules(
+    redis_client: Any,
+    architecture: str,
+    min_confidence: float = 0.0,
+) -> list[PreventionRule]:
+    """Synchronous wrapper for load_prevention_rules.
+
+    Uses a raw sync Redis connection to avoid event-loop cross-attachment
+    errors (the async RedisClient._client is bound to the caller's event
+    loop, so calling it from a ThreadPoolExecutor or new event loop fails).
+
+    Connection lifecycle:
+      - Creates a new sync Redis connection per call
+      - Pings to verify health before querying
+      - Closes the connection after loading
+      - Returns empty list on failure (never crashes the caller)
+    """
+    host = os.getenv("REDIS_HOST", "localhost")
+    port = int(os.getenv("REDIS_PORT", 6379))
+    password = os.getenv("REDIS_PASSWORD") or None
+    key = _redis_key(architecture)
+
+    try:
+        r = redis.Redis(host=host, port=port, password=password, decode_responses=True)
+        # Health check — ping before query to detect stale connections
+        r.ping()
+        raw_list = r.lrange(key, 0, -1)
+        r.close()
+    except redis.ConnectionError as e:
+        logger.debug(
+            "PreventionRules backend=Redis operation=sync_load " "error=%s — retrying once",
+            type(e).__name__,
+        )
+        try:
+            r = redis.Redis(host=host, port=port, password=password, decode_responses=True)
+            r.ping()
+            raw_list = r.lrange(key, 0, -1)
+            r.close()
+        except Exception as e2:
+            logger.warning(
+                "PreventionRules backend=Redis operation=sync_load " "error=%s — loading 0 rules",
+                type(e2).__name__,
+            )
+            return []
+    except Exception as e:
+        logger.warning(
+            "PreventionRules backend=Redis operation=sync_load " "error=%s — loading 0 rules",
+            type(e).__name__,
+        )
+        return []
+
+    rules: list[PreventionRule] = []
+    for raw in raw_list:
+        try:
+            data = json.loads(raw) if isinstance(raw, str) else raw
+            rule = PreventionRule.from_dict(data)
+            if rule.active and rule.confidence >= min_confidence:
+                rules.append(rule)
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning(f"Skipping malformed prevention rule: {e}")
+
+    if rules:
+        applied_summary = ", ".join(f"{r.error_category}" for r in rules[:5])
+        logger.info(
+            "Loaded %d prevention rules for architecture=%s Applied: %s",
+            len(rules),
+            architecture,
+            applied_summary,
+        )
+    else:
+        logger.info(
+            "Loaded 0 prevention rules for architecture=%s "
+            "(no rules have been learned yet — they accumulate as "
+            "Dissect repairs recurring errors)",
+            architecture,
+        )
+    return rules
+
+
+def load_all_prevention_rules(
+    redis_client: Any,
+    min_confidence: float = 0.0,
+) -> dict[str, list[PreventionRule]]:
+    """Load prevention rules for all known architectures.
+
+    Returns a dict mapping architecture → list of PreventionRule.
+    Useful for startup logging and cross-architecture insights.
+    """
+    architectures = ["lightgbm", "xgboost", "tabnet", "distilbert", "efficientnet"]
+    result: dict[str, list[PreventionRule]] = {}
+    total = 0
+    for arch in architectures:
+        rules = sync_load_prevention_rules(redis_client, arch, min_confidence)
+        result[arch] = rules
+        total += len(rules)
+
+    if total > 0:
+        logger.info(
+            "Loaded %d prevention rules across %d architectures",
+            total,
+            len([a for a, r in result.items() if r]),
+        )
+    else:
+        logger.info(
+            "Loaded 0 prevention rules across all architectures "
+            "(rules accumulate as Dissect repairs recurring errors)"
+        )
+    return result
+
+
 async def increment_occurrence(
     redis_client: Any,
     architecture: str,
@@ -212,42 +325,54 @@ def apply_prevention_rule(script: str, rule: PreventionRule) -> str:
         return script
 
     mt = rule.modification_type
+    mt_funcs = {
+        "insert_after_imports": (_insert_after_imports, _has_import_anchor),
+        "insert_before_checkpoint": (_insert_before_checkpoint, _has_checkpoint_anchor),
+        "insert_after_data_loading": (_insert_after_data_loading, _has_data_loading_anchor),
+        "wrap_fit_call": (_wrap_fit_call, _has_fit_anchor),
+    }
 
-    if mt == "insert_after_imports":
-        return _insert_after_imports(script, rule.code_snippet)
+    if mt not in mt_funcs:
+        logger.warning(f"Unknown prevention type '{mt}' — skipping rule {rule.rule_id[:8]}")
+        return script
 
-    if mt == "insert_before_checkpoint":
-        return _insert_before_checkpoint(script, rule.code_snippet)
+    apply_fn, anchor_fn = mt_funcs[mt]
+    if not anchor_fn(script):
+        logger.debug(
+            f"Anchor not found for {mt} — skipping rule {rule.rule_id[:8]} "
+            f"(category={rule.error_category})"
+        )
+        return script
 
-    if mt == "insert_after_data_loading":
-        return _insert_after_data_loading(script, rule.code_snippet)
-
-    if mt == "wrap_fit_call":
-        return _wrap_fit_call(script, rule.code_snippet)
-
-    logger.warning(f"Unknown prevention type '{mt}' — skipping rule {rule.rule_id[:8]}")
-    return script
+    return apply_fn(script, rule.code_snippet)
 
 
 def apply_all_prevention_rules(script: str, rules: list[PreventionRule]) -> str:
-    """Apply multiple prevention rules in sequence.
+    """Apply multiple prevention rules in sequence with per-rule AST validation.
 
-    Rules are applied in order. If a rule fails to apply cleanly
-    (no change detected), it's skipped gracefully.
+    Rules are applied in order. After each rule:
+      1. If the rule didn't change the script, it's skipped silently.
+      2. ast.parse() validates syntactic correctness.
+      3. If validation fails, the rule is rolled back and skipped.
     """
     for rule in rules:
-        before = len(script)
+        previous = script
         script = apply_prevention_rule(script, rule)
-        if len(script) != before:
+        if script == previous:
+            continue
+
+        try:
+            ast.parse(script)
             logger.info(
                 f"Prevention rule applied | arch={rule.architecture} "
                 f"category={rule.error_category} rule_id={rule.rule_id[:8]}"
             )
-        else:
-            logger.debug(
-                f"Prevention rule skipped (no change) | "
-                f"rule_id={rule.rule_id[:8]} type={rule.modification_type}"
+        except SyntaxError as e:
+            logger.warning(
+                f"Prevention rule BROKE syntax | arch={rule.architecture} "
+                f"rule_id={rule.rule_id[:8]} error={e} — rolling back"
             )
+            script = previous
     return script
 
 
@@ -354,3 +479,49 @@ def _wrap_fit_call(script: str, code: str) -> str:
         lines = lines[:idx] + wrapped_lines + lines[idx + 1 :]
 
     return "\n".join(lines)
+
+
+# ── Anchor validation helpers ──────────────────────────────────────────
+
+
+def _has_import_anchor(script: str) -> bool:
+    """Check if script has at least one import statement."""
+    for line in script.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("import ") or stripped.startswith("from "):
+            return True
+    return False
+
+
+def _has_checkpoint_anchor(script: str) -> bool:
+    """Check if script has a checkpoint_path assignment."""
+    anchors = ["checkpoint_path =", "checkpoint_path="]
+    for line in script.split("\n"):
+        stripped = line.strip()
+        for anchor in anchors:
+            if anchor in stripped:
+                return True
+    return False
+
+
+def _has_data_loading_anchor(script: str) -> bool:
+    """Check if script has a target = df.pop(...) / target = df[...] pattern."""
+    patterns = [
+        r"^\s*(target|y)\s*=\s*df\.pop\(.*\)",
+        r"^\s*(target|y)\s*=\s*df\[.*\]",
+    ]
+    for line in script.split("\n"):
+        stripped = line.strip()
+        for pat in patterns:
+            if re.match(pat, stripped):
+                return True
+    return False
+
+
+def _has_fit_anchor(script: str) -> bool:
+    """Check if script has a model.fit() call."""
+    for line in script.split("\n"):
+        stripped = line.strip()
+        if re.match(r"^\s*(model|_model)\s*\.fit\s*\(", stripped):
+            return True
+    return False

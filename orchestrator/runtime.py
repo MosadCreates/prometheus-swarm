@@ -4,6 +4,14 @@ Orchestrator runtime — the main event loop that manages all agents.
 Launches agents in response to events on Redis Streams.
 Manages the pipeline: Scout -> Forge -> Furnace <-> Dissect -> Arbiter -> Harbor.
 Handles ESCALATE -> JOB_FAILED and EVALUATION_RETRY -> Forge loop.
+
+ARCHITECTURE NOTE:
+runtime.py is the production event-driven orchestrator.
+For sequential job execution (benchmarks, scripts), use orchestrator/job_runner.py.
+Both use the same agent implementations. runtime.py drives them via Redis events;
+job_runner.py drives them via direct async calls.
+Do not add sequential execution logic to runtime.py.
+Do not add event-driven logic to job_runner.py.
 """
 
 import asyncio

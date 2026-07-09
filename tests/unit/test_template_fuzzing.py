@@ -62,131 +62,230 @@ def _add(uid: str, brief_overrides: dict, expected_guard_hint: str = ""):
     brief = {**BASE_BRIEF, **brief_overrides}
     dataset = brief.setdefault("dataset", {})
     dataset.setdefault("file_path", str(FUZZ_DIR / f"{uid}.csv"))
-    dataset.setdefault("column_types", {
-        "feature_num": "numeric",
-        "feature_cat": "categorical",
-        "target": "target",
-    })
+    dataset.setdefault(
+        "column_types",
+        {
+            "feature_num": "numeric",
+            "feature_cat": "categorical",
+            "target": "target",
+        },
+    )
     FUZZ_VARIANTS.append((uid, brief, expected_guard_hint))
 
 
 # Standard — should work fine
-_add("fuzz_standard", {
-    "dataset": {
-        "file_path": str(FUZZ_DIR / "fuzz_standard.csv"),
-        "num_rows": 100, "num_columns": 3,
-        "column_types": {"feature_num": "numeric", "feature_cat": "categorical", "target": "target"},
+_add(
+    "fuzz_standard",
+    {
+        "dataset": {
+            "file_path": str(FUZZ_DIR / "fuzz_standard.csv"),
+            "num_rows": 100,
+            "num_columns": 3,
+            "column_types": {
+                "feature_num": "numeric",
+                "feature_cat": "categorical",
+                "target": "target",
+            },
+        },
     },
-})
+)
 
 # All NaN features
-_add("fuzz_all_nan", {
-    "dataset": {
-        "file_path": str(FUZZ_DIR / "fuzz_all_nan.csv"),
-        "num_rows": 100, "num_columns": 3,
-        "column_types": {"feature_num": "numeric", "feature_cat": "categorical", "target": "target"},
+_add(
+    "fuzz_all_nan",
+    {
+        "dataset": {
+            "file_path": str(FUZZ_DIR / "fuzz_all_nan.csv"),
+            "num_rows": 100,
+            "num_columns": 3,
+            "column_types": {
+                "feature_num": "numeric",
+                "feature_cat": "categorical",
+                "target": "target",
+            },
+        },
     },
-})
+)
 
 # Wrong dtypes — string in numeric column
-_add("fuzz_wrong_dtypes", {
-    "dataset": {
-        "file_path": str(FUZZ_DIR / "fuzz_wrong_dtypes.csv"),
-        "num_rows": 100, "num_columns": 3,
-        "column_types": {"feature_num": "numeric", "feature_cat": "categorical", "target": "target"},
+_add(
+    "fuzz_wrong_dtypes",
+    {
+        "dataset": {
+            "file_path": str(FUZZ_DIR / "fuzz_wrong_dtypes.csv"),
+            "num_rows": 100,
+            "num_columns": 3,
+            "column_types": {
+                "feature_num": "numeric",
+                "feature_cat": "categorical",
+                "target": "target",
+            },
+        },
     },
-})
+)
 
 # Empty dataset (0 rows)
-_add("fuzz_empty", {
-    "dataset": {
-        "file_path": str(FUZZ_DIR / "fuzz_empty.csv"),
-        "num_rows": 0, "num_columns": 3,
-        "column_types": {"feature_num": "numeric", "feature_cat": "categorical", "target": "target"},
+_add(
+    "fuzz_empty",
+    {
+        "dataset": {
+            "file_path": str(FUZZ_DIR / "fuzz_empty.csv"),
+            "num_rows": 0,
+            "num_columns": 3,
+            "column_types": {
+                "feature_num": "numeric",
+                "feature_cat": "categorical",
+                "target": "target",
+            },
+        },
     },
-})
+)
 
 # Single row
-_add("fuzz_single_row", {
-    "dataset": {
-        "file_path": str(FUZZ_DIR / "fuzz_single_row.csv"),
-        "num_rows": 1, "num_columns": 3,
-        "column_types": {"feature_num": "numeric", "feature_cat": "categorical", "target": "target"},
+_add(
+    "fuzz_single_row",
+    {
+        "dataset": {
+            "file_path": str(FUZZ_DIR / "fuzz_single_row.csv"),
+            "num_rows": 1,
+            "num_columns": 3,
+            "column_types": {
+                "feature_num": "numeric",
+                "feature_cat": "categorical",
+                "target": "target",
+            },
+        },
     },
-})
+)
 
 # Single class in target
-_add("fuzz_single_class", {
-    "dataset": {
-        "file_path": str(FUZZ_DIR / "fuzz_single_class.csv"),
-        "num_rows": 100, "num_columns": 3,
-        "column_types": {"feature_num": "numeric", "feature_cat": "categorical", "target": "target"},
+_add(
+    "fuzz_single_class",
+    {
+        "dataset": {
+            "file_path": str(FUZZ_DIR / "fuzz_single_class.csv"),
+            "num_rows": 100,
+            "num_columns": 3,
+            "column_types": {
+                "feature_num": "numeric",
+                "feature_cat": "categorical",
+                "target": "target",
+            },
+        },
     },
-})
+)
 
 # High cardinality categorical
-_add("fuzz_high_cardinality", {
-    "dataset": {
-        "file_path": str(FUZZ_DIR / "fuzz_high_cardinality.csv"),
-        "num_rows": 1000, "num_columns": 3,
-        "column_types": {"feature_num": "numeric", "feature_cat": "categorical", "target": "target"},
+_add(
+    "fuzz_high_cardinality",
+    {
+        "dataset": {
+            "file_path": str(FUZZ_DIR / "fuzz_high_cardinality.csv"),
+            "num_rows": 1000,
+            "num_columns": 3,
+            "column_types": {
+                "feature_num": "numeric",
+                "feature_cat": "categorical",
+                "target": "target",
+            },
+        },
     },
-})
+)
 
 # Inf values
-_add("fuzz_inf_values", {
-    "dataset": {
-        "file_path": str(FUZZ_DIR / "fuzz_inf_values.csv"),
-        "num_rows": 100, "num_columns": 3,
-        "column_types": {"feature_num": "numeric", "feature_cat": "categorical", "target": "target"},
+_add(
+    "fuzz_inf_values",
+    {
+        "dataset": {
+            "file_path": str(FUZZ_DIR / "fuzz_inf_values.csv"),
+            "num_rows": 100,
+            "num_columns": 3,
+            "column_types": {
+                "feature_num": "numeric",
+                "feature_cat": "categorical",
+                "target": "target",
+            },
+        },
     },
-})
+)
 
 # Mixed dtypes
-_add("fuzz_mixed_dtypes", {
-    "dataset": {
-        "file_path": str(FUZZ_DIR / "fuzz_mixed_dtypes.csv"),
-        "num_rows": 100, "num_columns": 3,
-        "column_types": {"feature_num": "numeric", "feature_cat": "categorical", "target": "target"},
+_add(
+    "fuzz_mixed_dtypes",
+    {
+        "dataset": {
+            "file_path": str(FUZZ_DIR / "fuzz_mixed_dtypes.csv"),
+            "num_rows": 100,
+            "num_columns": 3,
+            "column_types": {
+                "feature_num": "numeric",
+                "feature_cat": "categorical",
+                "target": "target",
+            },
+        },
     },
-})
+)
 
 # Wide dataset (150 columns)
-_add("fuzz_wide", {
-    "dataset": {
-        "file_path": str(FUZZ_DIR / "fuzz_wide.csv"),
-        "num_rows": 100, "num_columns": 151,
-        "column_types": {},
+_add(
+    "fuzz_wide",
+    {
+        "dataset": {
+            "file_path": str(FUZZ_DIR / "fuzz_wide.csv"),
+            "num_rows": 100,
+            "num_columns": 151,
+            "column_types": {},
+        },
     },
-})
+)
 
 # Special characters in column names
-_add("fuzz_special_chars", {
-    "dataset": {
-        "file_path": str(FUZZ_DIR / "fuzz_special_chars.csv"),
-        "num_rows": 100, "num_columns": 3,
-        "column_types": {"feat#num": "numeric", "feat/cat": "categorical", "targ et": "target"},
+_add(
+    "fuzz_special_chars",
+    {
+        "dataset": {
+            "file_path": str(FUZZ_DIR / "fuzz_special_chars.csv"),
+            "num_rows": 100,
+            "num_columns": 3,
+            "column_types": {"feat#num": "numeric", "feat/cat": "categorical", "targ et": "target"},
+        },
+        "target_column": "targ et",
     },
-    "target_column": "targ et",
-})
+)
 
 # All NaN target
-_add("fuzz_all_nan_target", {
-    "dataset": {
-        "file_path": str(FUZZ_DIR / "fuzz_all_nan_target.csv"),
-        "num_rows": 100, "num_columns": 3,
-        "column_types": {"feature_num": "numeric", "feature_cat": "categorical", "target": "target"},
+_add(
+    "fuzz_all_nan_target",
+    {
+        "dataset": {
+            "file_path": str(FUZZ_DIR / "fuzz_all_nan_target.csv"),
+            "num_rows": 100,
+            "num_columns": 3,
+            "column_types": {
+                "feature_num": "numeric",
+                "feature_cat": "categorical",
+                "target": "target",
+            },
+        },
     },
-})
+)
 
 # Extreme values (1e15)
-_add("fuzz_extreme_values", {
-    "dataset": {
-        "file_path": str(FUZZ_DIR / "fuzz_extreme_values.csv"),
-        "num_rows": 100, "num_columns": 3,
-        "column_types": {"feature_num": "numeric", "feature_cat": "categorical", "target": "target"},
+_add(
+    "fuzz_extreme_values",
+    {
+        "dataset": {
+            "file_path": str(FUZZ_DIR / "fuzz_extreme_values.csv"),
+            "num_rows": 100,
+            "num_columns": 3,
+            "column_types": {
+                "feature_num": "numeric",
+                "feature_cat": "categorical",
+                "target": "target",
+            },
+        },
     },
-})
+)
 
 # ── Test helpers ─────────────────────────────────────────────────────
 
@@ -246,17 +345,15 @@ def test_fuzz_render_syntax(arch: str, task: str, fuzz_id: str, brief: dict, gua
         }
 
     script = select_and_render(fuzz_brief, f"fuzz-{fuzz_id}-{arch}", None, arch)
-    assert script is not None, (
-        f"[{fuzz_id}] select_and_render returned None for {arch}/{task}"
-    )
+    assert script is not None, f"[{fuzz_id}] select_and_render returned None for {arch}/{task}"
     assert len(script) > 100, f"[{fuzz_id}] Script too short ({len(script)} bytes)"
     assert validate_script(script), f"[{fuzz_id}] Invalid Python syntax for {arch}/{task}"
 
     # Verify basic training patterns
     assert "pd.read_csv" in script, f"[{fuzz_id}] Missing pd.read_csv in {arch}/{task}"
-    assert "checkpoint_path" in script or "best.ckpt" in script, (
-        f"[{fuzz_id}] Missing checkpoint in {arch}/{task}"
-    )
+    assert (
+        "checkpoint_path" in script or "best.ckpt" in script
+    ), f"[{fuzz_id}] Missing checkpoint in {arch}/{task}"
 
 
 # ── Fuzz test: Architecture-specific guard checks ────────────────────
@@ -287,9 +384,7 @@ class TestFuzzGuards:
                 has_condition = "_n_classes" in script or "_use_stratify" in script
                 has_stratify = "stratify=target" in script or "stratify=y_train" in script
                 assert has_stratify, f"[{fuzz_id}/{arch}] Expected stratify"
-                assert has_condition, (
-                    f"[{fuzz_id}/{arch}] stratify used without _n_classes guard"
-                )
+                assert has_condition, f"[{fuzz_id}/{arch}] stratify used without _n_classes guard"
 
     def test_numeric_dtype_coverage(self):
         """select_dtypes should cover more than int64/float64."""
@@ -329,12 +424,22 @@ class TestFuzzGuards:
 
 @pytest.mark.training_exec
 @pytest.mark.parametrize("arch,task", [("lightgbm", "binary")])
-@pytest.mark.parametrize("fuzz_id,brief,guard_hint", [
-    v for v in FUZZ_VARIANTS if v[0] not in (
-        "fuzz_empty", "fuzz_all_nan_target", "fuzz_single_row",
-    )
-])
-def test_fuzz_exec_lightgbm_binary(fuzz_id: str, brief: dict, guard_hint: str, arch: str, task: str):
+@pytest.mark.parametrize(
+    "fuzz_id,brief,guard_hint",
+    [
+        v
+        for v in FUZZ_VARIANTS
+        if v[0]
+        not in (
+            "fuzz_empty",
+            "fuzz_all_nan_target",
+            "fuzz_single_row",
+        )
+    ],
+)
+def test_fuzz_exec_lightgbm_binary(
+    fuzz_id: str, brief: dict, guard_hint: str, arch: str, task: str
+):
     """Run the rendered script against fuzz data and verify it completes."""
     fuzz_brief = dict(brief)
     fuzz_brief["task_type"] = "classification"
@@ -380,9 +485,9 @@ def test_fuzz_exec_lightgbm_binary(fuzz_id: str, brief: dict, guard_hint: str, a
                 f"STDERR: {stderr[:500]}\nSTDOUT: {stdout[:500]}"
             )
 
-        assert "TRAINING_COMPLETE" in stdout, (
-            f"[{fuzz_id}] TRAINING_COMPLETE not found in stdout:\n{stdout[:500]}"
-        )
+        assert (
+            "TRAINING_COMPLETE" in stdout
+        ), f"[{fuzz_id}] TRAINING_COMPLETE not found in stdout:\n{stdout[:500]}"
 
 
 # ── Fuzz data integrity check ────────────────────────────────────────

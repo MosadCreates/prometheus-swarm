@@ -1,7 +1,7 @@
 """Forge Agent ? The Architect."""
 
 import asyncio
-import uuid
+
 
 from agents.base import BaseAgent
 from agents.forge.decision_tree import select_architecture, select_imbalance_strategy
@@ -160,7 +160,7 @@ class ForgeAgent(BaseAgent):
         await self.redis.set_json(search_key, search_space)
 
         # Store this architecture decision in long-term memory
-        decision_id = str(uuid.uuid4())
+        decision_id = f"{self.job_id}:{architecture}"
         try:
             from memory.collections.architecture_memory import store_architecture
 

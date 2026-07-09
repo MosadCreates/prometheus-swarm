@@ -39,7 +39,7 @@ if _use_optuna:
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")
-df = pd.read_csv(os.path.join(_data_dir, "titanic.csv"), encoding="utf-8")
+df = pd.read_csv(os.path.join(_data_dir, "titanic.csv"), sep=",", encoding="utf-8")
 target = df.pop("Survived")
 
 mask = target.notna()
@@ -91,11 +91,11 @@ if _use_optuna:
                 f"FAILSAFE: missing {len(_missing_cols)} expected columns: {_missing_cols} | "
                 f"available={list(X_train.columns)[:10]}..."
             )
-        
+
         # FAILSAFE: ensure X_train has rows after NaN filtering
         if len(X_train) == 0:
             raise ValueError("FAILSAFE: X_train has 0 rows -- all data was dropped during NaN filtering")
-        
+
 
         _model.fit(X_train, y_train)
         _y_pred = _model.predict_proba(X_test)[:, 1]

@@ -25,21 +25,23 @@ _FIGURE_COUNTER: dict[str, int] = {}
 
 COLORS_DARK = ["#4477AA", "#EE6677", "#228833", "#CC3311", "#AA3377", "#BBBBBB"]
 
-matplotlib.rcParams.update({
-    "font.family": "DejaVu Sans",
-    "font.size": 10,
-    "axes.titlesize": 12,
-    "axes.labelsize": 11,
-    "xtick.labelsize": 9,
-    "ytick.labelsize": 9,
-    "legend.fontsize": 9,
-    "figure.dpi": 120,
-    "savefig.dpi": 200,
-    "savefig.bbox": "tight",
-    "axes.grid": False,
-    "axes.spines.top": False,
-    "axes.spines.right": False,
-})
+matplotlib.rcParams.update(
+    {
+        "font.family": "DejaVu Sans",
+        "font.size": 10,
+        "axes.titlesize": 12,
+        "axes.labelsize": 11,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
+        "figure.dpi": 120,
+        "savefig.dpi": 200,
+        "savefig.bbox": "tight",
+        "axes.grid": False,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+    }
+)
 
 
 def _next_fig_id(prefix: str) -> str:
@@ -100,7 +102,14 @@ def fig_patch_success_trend(summary: EngineeringSummary) -> Path:
     fig, ax = plt.subplots(figsize=(8, 5))
     patches = summary.dissect_effectiveness.patches_by_job
     if len(patches) < 3:
-        ax.text(0.5, 0.5, "Not enough patch data (need >=3)", ha="center", va="center", transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "Not enough patch data (need >=3)",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+        )
         return _save_figure(fig, _next_fig_id("patch_trend"))
 
     outcomes = [1 if p.patch_outcome == "success" else 0 for p in patches]
@@ -127,7 +136,9 @@ def fig_error_category_distribution(summary: EngineeringSummary) -> Path:
     fig, ax = plt.subplots(figsize=(8, 5))
     dist = summary.dissect_effectiveness.error_category_distribution
     if not dist:
-        ax.text(0.5, 0.5, "No error category data", ha="center", va="center", transform=ax.transAxes)
+        ax.text(
+            0.5, 0.5, "No error category data", ha="center", va="center", transform=ax.transAxes
+        )
         return _save_figure(fig, _next_fig_id("error_categories"))
 
     cats = sorted(dist, key=dist.get)
@@ -226,7 +237,9 @@ def fig_knowledge_growth(summary: EngineeringSummary) -> Path:
             ax.plot(timestamps, cumulative, color="#228833", linewidth=2)
             ax.set_xlabel("Time")
         except Exception:
-            ax.plot(range(len(patches)), list(range(1, len(patches) + 1)), color="#228833", linewidth=2)
+            ax.plot(
+                range(len(patches)), list(range(1, len(patches) + 1)), color="#228833", linewidth=2
+            )
             ax.set_xlabel("Patch sequence")
     else:
         ax.plot(range(len(patches)), list(range(1, len(patches) + 1)), color="#228833", linewidth=2)

@@ -39,7 +39,7 @@ if _use_optuna:
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")
-df = pd.read_csv(os.path.join(_data_dir, "{{ data_filename }}"))
+df = pd.read_csv(os.path.join(_data_dir, "{{ data_filename }}"), sep="{{ data_delimiter }}")
 target = df.pop("{{ target_column }}")
 
 mask = target.notna()

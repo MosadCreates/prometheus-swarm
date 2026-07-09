@@ -39,18 +39,23 @@ def store_patch(
         outcome: "success", "rollback", or "escalated"
         embedding_model: sentence-transformers model name
     """
-    try:
-        from sentence_transformers import SentenceTransformer
+    from memory.embeddings import get_embedding_model
 
-        model = SentenceTransformer(embedding_model)
-    except Exception as e:
-        logger.warning(f"Embedding model load failed: {e}")
+    model = get_embedding_model(embedding_model)
+    if model is None:
+        logger.warning(f"Embedding model load failed: {embedding_model}")
         return
 
     text = (
         f"{exception_type}: {exception_message}\nCategory: {category}\nStrategy: {repair_strategy}"
     )
     embedding = model.encode(text).tolist()
+
+    # Deterministic ID from error content — prevents duplicate entries on restart
+    import hashlib
+
+    content_key = f"{exception_type}|{exception_message[:200]}|{diff_applied[:200]}"
+    dedup_id = hashlib.sha256(content_key.encode()).hexdigest()[:32]
 
     metadata = {
         "job_id": job_id,
@@ -63,8 +68,8 @@ def store_patch(
     }
 
     collection = _get_collection()
-    collection.add(
-        ids=[patch_id],
+    collection.upsert(
+        ids=[dedup_id],
         embeddings=[embedding],
         metadatas=[metadata],
         documents=[diff_applied[:2000]],
@@ -88,14 +93,13 @@ def query_similar_patches(
     Returns:
         List of dicts with keys: patch_id, similarity_score, category, outcome, repair_strategy
     """
-    try:
-        from sentence_transformers import SentenceTransformer
+    from memory.embeddings import get_embedding_model
 
-        model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"))
-        embedding = model.encode(error_text).tolist()
-    except Exception as e:
-        logger.warning(f"Embedding failed: {e}")
+    model = get_embedding_model()
+    if model is None:
+        logger.warning("Embedding model not available")
         return []
+    embedding = model.encode(error_text).tolist()
 
     collection = _get_collection()
 

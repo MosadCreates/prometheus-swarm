@@ -11,8 +11,15 @@ Three-tier storage:
 
 Feed the stats by calling record_repair() from Dissect after every repair attempt.
 Forge queries get_error_rate() / get_top_failures() during script generation.
+
+Connection lifecycle:
+  - All Redis functions call _ensure_healthy_redis() before each operation
+  - If the connection is stale (ping fails), it reconnects via ensure_connected()
+  - One retry attempt on transient failure before returning empty/default
+  - Structured logging with duration_ms, attempt, reconnected, error fields
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -20,15 +27,30 @@ import time
 from collections import Counter
 from typing import Any
 
+from shared.metrics import (
+    QUALITY_FEEDBACK_LATENCY,
+    QUALITY_FEEDBACK_QUERIES,
+    QUALITY_FEEDBACK_RECONNECTS_TOTAL,
+)
+
 logger = logging.getLogger(__name__)
+
+# Thread-safe lock for Redis reconnect — prevents race conditions when
+# multiple Forge jobs detect a stale connection simultaneously.
+_reconnect_lock = asyncio.Lock()
+
+# Bounded retry constants
+_RECONNECT_MAX_ATTEMPTS = 3
+_RECONNECT_BACKOFF_SECONDS = [0.5, 1.0, 2.0]
+_RECONNECT_TOTAL_TIMEOUT = 10.0
 
 FEEDBACK_FILE = os.path.join(
     os.path.dirname(__file__), "..", "..", "research", "forge_feedback.json"
 )
 
 # ── Auto-prevention thresholds ─────────────────────────────────────
-MIN_ERRORS_FOR_AUTO_PREVENTION = 3
-MIN_ERROR_RATE_FOR_AUTO_PREVENTION = 0.30
+MIN_ERRORS_FOR_AUTO_PREVENTION = 2
+MIN_ERROR_RATE_FOR_AUTO_PREVENTION = 0.20
 AUTO_PREVENTION_CONFIDENCE = 0.70
 
 # Redis key prefixes
@@ -43,6 +65,142 @@ _ARCHITECTURE_KEYWORDS = {
     "distilbert": ["distilbert", "DistilBert", "distilbert-base"],
     "efficientnet": ["efficientnet", "efficientnet_b", "EfficientNet"],
 }
+
+
+# ── Redis connection health helper ───────────────────────────────────
+
+
+async def _ensure_healthy_redis(
+    redis_client: Any,
+    job_id: str = "unknown",
+    architecture: str = "unknown",
+    operation: str = "health_check",
+) -> bool:
+    """Check Redis connection health and reconnect if stale.
+
+    Thread-safe reconnect with bounded retry and exponential backoff:
+      - Max 3 reconnect attempts
+      - Backoff: 0.5s → 1.0s → 2.0s (exponential)
+      - Total timeout: 10s ceiling
+      - asyncio.Lock prevents concurrent reconnect races
+      - Prometheus counter tracks reconnect frequency
+
+    Returns True if healthy (or successfully reconnected),
+    False if all attempts exhausted.
+
+    Context fields (job_id, architecture) appear in structured log lines.
+    """
+    import time as _time
+
+    _start = _time.monotonic()
+
+    # Quick ping — most calls don't need the lock
+    def _ping_sync():
+        if hasattr(redis_client, "ensure_connected"):
+            return None  # needs async call, handled below
+        if redis_client._client is not None:
+            return True  # fast path: connection healthy
+        return False
+
+    fast = _ping_sync()
+    if fast is True:
+        return True
+
+    # Stale connection — lock + bounded retry
+    async with _reconnect_lock:
+        # Double-check after acquiring lock (another coroutine may have fixed it)
+        if hasattr(redis_client, "ensure_connected"):
+            try:
+                ok = await redis_client.ensure_connected()
+                if ok:
+                    return True
+            except Exception:
+                pass
+        else:
+            if redis_client._client is not None:
+                try:
+                    await redis_client._client.ping()
+                    return True
+                except Exception:
+                    pass
+
+        # Bounded retry with exponential backoff
+        last_exc: Exception | None = None
+        for attempt in range(1, _RECONNECT_MAX_ATTEMPTS + 1):
+            elapsed = _time.monotonic() - _start
+            if elapsed >= _RECONNECT_TOTAL_TIMEOUT:
+                logger.warning(
+                    "QualityFeedback job_id=%s arch=%s backend=Redis "
+                    "operation=%s attempt=%d duration_ms=%.0f "
+                    "error=TimeoutExceeded — reconnection timeout "
+                    "(max %.1fs) reached",
+                    job_id,
+                    architecture,
+                    operation,
+                    attempt,
+                    elapsed * 1000,
+                    _RECONNECT_TOTAL_TIMEOUT,
+                )
+                return False
+
+            try:
+                if hasattr(redis_client, "ensure_connected"):
+                    ok = await redis_client.ensure_connected()
+                    if ok:
+                        QUALITY_FEEDBACK_RECONNECTS_TOTAL.labels(
+                            operation=operation,
+                        ).inc()
+                        logger.warning(
+                            "QualityFeedback job_id=%s arch=%s "
+                            "backend=Redis operation=%s "
+                            "attempt=%d duration_ms=%.0f "
+                            "error=ConnectionLost reconnected=True",
+                            job_id,
+                            architecture,
+                            operation,
+                            attempt,
+                            (_time.monotonic() - _start) * 1000,
+                        )
+                        return True
+                else:
+                    await redis_client._client.ping()
+                    return True
+            except Exception as e:
+                last_exc = e
+                if attempt < _RECONNECT_MAX_ATTEMPTS:
+                    backoff = _RECONNECT_BACKOFF_SECONDS[
+                        min(attempt - 1, len(_RECONNECT_BACKOFF_SECONDS) - 1)
+                    ]
+                    logger.warning(
+                        "QualityFeedback job_id=%s arch=%s "
+                        "backend=Redis operation=%s "
+                        "attempt=%d duration_ms=%.0f "
+                        "error=%s reconnecting=True retry_in=%.1fs",
+                        job_id,
+                        architecture,
+                        operation,
+                        attempt,
+                        (_time.monotonic() - _start) * 1000,
+                        type(e).__name__,
+                        backoff,
+                    )
+                    await asyncio.sleep(backoff)
+
+        # All attempts exhausted
+        logger.error(
+            "QualityFeedback job_id=%s arch=%s backend=Redis "
+            "operation=%s attempt=%d duration_ms=%.0f "
+            "error=%s reconnected=False — all %d reconnect attempts "
+            "exhausted",
+            job_id,
+            architecture,
+            operation,
+            _RECONNECT_MAX_ATTEMPTS,
+            (_time.monotonic() - _start) * 1000,
+            type(last_exc).__name__ if last_exc else "Unknown",
+            _RECONNECT_MAX_ATTEMPTS,
+        )
+        return False
 
 
 def infer_architecture(script_content: str) -> str:
@@ -134,6 +292,14 @@ async def record_repair_redis(
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     try:
+        if not await _ensure_healthy_redis(
+            redis_client,
+            job_id=job_id,
+            architecture=architecture,
+            operation="record_repair",
+        ):
+            raise ConnectionError("Redis health check failed")
+
         # Increment per-architecture error stats
         stats_key = f"{REDIS_STATS_PREFIX}:{architecture}:{category}"
         await redis_client.hincrby(stats_key, "count", 1)
@@ -143,13 +309,18 @@ async def record_repair_redis(
         # Track total scripts per architecture
         totals_key = REDIS_TOTALS_KEY
         script_count_key = f"{architecture}:total_scripts"
-        error_count_key = f"{architecture}:total_errors"
 
         await redis_client.hincrby(totals_key, f"{architecture}:total_errors", 1)
 
         if sandbox_passed:
             # Successful repair — no auto-prevention needed
-            logger.debug(f"Repair recorded | arch={architecture} cat={category} outcome=success")
+            logger.debug(
+                "QualityFeedback job_id=%s arch=%s operation=record_repair "
+                "error_category=%s outcome=success",
+                job_id,
+                architecture,
+                category,
+            )
             _sync_to_file(job_id, category, architecture, sandbox_passed)
             return
 
@@ -160,7 +331,7 @@ async def record_repair_redis(
         total_scripts = (
             int(total_scripts)
             if total_scripts
-            else await _get_approx_total(redis_client, architecture)
+            else await _get_approx_total(redis_client, architecture, job_id=job_id)
         )
         error_rate = count / max(total_scripts, 1)
 
@@ -177,38 +348,94 @@ async def record_repair_redis(
             )
 
         logger.info(
-            f"Repair recorded | arch={architecture} cat={category} "
-            f"count={count} rate={error_rate:.2%} auto_prevention={count >= MIN_ERRORS_FOR_AUTO_PREVENTION and error_rate >= MIN_ERROR_RATE_FOR_AUTO_PREVENTION}"
+            "QualityFeedback job_id=%s arch=%s operation=record_repair "
+            "error_category=%s count=%d error_rate=%.2f "
+            "auto_prevention=%s",
+            job_id,
+            architecture,
+            category,
+            count,
+            error_rate,
+            count >= MIN_ERRORS_FOR_AUTO_PREVENTION
+            and error_rate >= MIN_ERROR_RATE_FOR_AUTO_PREVENTION,
         )
 
     except Exception as e:
-        logger.warning(f"Redis quality feedback failed: {e}")
+        logger.warning(
+            "QualityFeedback job_id=%s arch=%s backend=Redis "
+            "operation=record_repair error=%s — quality feedback "
+            "unavailable, continuing without historical failures",
+            job_id,
+            architecture,
+            type(e).__name__,
+        )
 
     _sync_to_file(job_id, category, architecture, sandbox_passed)
 
 
-async def _get_approx_total(redis_client: Any, architecture: str) -> int:
+async def _get_approx_total(
+    redis_client: Any,
+    architecture: str,
+    job_id: str = "unknown",
+) -> int:
     """Get approximate total scripts generated for an architecture."""
     totals_key = REDIS_TOTALS_KEY
     try:
+        if not await _ensure_healthy_redis(
+            redis_client,
+            job_id=job_id,
+            architecture=architecture,
+            operation="get_approx_total",
+        ):
+            return 1
         val = await redis_client.hget(totals_key, f"{architecture}:total_scripts")
         return int(val) if val else 1
-    except Exception:
+    except Exception as e:
+        logger.debug(
+            "QualityFeedback job_id=%s arch=%s backend=Redis "
+            "operation=get_approx_total error=%s",
+            job_id,
+            architecture,
+            type(e).__name__,
+        )
         return 1
 
 
-async def increment_script_count(redis_client: Any, architecture: str) -> None:
+async def increment_script_count(
+    redis_client: Any,
+    architecture: str,
+    job_id: str = "unknown",
+) -> None:
     """Increment the total script counter for an architecture.
 
     Called by Forge after generating a script (before training starts).
     """
     try:
+        if not await _ensure_healthy_redis(
+            redis_client,
+            job_id=job_id,
+            architecture=architecture,
+            operation="increment_script_count",
+        ):
+            logger.debug(
+                "QualityFeedback job_id=%s arch=%s operation=increment_script_count "
+                "error=RedisUnavailable",
+                job_id,
+                architecture,
+            )
+            return
         totals_key = REDIS_TOTALS_KEY
         await redis_client.hincrby(totals_key, f"{architecture}:total_scripts", 1)
         await redis_client.hincrby(totals_key, "global:total_scripts", 1)
         await redis_client.expire(totals_key, 86400 * 90)
     except Exception as e:
-        logger.debug(f"Failed to increment script count: {e}")
+        logger.debug(
+            "QualityFeedback job_id=%s arch=%s backend=Redis "
+            "operation=increment_script_count error=%s",
+            job_id,
+            architecture,
+            type(e).__name__,
+        )
 
 
 async def _auto_create_prevention_rule(
@@ -358,7 +585,7 @@ def _sync_to_file(job_id: str, category: str, architecture: str, sandbox_passed:
 # ── Legacy function (backward compat) ────────────────────────────────
 
 
-def record_repair(
+async def record_repair(
     job_id: str,
     category: str,
     architecture: str,
@@ -366,7 +593,7 @@ def record_repair(
     redis_client: Any | None = None,
     script_content: str | None = None,
 ) -> None:
-    """Record a repair attempt.
+    """Record a repair attempt (async).
 
     Args:
         job_id: The job ID.
@@ -378,40 +605,42 @@ def record_repair(
         script_content: Original script content (used for architecture inference).
     """
     if redis_client is not None:
-        import asyncio
-
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(
-                    record_repair_redis(
-                        redis_client,
-                        job_id,
-                        category,
-                        architecture,
-                        sandbox_passed,
-                        script_content,
-                    )
-                )
-            else:
-                loop.run_until_complete(
-                    record_repair_redis(
-                        redis_client,
-                        job_id,
-                        category,
-                        architecture,
-                        sandbox_passed,
-                        script_content,
-                    )
-                )
+            await record_repair_redis(
+                redis_client,
+                job_id,
+                category,
+                architecture,
+                sandbox_passed,
+                script_content,
+            )
             return
-        except RuntimeError:
-            pass
+        except Exception as e:
+            logger.debug(f"Redis record_repair failed, falling back to file: {e}")
 
     # Fallback: file-based recording
     if architecture == "unknown" and script_content:
         architecture = infer_architecture(script_content)
     _sync_to_file(job_id, category, architecture, sandbox_passed)
+
+
+# ── Research instrumentation ─────────────────────────────────────────
+
+
+def _record_quality_metric(
+    operation: str,
+    success: bool,
+    duration_ms: float,
+) -> None:
+    """Record Prometheus metrics for quality feedback operations."""
+    try:
+        QUALITY_FEEDBACK_QUERIES.labels(
+            operation=operation,
+            success="true" if success else "false",
+        ).inc()
+        QUALITY_FEEDBACK_LATENCY.labels(operation=operation).observe(duration_ms / 1000.0)
+    except Exception:
+        pass
 
 
 # ── Redis query functions (for Forge template renderer) ──────────────
@@ -421,6 +650,7 @@ async def get_error_rate_redis(
     redis_client: Any,
     architecture: str,
     category: str | None = None,
+    job_id: str = "unknown",
 ) -> float | dict[str, float]:
     """Get the error rate for a specific (architecture, category) pair
     or all categories for an architecture.
@@ -428,7 +658,18 @@ async def get_error_rate_redis(
     Returns a single float if category is specified, or a dict of
     {category: rate} if category is None.
     """
+    import time as _time
+
+    _start = _time.monotonic()
     try:
+        if not await _ensure_healthy_redis(
+            redis_client,
+            job_id=job_id,
+            architecture=architecture,
+            operation="get_error_rate",
+        ):
+            raise ConnectionError("Redis health check failed")
+
         totals_key = REDIS_TOTALS_KEY
         total_scripts_raw = await redis_client.hget(totals_key, f"{architecture}:total_scripts")
         total_scripts = int(total_scripts_raw) if total_scripts_raw else 1
@@ -437,6 +678,17 @@ async def get_error_rate_redis(
             stats_key = f"{REDIS_STATS_PREFIX}:{architecture}:{category}"
             count_raw = await redis_client.hget(stats_key, "count")
             count = int(count_raw) if count_raw else 0
+            _elapsed = (_time.monotonic() - _start) * 1000
+            logger.debug(
+                "QualityFeedback job_id=%s arch=%s error_category=%s "
+                "backend=Redis operation=get_error_rate "
+                "duration_ms=%.0f attempt=1 reconnected=False",
+                job_id,
+                architecture,
+                category,
+                _elapsed,
+            )
+            _record_quality_metric("get_error_rate", True, _elapsed)
             return count / max(total_scripts, 1)
 
         # Return all categories
@@ -453,10 +705,31 @@ async def get_error_rate_redis(
                 count_raw = await redis_client.hget(key, "count")
                 count = int(count_raw) if count_raw else 0
                 rates[cat] = count / max(total_scripts, 1)
+        _elapsed = (_time.monotonic() - _start) * 1000
+        logger.debug(
+            "QualityFeedback job_id=%s arch=%s backend=Redis "
+            "operation=get_error_rate duration_ms=%.0f "
+            "attempt=1 reconnected=False categories=%d",
+            job_id,
+            architecture,
+            _elapsed,
+            len(rates),
+        )
+        _record_quality_metric("get_error_rate", True, _elapsed)
         return rates
 
     except Exception as e:
-        logger.warning(f"Failed to query error rate: {e}")
+        _elapsed = (_time.monotonic() - _start) * 1000
+        logger.warning(
+            "QualityFeedback job_id=%s arch=%s backend=Redis "
+            "operation=get_error_rate attempt=1 duration_ms=%.0f "
+            "error=%s",
+            job_id,
+            architecture,
+            _elapsed,
+            type(e).__name__,
+        )
+        _record_quality_metric("get_error_rate", False, _elapsed)
         return 0.0 if category else {}
 
 
@@ -464,9 +737,21 @@ async def get_top_failures_redis(
     redis_client: Any,
     architecture: str,
     n: int = 5,
+    job_id: str = "unknown",
 ) -> list[dict]:
     """Return top-N failure patterns for a given architecture from Redis."""
+    import time as _time
+
+    _start = _time.monotonic()
     try:
+        if not await _ensure_healthy_redis(
+            redis_client,
+            job_id=job_id,
+            architecture=architecture,
+            operation="query_top_failures",
+        ):
+            raise ConnectionError("Redis health check failed")
+
         pattern = f"{REDIS_STATS_PREFIX}:{architecture}:*"
         keys = await redis_client.scan_keys(pattern)
         failures = []
@@ -489,36 +774,92 @@ async def get_top_failures_redis(
                     }
                 )
         failures.sort(key=lambda x: -x["count"])
+        _elapsed = (_time.monotonic() - _start) * 1000
+        logger.debug(
+            "QualityFeedback job_id=%s arch=%s backend=Redis "
+            "operation=query_top_failures duration_ms=%.0f "
+            "attempt=1 reconnected=False failures=%d",
+            job_id,
+            architecture,
+            _elapsed,
+            len(failures[:n]),
+        )
+        _record_quality_metric("query_top_failures", True, _elapsed)
         return failures[:n]
 
     except Exception as e:
-        logger.warning(f"Failed to query top failures: {e}")
+        _elapsed = (_time.monotonic() - _start) * 1000
+        logger.warning(
+            "QualityFeedback job_id=%s arch=%s backend=Redis "
+            "operation=query_top_failures duration_ms=%.0f "
+            "error=%s — quality feedback unavailable, continuing "
+            "without historical failures",
+            job_id,
+            architecture,
+            _elapsed,
+            type(e).__name__,
+        )
+        _record_quality_metric("query_top_failures", False, _elapsed)
         return []
 
 
 async def get_recommendations_from_redis(
     redis_client: Any,
     architecture: str,
+    job_id: str = "unknown",
 ) -> list[dict]:
     """Return sorted recommendations for an architecture based on Redis error stats."""
+    import time as _time
+
+    _start = _time.monotonic()
     try:
-        failures = await get_top_failures_redis(redis_client, architecture, n=10)
+        if not await _ensure_healthy_redis(
+            redis_client,
+            job_id=job_id,
+            architecture=architecture,
+            operation="get_recommendations",
+        ):
+            raise ConnectionError("Redis health check failed")
+
+        failures = await get_top_failures_redis(
+            redis_client,
+            architecture,
+            n=10,
+            job_id=job_id,
+        )
+        total_raw = await redis_client.hget(REDIS_TOTALS_KEY, f"{architecture}:total_scripts")
+        total = max(int(total_raw) if total_raw else 1, 1)
+
+        _elapsed = (_time.monotonic() - _start) * 1000
+        logger.debug(
+            "QualityFeedback job_id=%s arch=%s backend=Redis "
+            "operation=get_recommendations duration_ms=%.0f "
+            "attempt=1 reconnected=False recommendations=%d",
+            job_id,
+            architecture,
+            _elapsed,
+            len(failures),
+        )
+        _record_quality_metric("get_recommendations", True, _elapsed)
         return [
             {
                 "category": f["category"],
                 "count": f["count"],
                 "recommendation": f["recommendation"],
-                "error_rate": f["count"]
-                / max(
-                    int(
-                        await redis_client.hget(REDIS_TOTALS_KEY, f"{architecture}:total_scripts")
-                        or 1
-                    ),
-                    1,
-                ),
+                "error_rate": f["count"] / total,
             }
             for f in failures
         ]
     except Exception as e:
-        logger.warning(f"Failed to query recommendations: {e}")
+        _elapsed = (_time.monotonic() - _start) * 1000
+        logger.warning(
+            "QualityFeedback job_id=%s arch=%s backend=Redis "
+            "operation=get_recommendations duration_ms=%.0f "
+            "error=%s",
+            job_id,
+            architecture,
+            _elapsed,
+            type(e).__name__,
+        )
+        _record_quality_metric("get_recommendations", False, _elapsed)
         return []

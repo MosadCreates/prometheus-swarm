@@ -1,0 +1,340 @@
+{
+  "campaign_name": "campaign-20260709-124210",
+  "num_runs": 10,
+  "num_problems": 7,
+  "condition": "C",
+  "run_metrics": [
+    {
+      "total_patches": 1,
+      "llm_calls": 1,
+      "regex_calls": 1,
+      "successful_patches": 1,
+      "rollbacks": 0,
+      "escalations": 0,
+      "patch_success_rate": 1.0,
+      "cascade_distribution": {
+        "level0_rule": 1
+      },
+      "cat_distribution": {
+        "missing_column": 1
+      },
+      "attempt_distribution": {
+        "1": 1
+      },
+      "estimated_input_tokens": 3000,
+      "estimated_output_tokens": 800,
+      "estimated_cost_usd": 0.021,
+      "pass_count": 7,
+      "fail_count": 0,
+      "total_duration_s": 65.81,
+      "pass_rate": 1.0,
+      "unique_errors_seen": 1,
+      "llm_fallback_rate": 1.0
+    },
+    {
+      "total_patches": 2,
+      "llm_calls": 2,
+      "regex_calls": 2,
+      "successful_patches": 2,
+      "rollbacks": 0,
+      "escalations": 0,
+      "patch_success_rate": 1.0,
+      "cascade_distribution": {
+        "level0_rule": 2
+      },
+      "cat_distribution": {
+        "missing_column": 2
+      },
+      "attempt_distribution": {
+        "1": 2
+      },
+      "estimated_input_tokens": 6000,
+      "estimated_output_tokens": 1600,
+      "estimated_cost_usd": 0.042,
+      "pass_count": 7,
+      "fail_count": 0,
+      "total_duration_s": 54.14,
+      "pass_rate": 1.0,
+      "unique_errors_seen": 1,
+      "llm_fallback_rate": 1.0
+    },
+    {
+      "total_patches": 4,
+      "llm_calls": 4,
+      "regex_calls": 4,
+      "successful_patches": 2,
+      "rollbacks": 1,
+      "escalations": 1,
+      "patch_success_rate": 0.5,
+      "cascade_distribution": {
+        "level0_rule": 4
+      },
+      "cat_distribution": {
+        "missing_column": 4
+      },
+      "attempt_distribution": {
+        "1": 4
+      },
+      "estimated_input_tokens": 12000,
+      "estimated_output_tokens": 3200,
+      "estimated_cost_usd": 0.084,
+      "pass_count": 6,
+      "fail_count": 1,
+      "total_duration_s": 52.87,
+      "pass_rate": 0.8571,
+      "unique_errors_seen": 1,
+      "llm_fallback_rate": 1.0
+    },
+    {
+      "total_patches": 6,
+      "llm_calls": 6,
+      "regex_calls": 6,
+      "successful_patches": 2,
+      "rollbacks": 2,
+      "escalations": 2,
+      "patch_success_rate": 0.3333,
+      "cascade_distribution": {
+        "level0_rule": 6
+      },
+      "cat_distribution": {
+        "missing_column": 6
+      },
+      "attempt_distribution": {
+        "1": 6
+      },
+      "estimated_input_tokens": 18000,
+      "estimated_output_tokens": 4800,
+      "estimated_cost_usd": 0.126,
+      "pass_count": 6,
+      "fail_count": 1,
+      "total_duration_s": 46.35,
+      "pass_rate": 0.8571,
+      "unique_errors_seen": 1,
+      "llm_fallback_rate": 1.0
+    },
+    {
+      "total_patches": 8,
+      "llm_calls": 8,
+      "regex_calls": 8,
+      "successful_patches": 2,
+      "rollbacks": 3,
+      "escalations": 3,
+      "patch_success_rate": 0.25,
+      "cascade_distribution": {
+        "level0_rule": 8
+      },
+      "cat_distribution": {
+        "missing_column": 8
+      },
+      "attempt_distribution": {
+        "1": 8
+      },
+      "estimated_input_tokens": 24000,
+      "estimated_output_tokens": 6400,
+      "estimated_cost_usd": 0.168,
+      "pass_count": 6,
+      "fail_count": 1,
+      "total_duration_s": 53.72,
+      "pass_rate": 0.8571,
+      "unique_errors_seen": 1,
+      "llm_fallback_rate": 1.0
+    },
+    {
+      "total_patches": 9,
+      "llm_calls": 9,
+      "regex_calls": 9,
+      "successful_patches": 3,
+      "rollbacks": 3,
+      "escalations": 3,
+      "patch_success_rate": 0.3333,
+      "cascade_distribution": {
+        "level0_rule": 9
+      },
+      "cat_distribution": {
+        "missing_column": 9
+      },
+      "attempt_distribution": {
+        "1": 9
+      },
+      "estimated_input_tokens": 27000,
+      "estimated_output_tokens": 7200,
+      "estimated_cost_usd": 0.189,
+      "pass_count": 7,
+      "fail_count": 0,
+      "total_duration_s": 65.45,
+      "pass_rate": 1.0,
+      "unique_errors_seen": 1,
+      "llm_fallback_rate": 1.0
+    },
+    {
+      "total_patches": 11,
+      "llm_calls": 11,
+      "regex_calls": 11,
+      "successful_patches": 3,
+      "rollbacks": 4,
+      "escalations": 4,
+      "patch_success_rate": 0.2727,
+      "cascade_distribution": {
+        "level0_rule": 11
+      },
+      "cat_distribution": {
+        "missing_column": 11
+      },
+      "attempt_distribution": {
+        "1": 11
+      },
+      "estimated_input_tokens": 33000,
+      "estimated_output_tokens": 8800,
+      "estimated_cost_usd": 0.231,
+      "pass_count": 6,
+      "fail_count": 1,
+      "total_duration_s": 57.04,
+      "pass_rate": 0.8571,
+      "unique_errors_seen": 1,
+      "llm_fallback_rate": 1.0
+    },
+    {
+      "total_patches": 13,
+      "llm_calls": 13,
+      "regex_calls": 13,
+      "successful_patches": 3,
+      "rollbacks": 5,
+      "escalations": 5,
+      "patch_success_rate": 0.2308,
+      "cascade_distribution": {
+        "level0_rule": 13
+      },
+      "cat_distribution": {
+        "missing_column": 13
+      },
+      "attempt_distribution": {
+        "1": 13
+      },
+      "estimated_input_tokens": 39000,
+      "estimated_output_tokens": 10400,
+      "estimated_cost_usd": 0.273,
+      "pass_count": 6,
+      "fail_count": 1,
+      "total_duration_s": 50.61,
+      "pass_rate": 0.8571,
+      "unique_errors_seen": 1,
+      "llm_fallback_rate": 1.0
+    },
+    {
+      "total_patches": 14,
+      "llm_calls": 14,
+      "regex_calls": 14,
+      "successful_patches": 4,
+      "rollbacks": 5,
+      "escalations": 5,
+      "patch_success_rate": 0.2857,
+      "cascade_distribution": {
+        "level0_rule": 14
+      },
+      "cat_distribution": {
+        "missing_column": 14
+      },
+      "attempt_distribution": {
+        "1": 14
+      },
+      "estimated_input_tokens": 42000,
+      "estimated_output_tokens": 11200,
+      "estimated_cost_usd": 0.294,
+      "pass_count": 7,
+      "fail_count": 0,
+      "total_duration_s": 64.22,
+      "pass_rate": 1.0,
+      "unique_errors_seen": 1,
+      "llm_fallback_rate": 1.0
+    },
+    {
+      "total_patches": 16,
+      "llm_calls": 16,
+      "regex_calls": 16,
+      "successful_patches": 4,
+      "rollbacks": 6,
+      "escalations": 6,
+      "patch_success_rate": 0.25,
+      "cascade_distribution": {
+        "level0_rule": 16
+      },
+      "cat_distribution": {
+        "missing_column": 16
+      },
+      "attempt_distribution": {
+        "1": 16
+      },
+      "estimated_input_tokens": 48000,
+      "estimated_output_tokens": 12800,
+      "estimated_cost_usd": 0.336,
+      "pass_count": 6,
+      "fail_count": 1,
+      "total_duration_s": 57.98,
+      "pass_rate": 0.8571,
+      "unique_errors_seen": 1,
+      "llm_fallback_rate": 1.0
+    }
+  ],
+  "trends": {
+    "llm_calls": [
+      1,
+      2,
+      4,
+      6,
+      8,
+      9,
+      11,
+      13,
+      14,
+      16
+    ],
+    "pass_rate": [
+      1.0,
+      1.0,
+      0.8571,
+      0.8571,
+      0.8571,
+      1.0,
+      0.8571,
+      0.8571,
+      1.0,
+      0.8571
+    ],
+    "cost": [
+      0.021,
+      0.042,
+      0.084,
+      0.126,
+      0.168,
+      0.189,
+      0.231,
+      0.273,
+      0.294,
+      0.336
+    ],
+    "llm_fallback_rate": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "patch_success_rate": [
+      1.0,
+      1.0,
+      0.5,
+      0.3333,
+      0.25,
+      0.3333,
+      0.2727,
+      0.2308,
+      0.2857,
+      0.25
+    ]
+  }
+}

@@ -41,12 +41,11 @@ def store_architecture(
         outcome_metric: Final evaluation metric value (e.g., AUC)
         outcome_label: "success", "retry", "escalate", or "unknown"
     """
-    try:
-        from sentence_transformers import SentenceTransformer
+    from memory.embeddings import get_embedding_model
 
-        model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"))
-    except Exception as e:
-        logger.warning(f"Embedding model load failed: {e}")
+    model = get_embedding_model()
+    if model is None:
+        logger.warning("Embedding model not available")
         return
 
     text = f"Modality: {modality} Task: {task_type} Rows: {num_rows} Imbalance: {class_imbalance_ratio} Model: {model_selected}"
@@ -65,7 +64,7 @@ def store_architecture(
     }
 
     collection = _get_collection()
-    collection.add(
+    collection.upsert(
         ids=[decision_id],
         embeddings=[embedding],
         metadatas=[metadata],
@@ -92,15 +91,14 @@ def query_similar_architectures(
     Returns:
         List of dicts with keys: model_selected, outcome, metric, similarity_score
     """
-    try:
-        from sentence_transformers import SentenceTransformer
+    from memory.embeddings import get_embedding_model
 
-        model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"))
-        text = f"Modality: {modality} Task: {task_type}"
-        embedding = model.encode(text).tolist()
-    except Exception as e:
-        logger.warning(f"Embedding failed: {e}")
+    model = get_embedding_model()
+    if model is None:
+        logger.warning("Embedding model not available")
         return []
+    text = f"Modality: {modality} Task: {task_type}"
+    embedding = model.encode(text).tolist()
 
     collection = _get_collection()
 

@@ -274,6 +274,7 @@ def _write_xgboost_script(
     file_path = mission_brief["dataset"]["file_path"]
     is_classification = task_type == "classification"
     data_filename = os.path.basename(file_path)
+    data_delimiter = mission_brief.get("dataset", {}).get("delimiter", ",")
     if target:
         target_line = f'target = df.pop("{target}")'
     else:
@@ -365,7 +366,7 @@ if _use_optuna:
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")
-df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"), encoding="utf-8", errors="replace")
+df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"), sep="{data_delimiter}", encoding="utf-8", errors="replace")
 {target_line}
 
 mask = target.notna()
@@ -487,6 +488,7 @@ def _write_tabnet_script(
     file_path = mission_brief["dataset"]["file_path"]
     is_classification = task_type == "classification"
     data_filename = os.path.basename(file_path)
+    data_delimiter = mission_brief.get("dataset", {}).get("delimiter", ",")
     if target:
         target_line = f'target = df.pop("{target}")'
     else:
@@ -533,7 +535,7 @@ import torch
 warnings.filterwarnings("ignore")
 
 _data_dir = os.getenv("DATA_DIR", "./data")
-df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"), encoding="utf-8", errors="replace")
+df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"), sep="{data_delimiter}", encoding="utf-8", errors="replace")
 {target_line}
 
 mask = target.notna()
@@ -659,6 +661,7 @@ def _write_lightgbm_script(
     file_path = mission_brief["dataset"]["file_path"]
     is_classification = task_type == "classification"
     data_filename = os.path.basename(file_path)
+    data_delimiter = mission_brief.get("dataset", {}).get("delimiter", ",")
 
     if target:
         target_line = f'target = df.pop("{target}")'
@@ -763,7 +766,7 @@ if _use_optuna:
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")
-df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"), encoding="utf-8", errors="replace")
+df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"), sep="{data_delimiter}", encoding="utf-8", errors="replace")
 {target_line}
 
 mask = target.notna()
@@ -883,6 +886,7 @@ def _write_distilbert_script(
     target = mission_brief.get("target_column", "target")
     file_path = mission_brief["dataset"]["file_path"]
     data_filename = os.path.basename(file_path)
+    data_delimiter = mission_brief.get("dataset", {}).get("delimiter", ",")
 
     header_design = _design_header_block(design_summary)
     script = f'''"""
@@ -913,7 +917,7 @@ TARGET_COL = "{target}"
 OUTPUT_DIR = os.path.join(os.getenv("OUTPUTS_DIR", "./outputs"), JOB_ID, "checkpoints")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-df = pd.read_csv(DATA_PATH)
+df = pd.read_csv(DATA_PATH, sep="{data_delimiter}")
 text_col = [c for c in df.columns if c != TARGET_COL and df[c].dtype == "object"][0]
 texts = df[text_col].astype(str).tolist()
 labels = df[TARGET_COL].values
@@ -926,6 +930,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
 model = DistilBertForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=num_labels)
 model.to(device)
+
 
 class TextDataset(Dataset):
     def __init__(self, texts, labels):
@@ -1003,6 +1008,7 @@ def _write_efficientnet_script(
     task_type = mission_brief["task_type"]
     file_path = mission_brief["dataset"]["file_path"]
     data_filename = os.path.basename(file_path)
+    data_delimiter = mission_brief.get("dataset", {}).get("delimiter", ",")
 
     header_design = _design_header_block(design_summary)
     script = f'''"""
@@ -1035,7 +1041,7 @@ DATA_PATH = os.path.join(os.getenv("DATA_DIR", "./data"), "{data_filename}")
 OUTPUT_DIR = os.path.join(os.getenv("OUTPUTS_DIR", "./outputs"), JOB_ID, "checkpoints")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-df = pd.read_csv(DATA_PATH)
+df = pd.read_csv(DATA_PATH, sep="{data_delimiter}")
 img_col = [c for c in df.columns if "path" in c.lower() or "file" in c.lower() or "image" in c.lower()]
 label_col = [c for c in df.columns if c != img_col[0]][0] if img_col else df.columns[-1]
 img_col = img_col[0] if img_col else df.columns[0]

@@ -161,12 +161,11 @@ def store_experience(record: ExperienceRecord) -> None:
     Args:
         record: ExperienceRecord with actual outcomes from a completed job.
     """
-    try:
-        from sentence_transformers import SentenceTransformer
+    from memory.embeddings import get_embedding_model
 
-        model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"))
-    except Exception as e:
-        logger.warning(f"Experience memory: embedding model load failed: {e}")
+    model = get_embedding_model()
+    if model is None:
+        logger.warning("Experience memory: embedding model not available")
         return
 
     text = _build_embedding_text(record)
@@ -216,21 +215,20 @@ def query_similar_experiences(
         total_crashes, patch_success, similarity_score, prediction_error,
         pipeline_steps, feature_engineering, patch_summary, engineering_decisions.
     """
-    try:
-        from sentence_transformers import SentenceTransformer
+    from memory.embeddings import get_embedding_model
 
-        model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"))
-        # Build a rich query embedding that includes dataset characteristics
-        query_parts = [f"Modality: {modality}", f"Task: {task_type}", f"Rows: {num_rows}"]
-        if num_columns is not None:
-            query_parts.append(f"Columns: {num_columns}")
-        if imbalance_ratio is not None:
-            query_parts.append(f"Imbalance: {imbalance_ratio}")
-        text = " | ".join(query_parts)
-        embedding = model.encode(text).tolist()
-    except Exception as e:
-        logger.warning(f"Experience memory: embedding failed: {e}")
+    model = get_embedding_model()
+    if model is None:
+        logger.warning("Embedding model not available")
         return []
+    # Build a rich query embedding that includes dataset characteristics
+    query_parts = [f"Modality: {modality}", f"Task: {task_type}", f"Rows: {num_rows}"]
+    if num_columns is not None:
+        query_parts.append(f"Columns: {num_columns}")
+    if imbalance_ratio is not None:
+        query_parts.append(f"Imbalance: {imbalance_ratio}")
+    text = " | ".join(query_parts)
+    embedding = model.encode(text).tolist()
 
     collection = _get_collection()
 

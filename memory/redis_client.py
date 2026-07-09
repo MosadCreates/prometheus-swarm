@@ -28,6 +28,21 @@ class RedisClient:
         await self._client.ping()
         logger.info("Redis connected")
 
+    async def ensure_connected(self) -> bool:
+        """Ping Redis and reconnect if stale."""
+        try:
+            if self._client is not None:
+                await self._client.ping()
+                return True
+        except Exception:
+            logger.warning("Redis connection stale — reconnecting...")
+        try:
+            await self.connect()
+            return True
+        except Exception as e:
+            logger.error(f"Redis reconnection failed: {e}")
+            return False
+
     async def close(self) -> None:
         if self._client:
             await self._client.aclose()
@@ -78,9 +93,7 @@ class RedisClient:
         keys: list[str] = []
         cursor = 0
         while True:
-            cursor, batch = await self._client.scan(
-                cursor=cursor, match=pattern, count=count
-            )
+            cursor, batch = await self._client.scan(cursor=cursor, match=pattern, count=count)
             keys.extend(batch)
             if cursor == 0:
                 break
@@ -88,3 +101,61 @@ class RedisClient:
 
     async def delete(self, key: str) -> None:
         await self._client.delete(key)
+
+    # ── List operations ────────────────────────────────────────────────
+
+    async def lrange(self, key: str, start: int, stop: int) -> list[str]:
+        return await self._client.lrange(key, start, stop)
+
+    async def lset(self, key: str, index: int, value: str) -> None:
+        await self._client.lset(key, index, value)
+
+    async def lpush(self, key: str, value: str) -> int:
+        return await self._client.lpush(key, value)
+
+    # ── Hash operations ────────────────────────────────────────────────
+
+    async def hincrby(self, key: str, field: str, amount: int = 1) -> int:
+        return await self._client.hincrby(key, field, amount)
+
+    async def hset(self, key: str, field: str, value: str | int | float) -> int:
+        return await self._client.hset(key, field, value)
+
+    async def hget(self, key: str, field: str) -> str | None:
+        return await self._client.hget(key, field)
+
+    async def hgetall(self, key: str) -> dict[str, str]:
+        return await self._client.hgetall(key)
+
+    async def hdel(self, key: str, field: str) -> int:
+        return await self._client.hdel(key, field)
+
+    async def hexists(self, key: str, field: str) -> bool:
+        return await self._client.hexists(key, field)
+
+    # ── Set operations ─────────────────────────────────────────────────
+
+    async def sadd(self, key: str, member: str) -> int:
+        return await self._client.sadd(key, member)
+
+    async def sismember(self, key: str, member: str) -> bool:
+        return await self._client.sismember(key, member)
+
+    async def smembers(self, key: str) -> set[str]:
+        return await self._client.smembers(key)
+
+    # ── Key operations ─────────────────────────────────────────────────
+
+    async def expire(self, key: str, seconds: int) -> bool:
+        return await self._client.expire(key, seconds)
+
+    async def ttl(self, key: str) -> int:
+        return await self._client.ttl(key)
+
+    async def exists(self, key: str) -> bool:
+        return await self._client.exists(key)
+
+    # ── Pipeline ───────────────────────────────────────────────────────
+
+    def pipeline(self):
+        return self._client.pipeline()

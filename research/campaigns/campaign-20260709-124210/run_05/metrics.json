@@ -1,0 +1,27 @@
+{
+  "total_patches": 8,
+  "llm_calls": 8,
+  "regex_calls": 8,
+  "successful_patches": 2,
+  "rollbacks": 3,
+  "escalations": 3,
+  "patch_success_rate": 0.25,
+  "cascade_distribution": {
+    "level0_rule": 8
+  },
+  "cat_distribution": {
+    "missing_column": 8
+  },
+  "attempt_distribution": {
+    "1": 8
+  },
+  "estimated_input_tokens": 24000,
+  "estimated_output_tokens": 6400,
+  "estimated_cost_usd": 0.168,
+  "pass_count": 6,
+  "fail_count": 1,
+  "total_duration_s": 53.72,
+  "pass_rate": 0.8571,
+  "unique_errors_seen": 1,
+  "llm_fallback_rate": 1.0
+}

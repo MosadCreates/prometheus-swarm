@@ -1,38 +1,20 @@
-"""Intelligent Repair Routing — 5-level deterministic cascade (Phase 4).
+"""Intelligent Repair Routing — direct routing with terminal bypass and progress detection.
 
-The repair cascade flow:
+Repair cascade flow:
 
-  Level 0: Deterministic Repair Rules (rules.py)
-    - Simple search/replace transforms
-    - Zero LLM calls, zero DB queries
-    - Categories: name_error, import_error, permission_error, zero_division, syntax_error, nan_propagation, etc.
+  Terminal error → Escalate immediately (no repair attempted)
 
-  Level 1: Compiled Repair Templates (repair_templates.py)
-    - Generalized repair patterns from past LLM successes
-    - Pattern matching on exception message
-    - Parameterized insertion/transform
+  Preferred strategy matches:
+    rule     → Level 0 (deterministic rules)
+    template → Level 1 (compiled templates)
+    cache    → Level 2 (repair cache fingerprint match)
+    memory   → Level 3 (patch memory semantic search)
+    llm      → Level 4 (LLM reasoning)
+    cascade  → Walk levels 0→4 in order (legacy fallback)
 
-  Level 2: Repair Cache (repair_cache.py)
-    - Fingerprint-based exact match
-    - Constant-time Redis GET
-    - Returns verified diff from past identical failure
-
-  Level 3: Patch Memory Retrieval (patch_memory.py)
-    - ChromaDB semantic similarity search (K=3)
-    - Retrieve similar patches from past jobs
-    - Replay with sandbox verification
-
-  Level 4: LLM Reasoning
-    - Full LLM call with script context + error
-    - If success → promote to template + cache
-    - If failure after 3 attempts → escalate
-
-  Level 5: Escalation
-    - Publish ESCALATE
-    - Diagnostic report written
-    - Job marked FAILED
-
-Routing decisions are deterministic — no LLM is used to decide whether to call another LLM.
+Each level is tried in order of the preferred strategy. If the first choice
+fails, the system falls back through remaining levels. Progress detection
+terminates the loop if state hasn't changed since the last attempt.
 """
 
 import logging
@@ -40,14 +22,17 @@ from typing import Any
 
 from agents.dissect.rules import apply_rule
 from agents.dissect.repair_templates import find_matching_templates
-from agents.dissect.repair_cache import cache_lookup, cache_store
+from agents.dissect.repair_cache import cache_lookup, cache_store, cache_increment
 from agents.dissect.taxonomy import (
     get_cascade_level,
     is_deterministic,
     has_rule,
     has_template,
+    is_terminal,
+    get_preferred_strategy,
 )
 from agents.dissect.budget import RepairBudget
+from agents.dissect.governor import BudgetGovernor
 from shared.metrics import (
     DISSECT_PATCHES_GENERATED,
     DISSECT_OUTCOMES,
@@ -58,8 +43,18 @@ from shared.metrics import (
 
 logger = logging.getLogger(__name__)
 
+PREFERRED_STRATEGY_ORDER = {
+    "rule": [0, 1, 2, 3, 4],
+    "template": [1, 0, 2, 3, 4],
+    "cache": [2, 0, 1, 3, 4],
+    "memory": [3, 0, 1, 2, 4],
+    "llm": [4, 0, 1, 2, 3],
+    "cascade": [0, 1, 2, 3, 4],
+    "terminal": [-1],
+}
 
 CASCADE_LEVEL_NAMES = {
+    -1: "TERMINAL",
     0: "DETERMINISTIC_RULE",
     1: "COMPILED_TEMPLATE",
     2: "REPAIR_CACHE",
@@ -70,8 +65,6 @@ CASCADE_LEVEL_NAMES = {
 
 
 class RoutingResult:
-    """Result of a single cascade level attempt."""
-
     def __init__(
         self,
         level: int,
@@ -95,10 +88,9 @@ class RoutingResult:
     def resolved(self) -> bool:
         return self.success and not self.should_continue
 
-
-def compute_initial_level(category: str) -> int:
-    """Determine the starting cascade level based on category metadata."""
-    return get_cascade_level(category)
+    @property
+    def is_terminal(self) -> bool:
+        return self.level == -1
 
 
 async def run_cascade_level_0(
@@ -129,19 +121,44 @@ async def run_cascade_level_1(
     script_content: str,
     exception_type: str,
     exception_message: str,
+    redis_client: Any = None,
+    job_id: str = "",
 ) -> RoutingResult:
-    """Level 1: Compiled Repair Templates."""
+    """Level 1: Compiled Repair Templates.
+
+    On successful template match, increments usage_count and persists.
+    When usage_count reaches 3, pushes a Forge prevention rule so the
+    error is prevented at code-generation time.
+    """
     templates = find_matching_templates(exception_type, exception_message, category=category)
     for template in templates:
         try:
             patched = template.apply(script_content, exception_message)
             if patched and patched != script_content:
-                from agents.dissect.tools import compute_diff
+                from agents.dissect.tools import compute_diff, compute_diff as _diff_fn
 
                 diff = compute_diff(script_content, patched)
+
+                # ── Track usage ─────────────────────────────────────────
+                template.usage_count += 1
+                from agents.dissect.repair_templates import save_templates
+
+                save_templates()
+
+                # ── Stage 3: Push prevention rule at 3+ uses ────────────
+                if template.usage_count >= 3 and redis_client is not None:
+                    _push_forge_prevention_rule(
+                        redis_client,
+                        job_id,
+                        category,
+                        script_content,
+                        diff,
+                        template.source_patch_id,
+                    )
+
                 logger.info(
                     f"Level 1 template matched | template={template.template_id} "
-                    f"category={category}"
+                    f"category={category} usage={template.usage_count}"
                 )
                 return RoutingResult(
                     level=1,
@@ -149,7 +166,7 @@ async def run_cascade_level_1(
                     diff_applied=diff,
                     success=True,
                     should_continue=False,
-                    message=f"Template {template.template_id} applied",
+                    message=f"Template {template.template_id} applied (usage #{template.usage_count})",
                 )
         except Exception as e:
             logger.warning(f"Level 1 template {template.template_id} failed: {e}")
@@ -162,11 +179,18 @@ async def run_cascade_level_2(
     dataset_path: str,
     exception_type: str,
     exception_message: str,
+    category: str = "",
+    job_id: str = "",
 ) -> RoutingResult:
-    """Level 2: Repair Cache (fingerprint lookup)."""
+    """Level 2: Repair Cache (fingerprint lookup).
+
+    On cache hit, increments replay_count. When replay_count reaches 2,
+    promotes the cached repair to a compiled template. At 3, pushes a
+    Forge prevention rule.
+    """
     cached = await cache_lookup(redis_client, dataset_path, exception_type, exception_message)
     if cached and cached.get("diff_applied"):
-        from agents.dissect.tools import apply_unified_diff
+        from agents.dissect.tools import apply_unified_diff, compute_diff
         import tempfile
         import os
 
@@ -180,17 +204,54 @@ async def run_cascade_level_2(
             if success:
                 with open(tmp_path, encoding="utf-8") as f:
                     patched = f.read()
-                logger.info(
-                    f"Level 2 cache HIT | category={cached.get('category')} "
-                    f"fp={cached.get('fingerprint', '')[:12]}"
+
+                # ── Track replay count ──────────────────────────────────
+                replay_count = await cache_increment(
+                    redis_client, dataset_path, exception_type, exception_message
                 )
+
+                logger.info(
+                    f"Level 2 cache HIT | category={category or cached.get('category')} "
+                    f"fp={cached.get('fingerprint', '')[:12]} "
+                    f"replay_count={replay_count}"
+                )
+
+                # ── Stage 2: Promote to template on 2nd replay ──────────
+                if replay_count >= 2:
+                    from agents.dissect.repair_templates import generalize_diff_to_template
+
+                    diff = compute_diff(script_content, patched)
+                    template = generalize_diff_to_template(
+                        category=category or cached.get("category", "unknown"),
+                        original_script=script_content,
+                        patched_script=patched,
+                        exception_message=exception_message,
+                        source_patch_id=cached.get("fingerprint", "cache"),
+                    )
+                    if template:
+                        logger.info(
+                            f"[job={job_id}] Cache replay #{replay_count} → "
+                            f"promoted to template: {template.template_id}"
+                        )
+
+                # ── Stage 3: Push prevention rule on 3rd replay ────────
+                if replay_count >= 3:
+                    _push_forge_prevention_rule(
+                        redis_client,
+                        job_id,
+                        category or cached.get("category", "unknown"),
+                        script_content,
+                        cached["diff_applied"],
+                        cached.get("fingerprint", "cache"),
+                    )
+
                 return RoutingResult(
                     level=2,
                     patched_script=patched,
                     diff_applied=cached["diff_applied"],
                     success=True,
                     should_continue=False,
-                    message="Cached repair applied",
+                    message=f"Cached repair applied (replay #{replay_count})",
                 )
         except Exception as e:
             logger.warning(f"Level 2 cache apply failed: {e}")
@@ -279,7 +340,6 @@ async def _run_level_safe(
     *args,
     **kwargs,
 ) -> RoutingResult:
-    """Run a cascade level with telemetry tracking and graceful error handling."""
     level_name = CASCADE_LEVEL_NAMES.get(level, f"LEVEL_{level}")
     try:
         result = await fn(*args, **kwargs)
@@ -295,11 +355,48 @@ async def _run_level_safe(
             return result
     except Exception as e:
         logger.warning(
-            f"Level {level} ({level_name}) ERROR | {e} | "
-            f"category={category} job={job_id}"
+            f"Level {level} ({level_name}) ERROR | {e} | " f"category={category} job={job_id}"
         )
         DISSECT_CASCADE_ERRORS.labels(level=str(level), job_id=job_id).inc()
         return RoutingResult(level=level, should_continue=True, message=f"Error: {e}")
+
+
+async def _run_level_dispatch(
+    level: int,
+    category: str,
+    script_content: str,
+    exception_type: str,
+    exception_message: str,
+    dataset_path: str,
+    redis_client: Any,
+    job_id: str,
+) -> RoutingResult:
+    """Dispatch a single cascade level by number."""
+    if level == 0:
+        return await run_cascade_level_0(category, script_content, exception_message)
+    elif level == 1:
+        return await run_cascade_level_1(
+            category, script_content, exception_type, exception_message, redis_client, job_id
+        )
+    elif level == 2:
+        if not dataset_path:
+            return RoutingResult(level=2, should_continue=True, message="No dataset path")
+        return await run_cascade_level_2(
+            redis_client,
+            script_content,
+            dataset_path,
+            exception_type,
+            exception_message,
+            category,
+            job_id,
+        )
+    elif level == 3:
+        return await run_cascade_level_3(
+            script_content, exception_type, exception_message, category
+        )
+    elif level == 4:
+        return RoutingResult(level=4, should_continue=True, message="LLM required")
+    return RoutingResult(level=level, should_continue=True, message="Unknown level")
 
 
 async def run_cascade(
@@ -311,95 +408,102 @@ async def run_cascade(
     redis_client: Any,
     budget: RepairBudget,
     job_id: str = "unknown",
+    governor: BudgetGovernor | None = None,
+    fingerprint: str | None = None,
+    fp_store=None,
 ) -> RoutingResult:
-    """Run the 5-level repair cascade. Exits early on first success.
+    """Run the repair cascade using direct routing from taxonomy.
 
-    Each level is wrapped in _run_level_safe so an unexpected error
-    at any level does not block fallthrough to the next. Telemetry
-    counters track hits, misses, and errors per level.
+    Terminal errors are caught before any level is attempted.
+    Preferred strategy from taxonomy determines the order levels are tried.
     """
+    # ── Terminal bypass ──────────────────────────────────────────────────
+    if is_terminal(category):
+        logger.info(f"Terminal error category={category} — escalating immediately")
+        return RoutingResult(
+            level=-1,
+            should_continue=False,
+            success=False,
+            message=f"Terminal error: {category} cannot be repaired",
+            cascade_path=[{"level": -1, "outcome": "terminal", "category": category}],
+        )
+
+    # ── Determine level order from preferred strategy ──────────────────
+    preferred = get_preferred_strategy(category)
+    level_order = PREFERRED_STRATEGY_ORDER.get(preferred, [0, 1, 2, 3, 4])
+
+    cascade_path: list[dict[str, Any]] = []
     start_level = max(
-        compute_initial_level(category),
+        get_cascade_level(category),
         budget.get_cascade_level_bias(),
     )
 
-    cascade_path: list[dict[str, Any]] = []
-
     logger.info(
         f"Starting repair cascade | category={category} job={job_id} "
-        f"start_level={CASCADE_LEVEL_NAMES.get(start_level, str(start_level))} "
-        f"budget_remaining={budget.budget_remaining_ratio():.2f}"
+        f"preferred={preferred} start_level={start_level} "
+        f"order={level_order} budget_remaining={budget.budget_remaining_ratio():.2f}"
     )
 
-    # Level 0: Deterministic Rules
-    if start_level <= 0 and has_rule(category):
+    # ── Try levels in preferred order ────────────────────────────────
+    for target_level in level_order:
+        # Skip levels below the start floor
+        if target_level >= 0 and target_level < start_level:
+            cascade_path.append(
+                {
+                    "level": target_level,
+                    "outcome": "skipped",
+                    "reason": f"start_level_floor={start_level}",
+                }
+            )
+            continue
+
+        if target_level == 4:
+            # LLM is delegated to agent — exit cascade with level=4 signal
+            cascade_path.append(
+                {"level": 4, "outcome": "required", "message": "deterministic levels exhausted"}
+            )
+            path_str = " -> ".join(f'L{e["outcome"][0].upper()}{e["level"]}' for e in cascade_path)
+            logger.info(f"Cascade telemetry | job={job_id} category={category} path={path_str}")
+            return RoutingResult(
+                level=4,
+                should_continue=True,
+                message="Deterministic levels exhausted, LLM required",
+                cascade_path=cascade_path,
+            )
+
         result = await _run_level_safe(
-            0, category, job_id, run_cascade_level_0,
-            category, script_content, exception_message,
+            target_level,
+            category,
+            job_id,
+            _run_level_dispatch,
+            target_level,
+            category,
+            script_content,
+            exception_type,
+            exception_message,
+            dataset_path,
+            redis_client,
+            job_id,
         )
-        cascade_path.append({"level": 0, "outcome": "hit" if result.resolved else "miss", "message": result.message})
+        cascade_path.append(
+            {
+                "level": target_level,
+                "outcome": "hit" if result.resolved else "miss",
+                "message": result.message,
+            }
+        )
         if result.resolved:
             result.cascade_path = cascade_path
             return result
-    elif start_level > 0:
-        cascade_path.append({"level": 0, "outcome": "skipped", "reason": f"start_level={start_level}"})
-    else:
-        cascade_path.append({"level": 0, "outcome": "skipped", "reason": "no_rule"})
 
-    # Level 1: Compiled Templates
-    if start_level <= 1 and has_template(category):
-        result = await _run_level_safe(
-            1, category, job_id, run_cascade_level_1,
-            category, script_content, exception_type, exception_message,
-        )
-        cascade_path.append({"level": 1, "outcome": "hit" if result.resolved else "miss", "message": result.message})
-        if result.resolved:
-            result.cascade_path = cascade_path
-            return result
-    elif start_level > 1:
-        cascade_path.append({"level": 1, "outcome": "skipped", "reason": f"start_level={start_level}"})
-    else:
-        cascade_path.append({"level": 1, "outcome": "skipped", "reason": "no_template"})
-
-    # Level 2: Repair Cache
-    if start_level <= 2 and dataset_path:
-        result = await _run_level_safe(
-            2, category, job_id, run_cascade_level_2,
-            redis_client, script_content, dataset_path, exception_type, exception_message,
-        )
-        cascade_path.append({"level": 2, "outcome": "hit" if result.resolved else "miss", "message": result.message})
-        if result.resolved:
-            result.cascade_path = cascade_path
-            return result
-    elif not dataset_path:
-        cascade_path.append({"level": 2, "outcome": "skipped", "reason": "no_dataset_path"})
-    else:
-        cascade_path.append({"level": 2, "outcome": "skipped", "reason": f"start_level={start_level}"})
-
-    # Level 3: Patch Memory
-    if start_level <= 3:
-        result = await _run_level_safe(
-            3, category, job_id, run_cascade_level_3,
-            script_content, exception_type, exception_message, category,
-        )
-        cascade_path.append({"level": 3, "outcome": "hit" if result.resolved else "miss", "message": result.message})
-        if result.resolved:
-            result.cascade_path = cascade_path
-            return result
-    else:
-        cascade_path.append({"level": 3, "outcome": "skipped", "reason": f"start_level={start_level}"})
-
-    # Level 4: LLM Reasoning (delegated to agent)
-    cascade_path.append({"level": 4, "outcome": "required", "message": "deterministic levels exhausted"})
-    logger.info(
-        f"Cascade telemetry | job={job_id} category={category} "
-        f"path={' -> '.join(f'L{e["outcome"][0].upper()}{e["level"]}' for e in cascade_path)}"
-    )
-
+    # All levels exhausted
+    cascade_path.append({"level": 4, "outcome": "required", "message": "all levels exhausted"})
+    path_str = " -> ".join(f'L{e["outcome"][0].upper()}{e["level"]}' for e in cascade_path)
+    logger.info(f"Cascade telemetry | job={job_id} category={category} path={path_str}")
     return RoutingResult(
         level=4,
         should_continue=True,
-        message="All deterministic levels exhausted, LLM required",
+        message="All repair levels exhausted, LLM required",
         cascade_path=cascade_path,
     )
 
@@ -417,34 +521,18 @@ async def on_llm_success(
     patch_id: str,
     cascade_path: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Post-LLM success: promote to template and store in cache.
+    """Post-LLM success: store repair in cache for future replay.
 
-    Records telemetry: cascade path, promotion outcomes, cache storage.
+    Template promotion and rule promotion happen at cascade hit time
+    (level 2 cache replay), not here. This function only persists the
+    initial repair so that future identical failures can skip the LLM.
     """
-    # Log full cascade path for telemetry
     if cascade_path:
-        path_str = " -> ".join(
-            f"L{e['level']}/{e['outcome'][:4]}" for e in cascade_path
-        )
+        path_str = " -> ".join(f"L{e['level']}/{e['outcome'][:4]}" for e in cascade_path)
         logger.info(
-            f"[job={job_id}] LLM resolved after cascade path: {path_str} "
-            f"category={category}"
+            f"[job={job_id}] LLM resolved after cascade path: {path_str} " f"category={category}"
         )
 
-    # Level 1: Promote to compiled template
-    from agents.dissect.repair_templates import generalize_diff_to_template
-
-    template = generalize_diff_to_template(
-        category=category,
-        original_script=original_script,
-        patched_script=patched_script,
-        exception_message=exception_message,
-        source_patch_id=patch_id,
-    )
-    if template:
-        logger.info(f"LLM repair promoted to template: {template.template_id}")
-
-    # Level 2: Store in repair cache
     await cache_store(
         redis_client=redis_client,
         dataset_path=dataset_path,
@@ -455,27 +543,10 @@ async def on_llm_success(
         outcome="success",
     )
 
-    # ── Gap 2: Push prevention rule to Forge ─────────────────────────────
-    _push_forge_prevention_rule(
-        redis_client,
-        job_id,
-        category,
-        original_script,
-        patch_diff,
-        patch_id,
-    )
-
 
 def _extract_prevention_snippet(patch_diff: str, original_script: str) -> str:
-    """Extract a Python code snippet from a patch diff for use as a prevention rule.
-
-    Tries to find the added lines in the diff (lines starting with '+')
-    and returns them as a clean code snippet. Falls back to returning the
-    entire diff as a comment.
-    """
     if not patch_diff:
         return ""
-
     added_lines = []
     for line in patch_diff.split("\n"):
         stripped = line.strip()
@@ -483,10 +554,8 @@ def _extract_prevention_snippet(patch_diff: str, original_script: str) -> str:
             content = stripped[1:].strip()
             if content and not content.startswith("#") and not content.startswith("import "):
                 added_lines.append(content)
-
     if added_lines:
         return "\n".join(added_lines)
-
     return f"# Prevention from diff:\n# {patch_diff[:500]}"
 
 
@@ -498,14 +567,8 @@ def _push_forge_prevention_rule(
     patch_diff: str,
     patch_id: str,
 ) -> None:
-    """Push a prevention rule to Forge's Redis store.
-
-    Called after a successful LLM repair. Records the repair as a
-    prevention rule so Forge can pre-apply it to future scripts.
-    """
     try:
         import asyncio
-
         from agents.forge.prevention import PreventionRule, push_prevention_rule
 
         architecture = "lightgbm"
@@ -524,14 +587,14 @@ def _push_forge_prevention_rule(
             error_category=category,
             modification_type="insert_after_imports",
             code_snippet=snippet,
-            summary=f"Auto-prevent {category} in {architecture} " f"(from {patch_id[:8]})",
+            summary=f"Auto-prevent {category} in {architecture} (from {patch_id[:8]})",
             source_patch_id=patch_id,
             confidence=0.70,
             occurrences=1,
         )
         asyncio.create_task(push_prevention_rule(redis_client, rule))
         logger.info(
-            f"[job={job_id}] Prevention rule pushed | arch={architecture} " f"category={category}"
+            f"[job={job_id}] Prevention rule pushed | arch={architecture} category={category}"
         )
     except Exception as e:
         logger.warning(f"Failed to push prevention rule: {e}")

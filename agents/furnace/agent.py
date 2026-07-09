@@ -291,6 +291,18 @@ class FurnaceAgent(BaseAgent):
         checkpoint_path = f"outputs/{self.job_id}/checkpoints/best.ckpt"
         last_checkpoint = checkpoint_path if os.path.exists(checkpoint_path) else None
 
+        # Write last crash info to Redis for job_runner.py to read
+        try:
+            await self.redis.set_json(
+                f"job:{self.job_id}:last_crash",
+                {
+                    "exception_type": type(error).__name__,
+                    "exception_message": str(error)[:500],
+                },
+            )
+        except Exception:
+            pass
+
         await publish(
             self.redis._client,
             STREAM_FURNACE_CRASH,

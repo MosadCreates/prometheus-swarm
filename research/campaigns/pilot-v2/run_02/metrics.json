@@ -1,0 +1,21 @@
+{
+  "total_patches": 0,
+  "llm_calls": 0,
+  "regex_calls": 0,
+  "successful_patches": 0,
+  "rollbacks": 0,
+  "escalations": 0,
+  "patch_success_rate": 0.0,
+  "cascade_distribution": {},
+  "cat_distribution": {},
+  "attempt_distribution": {},
+  "estimated_input_tokens": 0,
+  "estimated_output_tokens": 0,
+  "estimated_cost_usd": 0.0,
+  "pass_count": 6,
+  "fail_count": 1,
+  "total_duration_s": 101.93,
+  "pass_rate": 0.8571,
+  "unique_errors_seen": 0,
+  "llm_fallback_rate": 0.0
+}

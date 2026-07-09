@@ -66,7 +66,11 @@ async def cache_store(
     diff_applied: str,
     outcome: str,
 ) -> None:
-    """Store a verified repair in the cache after successful sandbox test."""
+    """Store a verified repair in the cache after successful sandbox test.
+
+    replay_count starts at 0 because no replay has happened yet.
+    Each cache hit (from cascade level 2) calls cache_increment to track replays.
+    """
     fp = _make_fingerprint(dataset_path, exception_type, exception_message)
     key = f"{REDIS_KEY_PREFIX}:{fp}"
     entry = {
@@ -74,10 +78,10 @@ async def cache_store(
         "category": category,
         "diff_applied": diff_applied[:5000],
         "outcome": outcome,
+        "replay_count": 0,
         "timestamp_iso": __import__("datetime")
         .datetime.now(__import__("datetime").timezone.utc)
         .isoformat(),
-        "success_count": 1,
     }
     try:
         await redis_client.setex(key, CACHE_TTL, json.dumps(entry, default=str))
@@ -91,15 +95,24 @@ async def cache_increment(
     dataset_path: str,
     exception_type: str,
     exception_message: str,
-) -> None:
-    """Increment success counter on a cached repair (reuse tracking)."""
+) -> int:
+    """Increment replay count on a cached repair and return the new count.
+
+    Called each time a cache hit is applied at cascade level 2.
+    Returns the incremented replay_count (1 on first replay, 2 on second, etc.).
+    Returns 0 if the cache entry no longer exists.
+    """
     fp = _make_fingerprint(dataset_path, exception_type, exception_message)
     key = f"{REDIS_KEY_PREFIX}:{fp}"
     try:
         raw = await redis_client.get(key)
         if raw:
             entry = json.loads(raw)
-            entry["success_count"] = entry.get("success_count", 0) + 1
+            entry["replay_count"] = entry.get("replay_count", 0) + 1
             await redis_client.setex(key, CACHE_TTL, json.dumps(entry, default=str))
-    except Exception:
-        pass
+            new_count = entry["replay_count"]
+            logger.debug(f"Repair cache INCREMENTED: {fp} | replay_count={new_count}")
+            return new_count
+    except Exception as e:
+        logger.warning(f"Repair cache increment failed: {e}")
+    return 0

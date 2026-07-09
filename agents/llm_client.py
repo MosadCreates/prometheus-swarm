@@ -63,7 +63,9 @@ async def get_llm_response(
 
 
 async def get_embedding(text: str) -> list[float]:
-    from sentence_transformers import SentenceTransformer
+    from memory.embeddings import get_embedding_model
 
-    model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"))
+    model = get_embedding_model()
+    if model is None:
+        return []
     return model.encode(text).tolist()

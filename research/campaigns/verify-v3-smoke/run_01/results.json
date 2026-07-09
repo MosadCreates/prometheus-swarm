@@ -1,0 +1,28 @@
+[
+  {
+    "problem_id": "TC01",
+    "condition": "C_with_dissect",
+    "status": "pass",
+    "job_id": "bench-tc01-0e03d9",
+    "best_val_metric": 0.7552042160737813,
+    "decision": "pass",
+    "duration_seconds": 3.46,
+    "crash_count": 0,
+    "human_interventions": 0,
+    "architecture": "lightgbm",
+    "error": null
+  },
+  {
+    "problem_id": "TC05",
+    "condition": "C_with_dissect",
+    "status": "pass",
+    "job_id": "bench-tc05-21431f",
+    "best_val_metric": 0.998015873015873,
+    "decision": "pass",
+    "duration_seconds": 3.27,
+    "crash_count": 0,
+    "human_interventions": 0,
+    "architecture": "lightgbm",
+    "error": null
+  }
+]

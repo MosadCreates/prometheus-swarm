@@ -3,7 +3,6 @@
 import importlib
 import logging
 import os
-import uuid
 from typing import Any
 
 from memory.chroma_client import ChromaClient
@@ -33,12 +32,11 @@ def store_tool(
         docstring: The tool's docstring
         source_file: File path where the tool is defined
     """
-    try:
-        from sentence_transformers import SentenceTransformer
+    from memory.embeddings import get_embedding_model
 
-        model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"))
-    except Exception as e:
-        logger.warning(f"Embedding model load failed: {e}")
+    model = get_embedding_model()
+    if model is None:
+        logger.warning("Embedding model not available")
         return
 
     embedding = model.encode(docstring).tolist()
@@ -50,7 +48,7 @@ def store_tool(
     }
 
     collection = _get_collection()
-    collection.add(
+    collection.upsert(
         ids=[tool_id],
         embeddings=[embedding],
         metadatas=[metadata],
@@ -73,14 +71,13 @@ def query_tools(
     Returns:
         List of dicts with keys: tool_name, agent_name, docstring, similarity_score
     """
-    try:
-        from sentence_transformers import SentenceTransformer
+    from memory.embeddings import get_embedding_model
 
-        model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"))
-        embedding = model.encode(query).tolist()
-    except Exception as e:
-        logger.warning(f"Embedding failed: {e}")
+    model = get_embedding_model()
+    if model is None:
+        logger.warning("Embedding model not available")
         return []
+    embedding = model.encode(query).tolist()
 
     collection = _get_collection()
 
@@ -133,7 +130,7 @@ def register_agent_tools(agent_name: str, module_path: str) -> int:
     for name, obj in inspect.getmembers(module, inspect.isfunction):
         if not name.startswith("_"):
             content = obj.__doc__ or f"{name}({inspect.signature(obj)})"
-            tool_id = str(uuid.uuid4())
+            tool_id = f"{agent_name}:{name}"
             store_tool(
                 tool_id=tool_id,
                 agent_name=agent_name,

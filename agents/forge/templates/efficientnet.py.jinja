@@ -35,7 +35,7 @@ DATA_PATH = os.path.join(os.getenv("DATA_DIR", "./data"), "{{ data_filename }}")
 OUTPUT_DIR = os.path.join(os.getenv("OUTPUTS_DIR", "./outputs"), JOB_ID, "checkpoints")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-df = pd.read_csv(DATA_PATH)
+df = pd.read_csv(DATA_PATH, sep="{{ data_delimiter }}")
 img_col = [c for c in df.columns if "path" in c.lower() or "file" in c.lower() or "image" in c.lower()]
 label_col = [c for c in df.columns if c != img_col[0]][0] if img_col else df.columns[-1]
 img_col = img_col[0] if img_col else df.columns[0]

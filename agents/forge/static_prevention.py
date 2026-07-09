@@ -115,10 +115,14 @@ def ensure_read_csv_encoding(script: str, encoding: str = "utf-8") -> str:
 
     count = result.count(f'encoding="{encoding}"')
     if count:
-        logger.info(f"ensure_read_csv_encoding: added encoding={encoding} to {count} read_csv call(s)")
+        logger.info(
+            f"ensure_read_csv_encoding: added encoding={encoding} to {count} read_csv call(s)"
+        )
 
     if count:
-        logger.info(f"ensure_read_csv_encoding: added encoding={encoding} to {count} read_csv call(s)")
+        logger.info(
+            f"ensure_read_csv_encoding: added encoding={encoding} to {count} read_csv call(s)"
+        )
     return result
 
 
@@ -140,12 +144,10 @@ def widen_numeric_dtype_selection(script: str) -> str:
         select_dtypes(include=["object"])
         select_dtypes(include=["category"])
     """
-    if "include=\"number\"" in script or "include='number'" in script:
+    if 'include="number"' in script or "include='number'" in script:
         return script
 
-    pattern = re.compile(
-        r'(select_dtypes\s*\(\s*include\s*=\s*)\["int64"\s*,\s*"float64"\]'
-    )
+    pattern = re.compile(r'(select_dtypes\s*\(\s*include\s*=\s*)\["int64"\s*,\s*"float64"\]')
     count = len(pattern.findall(script))
 
     if count:
@@ -160,17 +162,19 @@ def widen_numeric_dtype_selection(script: str) -> str:
     count_rev = len(pattern_reversed.findall(script))
     if count_rev:
         result = pattern_reversed.sub(r'\1"number"', script)
-        logger.info(f"widen_numeric_dtype_selection: widened {count_rev} reversed select_dtypes call(s)")
+        logger.info(
+            f"widen_numeric_dtype_selection: widened {count_rev} reversed select_dtypes call(s)"
+        )
         return result
 
     # Single type: ["int64"] or ["float64"] — wider but less likely
-    pattern_single = re.compile(
-        r'(select_dtypes\s*\(\s*include\s*=\s*)\["(?:int64|float64)"\]'
-    )
+    pattern_single = re.compile(r'(select_dtypes\s*\(\s*include\s*=\s*)\["(?:int64|float64)"\]')
     count_single = len(pattern_single.findall(script))
     if count_single:
         result = pattern_single.sub(r'\1"number"', script)
-        logger.info(f"widen_numeric_dtype_selection: widened {count_single} single-type select_dtypes call(s)")
+        logger.info(
+            f"widen_numeric_dtype_selection: widened {count_single} single-type select_dtypes call(s)"
+        )
         return result
 
     return script
@@ -206,8 +210,12 @@ def add_runtime_column_validation(script: str) -> str:
         stripped = line.strip()
         if "_numeric_cols = " in stripped or "numeric_cols = " in stripped:
             numeric_cols_line = i
-        if ("_cat_cols = " in stripped or "cat_cols = " in stripped
-            or "_categorical_cols = " in stripped or "categorical_cols = " in stripped):
+        if (
+            "_cat_cols = " in stripped
+            or "cat_cols = " in stripped
+            or "_categorical_cols = " in stripped
+            or "categorical_cols = " in stripped
+        ):
             cat_cols_line = i
 
     # Also look for model.fit() insertion point
@@ -225,23 +233,23 @@ def add_runtime_column_validation(script: str) -> str:
     indent = indent_match.group(1) if indent_match else "    "
 
     validation_block = (
-        f'{indent}# FAILSAFE: column validation -- verify expected features exist\n'
-        f'{indent}_expected_cols = list(dict.fromkeys(_numeric_cols + _cat_cols))\n'
-        f'{indent}_missing_cols = [c for c in _expected_cols if c not in X_train.columns]\n'
-        f'{indent}if _missing_cols:\n'
-        f'{indent}    raise ValueError(\n'
+        f"{indent}# FAILSAFE: column validation -- verify expected features exist\n"
+        f"{indent}_expected_cols = list(dict.fromkeys(_numeric_cols + _cat_cols))\n"
+        f"{indent}_missing_cols = [c for c in _expected_cols if c not in X_train.columns]\n"
+        f"{indent}if _missing_cols:\n"
+        f"{indent}    raise ValueError(\n"
         f'{indent}        f"FAILSAFE: missing {{len(_missing_cols)}} expected columns: {{_missing_cols}} | "\n'
         f'{indent}        f"available={{list(X_train.columns)[:10]}}..."\n'
-        f'{indent}    )\n'
-        f'{indent}\n'
-        f'{indent}# FAILSAFE: ensure X_train has rows after NaN filtering\n'
-        f'{indent}if len(X_train) == 0:\n'
+        f"{indent}    )\n"
+        f"{indent}\n"
+        f"{indent}# FAILSAFE: ensure X_train has rows after NaN filtering\n"
+        f"{indent}if len(X_train) == 0:\n"
         f'{indent}    raise ValueError("FAILSAFE: X_train has 0 rows -- all data was dropped during NaN filtering")\n'
-        f'{indent}\n'
+        f"{indent}\n"
     )
 
     result_lines = lines[:fit_line] + [validation_block] + lines[fit_line:]
-    logger.info(f"add_runtime_column_validation: added column validation before model.fit()")
+    logger.info("add_runtime_column_validation: added column validation before model.fit()")
     return "\n".join(result_lines)
 
 
@@ -280,7 +288,9 @@ def add_data_fallback_options(script: str) -> str:
             read_csv_count += 1
             original_line = lines[i]
 
-            new_lines.append(f"{indent}# FAILSAFE: encoding fallback — try utf-8 first, fall back to latin-1")
+            new_lines.append(
+                f"{indent}# FAILSAFE: encoding fallback — try utf-8 first, fall back to latin-1"
+            )
             new_lines.append(f"{indent}try:")
             new_lines.append(f"{next_indent}{stripped}")
             new_lines.append(f"{next_indent}df = df  # keep reference in local scope")
@@ -295,14 +305,16 @@ def add_data_fallback_options(script: str) -> str:
             i += 1
 
     if read_csv_count:
-        logger.info(f"add_data_fallback_options: wrapped {read_csv_count} read_csv call(s) with encoding fallback")
+        logger.info(
+            f"add_data_fallback_options: wrapped {read_csv_count} read_csv call(s) with encoding fallback"
+        )
     return "\n".join(new_lines)
 
 
 def _replace_encoding_arg(call: str, var_name: str) -> str:
     """Replace or add encoding= argument in a pd.read_csv call."""
     if "encoding=" in call:
-        return re.sub(r'encoding\s*=\s*"[^"]*"', f'encoding={var_name}', call)
+        return re.sub(r'encoding\s*=\s*"[^"]*"', f"encoding={var_name}", call)
     else:
         # Add before closing paren
         return call.rstrip().rstrip(")") + f", encoding={var_name})"
@@ -361,15 +373,15 @@ def ensure_result_json_write(script: str) -> str:
 
     finally_block = (
         f"\n{indent}finally:\n"
-        f'{inner_indent}import json as _json_mod\n'
-        f'{inner_indent}_result = {{\n'
+        f"{inner_indent}import json as _json_mod\n"
+        f"{inner_indent}_result = {{\n"
         f'{inner_indent}    "status": "completed",\n'
         f'{inner_indent}    "best_val_metric": float(_best_val_metric_) if "_best_val_metric_" in dir() else None,\n'
         f'{inner_indent}    "total_epochs": _total_epochs if "_total_epochs" in dir() else None,\n'
         f'{inner_indent}    "total_crashes_recovered": _total_crashes_recovered if "_total_crashes_recovered" in dir() else 0,\n'
-        f'{inner_indent}}}\n'
+        f"{inner_indent}}}\n"
         f'{inner_indent}with open(os.path.join(_output_dir, "result.json"), "w") as _f:\n'
-        f'{inner_indent}    _json_mod.dump(_result, _f)\n'
+        f"{inner_indent}    _json_mod.dump(_result, _f)\n"
         f'{inner_indent}print("TRAINING_COMPLETE", _result["status"])\n'
     )
 
@@ -413,7 +425,7 @@ VALIDATION_CHECKS: list[dict[str, Any]] = [
     {
         "id": "missing_result_json",
         "description": "Missing result.json write statement",
-        "pattern": r'result\.json',
+        "pattern": r"result\.json",
         "severity": "error",
         "message": "Script must write result.json for orchestrator to read training outcome",
     },
@@ -456,22 +468,26 @@ def validate_script_static(script: str) -> list[dict[str, Any]]:
 
         if check["id"] in ("missing_training_complete",):
             if not matches:
-                findings.append({
-                    "id": check["id"],
-                    "severity": check["severity"],
-                    "message": check["message"],
-                    "count": 0,
-                })
+                findings.append(
+                    {
+                        "id": check["id"],
+                        "severity": check["severity"],
+                        "message": check["message"],
+                        "count": 0,
+                    }
+                )
             continue
 
         if check["id"] in ("missing_result_json",):
             if "result.json" not in script:
-                findings.append({
-                    "id": check["id"],
-                    "severity": check["severity"],
-                    "message": check["message"],
-                    "count": 0,
-                })
+                findings.append(
+                    {
+                        "id": check["id"],
+                        "severity": check["severity"],
+                        "message": check["message"],
+                        "count": 0,
+                    }
+                )
             continue
 
         if not matches:
@@ -487,12 +503,14 @@ def validate_script_static(script: str) -> list[dict[str, Any]]:
             if "FAILSAFE: column validation" in script:
                 continue
 
-        findings.append({
-            "id": check["id"],
-            "severity": check["severity"],
-            "message": check["message"],
-            "count": len(matches),
-        })
+        findings.append(
+            {
+                "id": check["id"],
+                "severity": check["severity"],
+                "message": check["message"],
+                "count": len(matches),
+            }
+        )
 
     return findings
 
@@ -526,9 +544,13 @@ def apply_static_prevention(
     changes = 0
     if script != original:
         changes = sum(1 for a, b in zip(original.split("\n"), script.split("\n")) if a != b)
-        logger.info(f"apply_static_prevention: {changes} line(s) changed | {len(findings)} validation finding(s)")
+        logger.info(
+            f"apply_static_prevention: {changes} line(s) changed | {len(findings)} validation finding(s)"
+        )
     else:
-        logger.info(f"apply_static_prevention: no changes needed | {len(findings)} validation finding(s)")
+        logger.info(
+            f"apply_static_prevention: no changes needed | {len(findings)} validation finding(s)"
+        )
 
     # Attach finding count as comment for auditability
     if findings:

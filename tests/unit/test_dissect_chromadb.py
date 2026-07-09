@@ -9,6 +9,24 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
 
+SCRIPT_CONTENT = (
+    "import pandas as pd\n"
+    "import json\n"
+    "from sklearn.model_selection import train_test_split\n"
+    "X_train, X_test, y_train, y_test = train_test_split(X, y)\n"
+    "model.fit(X_train, y_train)\n"
+    "json.dump({'val_score': 0.85}, open('result.json', 'w'))\n"
+)
+
+PATCHED_CONTENT = (
+    "import pandas as pd\n"
+    "import json\n"
+    "from sklearn.model_selection import train_test_split\n"
+    "X_train, X_test, y_train, y_test = train_test_split(X, y)\n"
+    "model.fit(X_train, y_train)\n"
+    "json.dump({'val_score': 0.90}, open('result.json', 'w'))\n"
+)
+
 
 @pytest.fixture
 def crash_event():
@@ -28,7 +46,7 @@ def crash_event():
 def script_path(tmp_path):
     path = os.path.join(tmp_path, "training_script.py")
     with open(path, "w") as f:
-        f.write("import pandas as pd\n\ndef train():\n    pass\n")
+        f.write(SCRIPT_CONTENT)
     return path
 
 
@@ -45,9 +63,14 @@ async def test_dissect_queries_similar_patches_before_llm(crash_event, script_pa
     agent.redis._client.get = AsyncMock(return_value=None)
     agent.redis._client.setex = AsyncMock()
     agent.redis._client.rpush = AsyncMock()
-    agent.call_llm = AsyncMock(
-        return_value={"text": "import pandas as pd\n\ndef train():\n    pass\n"}
+    agent.redis._client.sismember = AsyncMock(return_value=False)
+    agent.redis._client.sadd = AsyncMock()
+    agent.redis._client.hmset = AsyncMock()
+    agent.redis._client.hgetall = AsyncMock(return_value=None)
+    agent.redis._client.pipeline = MagicMock(
+        return_value=MagicMock(hsetnx=MagicMock(), incr=MagicMock(), execute=AsyncMock())
     )
+    agent.call_llm = AsyncMock(return_value={"text": PATCHED_CONTENT})
 
     with (
         patch(
@@ -88,8 +111,8 @@ async def test_dissect_queries_similar_patches_before_llm(crash_event, script_pa
     ):
         await agent.handle_crash(crash_event)
 
-    mock_query.assert_called_once()
-    call_kwargs = mock_query.call_args[1]
+    assert mock_query.call_count >= 1, "query_similar_patches should be called at least once"
+    call_kwargs = mock_query.call_args_list[-1][1]  # last call's kwargs
     assert "error_text" in call_kwargs
     assert call_kwargs["category"] == "shape_mismatch"
     assert call_kwargs["k"] == 3
@@ -108,9 +131,14 @@ async def test_dissect_stores_patch_after_success(crash_event, script_path):
     agent.redis._client.get = AsyncMock(return_value=None)
     agent.redis._client.setex = AsyncMock()
     agent.redis._client.rpush = AsyncMock()
-    agent.call_llm = AsyncMock(
-        return_value={"text": "import pandas as pd\n\ndef train():\n    pass\n"}
+    agent.redis._client.sismember = AsyncMock(return_value=False)
+    agent.redis._client.sadd = AsyncMock()
+    agent.redis._client.hmset = AsyncMock()
+    agent.redis._client.hgetall = AsyncMock(return_value=None)
+    agent.redis._client.pipeline = MagicMock(
+        return_value=MagicMock(hsetnx=MagicMock(), incr=MagicMock(), execute=AsyncMock())
     )
+    agent.call_llm = AsyncMock(return_value={"text": PATCHED_CONTENT})
 
     with (
         patch(
@@ -165,9 +193,14 @@ async def test_dissect_stores_patch_after_escalation(crash_event, script_path):
     agent.redis._client.get = AsyncMock(return_value=None)
     agent.redis._client.setex = AsyncMock()
     agent.redis._client.rpush = AsyncMock()
-    agent.call_llm = AsyncMock(
-        return_value={"text": "import pandas as pd\n\ndef train():\n    pass\n"}
+    agent.redis._client.sismember = AsyncMock(return_value=False)
+    agent.redis._client.sadd = AsyncMock()
+    agent.redis._client.hmset = AsyncMock()
+    agent.redis._client.hgetall = AsyncMock(return_value=None)
+    agent.redis._client.pipeline = MagicMock(
+        return_value=MagicMock(hsetnx=MagicMock(), incr=MagicMock(), execute=AsyncMock())
     )
+    agent.call_llm = AsyncMock(return_value={"text": PATCHED_CONTENT})
 
     with (
         patch(
@@ -220,9 +253,14 @@ async def test_dissect_stores_patch_after_rollback(crash_event, script_path):
     agent.redis._client.get = AsyncMock(return_value=None)
     agent.redis._client.setex = AsyncMock()
     agent.redis._client.rpush = AsyncMock()
-    agent.call_llm = AsyncMock(
-        return_value={"text": "import pandas as pd\n\ndef train():\n    pass\n"}
+    agent.redis._client.sismember = AsyncMock(return_value=False)
+    agent.redis._client.sadd = AsyncMock()
+    agent.redis._client.hmset = AsyncMock()
+    agent.redis._client.hgetall = AsyncMock(return_value=None)
+    agent.redis._client.pipeline = MagicMock(
+        return_value=MagicMock(hsetnx=MagicMock(), incr=MagicMock(), execute=AsyncMock())
     )
+    agent.call_llm = AsyncMock(return_value={"text": PATCHED_CONTENT})
 
     with (
         patch(

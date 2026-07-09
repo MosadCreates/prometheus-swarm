@@ -1,0 +1,39 @@
+{
+  "total_patches": 75,
+  "llm_calls": 71,
+  "regex_calls": 4,
+  "successful_patches": 23,
+  "rollbacks": 40,
+  "escalations": 12,
+  "patch_success_rate": 0.3067,
+  "cascade_distribution": {
+    "level3_memory": 45,
+    "level4_llm": 26,
+    "level0_rule": 4
+  },
+  "cat_distribution": {
+    "novel_error": 5,
+    "missing_column": 18,
+    "dtype_mismatch": 1,
+    "convergence_failure": 5,
+    "pickle_version_mismatch": 16,
+    "empty_dataset": 4,
+    "permission_error": 12,
+    "nan_propagation": 4,
+    "encoding_error": 10
+  },
+  "attempt_distribution": {
+    "1": 33,
+    "2": 16,
+    "3": 26
+  },
+  "estimated_input_tokens": 213000,
+  "estimated_output_tokens": 56800,
+  "estimated_cost_usd": 1.491,
+  "pass_count": 0,
+  "fail_count": 0,
+  "total_duration_s": 0.0,
+  "pass_rate": 0.0,
+  "unique_errors_seen": 9,
+  "llm_fallback_rate": 0.9467
+}

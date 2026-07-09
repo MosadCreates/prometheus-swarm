@@ -7,14 +7,14 @@ from memory.collections.tool_memory import store_tool, query_tools, register_age
 
 
 @patch("memory.collections.tool_memory.ChromaClient")
-@patch("sentence_transformers.SentenceTransformer")
-def test_store_tool_success(mock_st, mock_chroma):
+@patch("memory.embeddings.get_embedding_model")
+def test_store_tool_success(mock_get_model, mock_chroma):
     """store_tool should encode docstring and add to ChromaDB."""
     import numpy as np
 
     mock_model = MagicMock()
     mock_model.encode.return_value = np.array([0.5, 0.5])
-    mock_st.return_value = mock_model
+    mock_get_model.return_value = mock_model
 
     mock_collection = MagicMock()
     mock_chroma_instance = MagicMock()
@@ -31,22 +31,22 @@ def test_store_tool_success(mock_st, mock_chroma):
     )
 
     mock_model.encode.assert_called_once()
-    mock_collection.add.assert_called_once()
-    args, kwargs = mock_collection.add.call_args
+    mock_collection.upsert.assert_called_once()
+    args, kwargs = mock_collection.upsert.call_args
     assert kwargs["ids"] == [tool_id]
     assert kwargs["metadatas"][0]["tool_name"] == "detect_modality"
     assert kwargs["metadatas"][0]["agent_name"] == "Scout"
 
 
 @patch("memory.collections.tool_memory.ChromaClient")
-@patch("sentence_transformers.SentenceTransformer")
-def test_query_tools_returns_list(mock_st, mock_chroma):
+@patch("memory.embeddings.get_embedding_model")
+def test_query_tools_returns_list(mock_get_model, mock_chroma):
     """query_tools should return list of tool dicts sorted by similarity."""
     import numpy as np
 
     mock_model = MagicMock()
     mock_model.encode.return_value = np.array([0.5, 0.5])
-    mock_st.return_value = mock_model
+    mock_get_model.return_value = mock_model
 
     mock_collection = MagicMock()
     mock_collection.query.return_value = {
@@ -73,14 +73,14 @@ def test_query_tools_returns_list(mock_st, mock_chroma):
 
 
 @patch("memory.collections.tool_memory.ChromaClient")
-@patch("sentence_transformers.SentenceTransformer")
-def test_query_tools_empty_when_no_match(mock_st, mock_chroma):
+@patch("memory.embeddings.get_embedding_model")
+def test_query_tools_empty_when_no_match(mock_get_model, mock_chroma):
     """query_tools returns empty list when ChromaDB has no matches."""
     import numpy as np
 
     mock_model = MagicMock()
     mock_model.encode.return_value = np.array([0.5, 0.5])
-    mock_st.return_value = mock_model
+    mock_get_model.return_value = mock_model
 
     mock_collection = MagicMock()
     mock_collection.query.return_value = {"ids": [[]], "metadatas": None, "distances": [[]]}

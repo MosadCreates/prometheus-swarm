@@ -26,6 +26,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 import numpy as np
 import pandas as pd
+import redis.asyncio as aioredis
+
+from orchestrator.job_runner import run_job, JobConfig
 
 load_dotenv()
 
@@ -106,6 +109,10 @@ def _best_metric(metrics: dict | None, problem: dict) -> float:
         return 0.0
     metric_name = problem.get("evaluation_metric", "auc_roc")
     return metrics.get(metric_name, metrics.get("auc_roc", metrics.get("rmse", 0.0)))
+
+
+def timeout_for_modality(modality: str) -> int:
+    return {"tabular": 300, "text": 900, "image": 1200}.get(modality, 600)
 
 
 def _parse_exception(stderr: str) -> tuple[str, str]:
@@ -560,39 +567,53 @@ async def run_condition_b(
     job_id: str,
     timeout: int,
 ) -> dict:
+    """Condition B (No Dissect) via job_runner.run_job()."""
     t0 = time.time()
-    ok, stdout, stderr = await run_training_script(script_path, job_id, timeout=timeout)
-    if not ok:
-        exc_type, exc_msg = _parse_exception(stderr)
-        return make_result(
-            problem,
-            "B_no_dissect",
-            "crash",
-            job_id,
-            duration=time.time() - t0,
-            error=f"{exc_type}: {exc_msg}",
-        )
-
-    eval_result = await evaluate(job_id, problem)
-    if eval_result is None:
-        return make_result(
-            problem,
-            "B_no_dissect",
-            "crash",
-            job_id,
-            duration=time.time() - t0,
-            error="No predictions found",
-        )
-
-    return make_result(
-        problem,
-        "B_no_dissect",
-        eval_result["decision"],
-        job_id,
-        duration=time.time() - t0,
-        metrics=eval_result["metrics"],
-        decision=eval_result["decision"],
+    redis = aioredis.Redis(
+        host=os.getenv("REDIS_HOST", "localhost"),
+        port=int(os.getenv("REDIS_PORT", 6379)),
+        decode_responses=True,
     )
+    try:
+        local_path = resolve_dataset_path(problem)
+        if not Path(local_path).exists():
+            return make_result(
+                problem,
+                "B_no_dissect",
+                "crash",
+                job_id,
+                duration=time.time() - t0,
+                error=f"Dataset not found: {local_path}",
+            )
+        config = JobConfig(
+            problem_description=problem["problem_description"],
+            dataset_path=local_path,
+            target_column=problem.get("target_column"),
+            evaluation_metric=problem.get("evaluation_metric"),
+            task_type=problem.get("task_type"),
+            modality=problem.get("modality"),
+            use_dissect=False,
+            use_harbor=False,
+            use_docker=True,
+            job_id=job_id,
+            timeout_seconds=timeout,
+        )
+        job_result = await run_job(config, redis)
+        metric = job_result.metric_value or 0.0
+        return make_result(
+            problem,
+            "B_no_dissect",
+            job_result.status if job_result.status != "error" else "crash",
+            job_id,
+            duration=job_result.duration_seconds,
+            metrics={problem.get("evaluation_metric", "auc_roc"): metric},
+            error=job_result.crash_message or job_result.error_detail,
+        )
+    finally:
+        try:
+            await redis.aclose()
+        except Exception:
+            pass
 
 
 async def run_condition_c(
@@ -601,105 +622,55 @@ async def run_condition_c(
     job_id: str,
     timeout: int,
 ) -> dict:
-    from agents.dissect.agent import DissectAgent
-    from memory.redis_client import RedisClient
-
+    """Condition C (With Dissect) via job_runner.run_job()."""
     t0 = time.time()
-    total_patches = 0
-    last_error = None
-
-    for attempt in range(1, 4):
-        ok, stdout, stderr = await run_training_script(script_path, job_id, timeout=timeout)
-        if ok:
-            eval_result = await evaluate(job_id, problem)
-            if eval_result is None:
-                return make_result(
-                    problem,
-                    "C_with_dissect",
-                    "crash",
-                    job_id,
-                    duration=time.time() - t0,
-                    error="No predictions found",
-                    patches=total_patches,
-                )
-            return make_result(
-                problem,
-                "C_with_dissect",
-                eval_result["decision"],
-                job_id,
-                duration=time.time() - t0,
-                metrics=eval_result["metrics"],
-                decision=eval_result["decision"],
-                patches=total_patches,
-            )
-
-        logger.info(f"[{job_id}] Crash attempt {attempt}: activating Dissect")
-        exc_type, exc_msg = _parse_exception(stderr)
-        last_error = f"{exc_type}: {exc_msg}"
-
-        dissect = DissectAgent(job_id=job_id)
-        dissect.redis = RedisClient()
-        await dissect.redis.connect()
-
-        crash_event = {
-            "job_id": job_id,
-            "exception_type": exc_type,
-            "exception_message": exc_msg[:500],
-            "traceback": stderr,
-            "script_path": script_path,
-            "last_checkpoint_path": "",
-            "epoch_at_crash": 0,
-            "crash_attempt_number": 1,
-        }
-
-        try:
-            await dissect.handle_crash(crash_event)
-            await drain_patch_log_queue(dissect.redis)
-        except Exception as e:
-            logger.error(f"[{job_id}] Dissect handle_crash raised: {e}")
-            return make_result(
-                problem,
-                "C_with_dissect",
-                "escalate",
-                job_id,
-                duration=time.time() - t0,
-                error=f"Dissect exception: {e}",
-                patches=total_patches,
-            )
-        finally:
-            try:
-                await dissect.redis.close()
-            except Exception:
-                pass
-
-        bak_path = script_path + ".bak"
-        if os.path.exists(bak_path):
-            total_patches += 1
-            try:
-                os.remove(bak_path)
-            except Exception:
-                pass
-            continue
-        else:
-            return make_result(
-                problem,
-                "C_with_dissect",
-                "escalate",
-                job_id,
-                duration=time.time() - t0,
-                error=last_error,
-                patches=total_patches,
-            )
-
-    return make_result(
-        problem,
-        "C_with_dissect",
-        "escalate",
-        job_id,
-        duration=time.time() - t0,
-        error=last_error,
-        patches=total_patches,
+    redis = aioredis.Redis(
+        host=os.getenv("REDIS_HOST", "localhost"),
+        port=int(os.getenv("REDIS_PORT", 6379)),
+        decode_responses=True,
     )
+    try:
+        local_path = resolve_dataset_path(problem)
+        if not Path(local_path).exists():
+            return make_result(
+                problem,
+                "C_with_dissect",
+                "crash",
+                job_id,
+                duration=time.time() - t0,
+                error=f"Dataset not found: {local_path}",
+                patches=0,
+            )
+        config = JobConfig(
+            problem_description=problem["problem_description"],
+            dataset_path=local_path,
+            target_column=problem.get("target_column"),
+            evaluation_metric=problem.get("evaluation_metric"),
+            task_type=problem.get("task_type"),
+            modality=problem.get("modality"),
+            use_dissect=True,
+            use_harbor=False,
+            use_docker=True,
+            job_id=job_id,
+            timeout_seconds=timeout,
+        )
+        job_result = await run_job(config, redis)
+        metric = job_result.metric_value or 0.0
+        return make_result(
+            problem,
+            "C_with_dissect",
+            job_result.status if job_result.status != "error" else "crash",
+            job_id,
+            duration=job_result.duration_seconds,
+            metrics={problem.get("evaluation_metric", "auc_roc"): metric},
+            error=job_result.crash_message or job_result.error_detail,
+            patches=job_result.dissect_patch_attempts,
+        )
+    finally:
+        try:
+            await redis.aclose()
+        except Exception:
+            pass
 
 
 async def main():
@@ -720,13 +691,6 @@ async def main():
 
     os.chdir(str(PROJECT_ROOT))
     problems = load_problems()
-    # Ensure all datasets are prepared (text fixes + image generation)
-    try:
-        from research.prepare_datasets import prepare_all
-
-        prepare_all("all")
-    except Exception as e:
-        logger.warning(f"Dataset preparation failed (continuing anyway): {e}")
     batch_idx = args.start // args.count + 1
     batch = problems[args.start : args.start + args.count]
 
@@ -797,43 +761,6 @@ async def _run_single_problem(
             if "C" in args.condition:
                 results_c.append(r)
         return
-    dataset_path = local_path
-
-    if not Path(dataset_path).exists():
-        logger.warning(f"Dataset not found: {dataset_path}")
-        for cond in ["B_no_dissect", "C_with_dissect"]:
-            r = make_result(
-                problem,
-                cond,
-                "crash",
-                job_id,
-                error=f"Dataset not found: {dataset_path}",
-            )
-            if "B" in args.condition:
-                results_b.append(r)
-            if "C" in args.condition:
-                results_c.append(r)
-        return
-
-    brief = await run_scout_phase(job_id, problem)
-    if brief is None:
-        for cond in ["B_no_dissect", "C_with_dissect"]:
-            r = make_result(problem, cond, "crash", job_id, error="Scout failed")
-            if "B" in args.condition:
-                results_b.append(r)
-            if "C" in args.condition:
-                results_c.append(r)
-        return
-
-    script_path = await run_forge_phase(job_id, brief)
-    if script_path is None:
-        for cond in ["B_no_dissect", "C_with_dissect"]:
-            r = make_result(problem, cond, "crash", job_id, error="Forge failed")
-            if "B" in args.condition:
-                results_b.append(r)
-            if "C" in args.condition:
-                results_c.append(r)
-        return
 
     # Determine timeout based on modality and dataset size
     n_rows = problem.get("num_rows_expected", 1000)
@@ -862,19 +789,21 @@ async def _run_single_problem(
 
     if "B" in condition_effective:
         logger.info(f"[{job_id}] Condition B (No Dissect)")
-        r = await run_condition_b(problem, script_path, job_id, timeout)
+        r = await run_condition_b(problem, "", job_id, timeout)
         print_result(r)
         results_b.append(r)
 
     if "C" in condition_effective:
-        _cmd = ["python", str(script_path)]
-        r = await run_condition_c(problem, script_path, job_id, timeout)
+        logger.info(f"[{job_id}] Condition C (With Dissect)")
+        r = await run_condition_c(problem, "", job_id, timeout)
         print_result(r)
         results_c.append(r)
 
     # Clean up training script and outputs
     try:
-        Path(script_path).unlink(missing_ok=True)
+        script_path = f"scripts/training_script_{job_id}.py"
+        if os.path.exists(script_path):
+            os.unlink(script_path)
         ckpt_dir = Path(f"outputs/{job_id}")
         if ckpt_dir.exists():
             shutil.rmtree(str(ckpt_dir))
@@ -951,6 +880,7 @@ def _write_combined_baseline(
             "platform": platform.system(),
             "condition": "both",
             "problems_file": str(BENCHMARK_PATH),
+            "execution_method": "real_orchestrator_docker",
         },
         "condition_b": _agg(results_b) if results_b else {},
         "condition_c": _agg(results_c) if results_c else {},

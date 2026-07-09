@@ -64,11 +64,35 @@ def _detect_outliers(series: pd.Series) -> int:
         return 0
 
 
-def run_eda(file_path: str, target_column: str | None = None) -> dict[str, Any]:
+def _detect_delimiter(file_path: str) -> str:
+    """Detect CSV delimiter by inspecting the first 2 lines of the file.
+
+    Tries common delimiters: comma, semicolon, tab, pipe.
+    Falls back to comma if detection is ambiguous.
+    """
+    delimiters = [",", ";", "\t", "|"]
     try:
-        df = pd.read_csv(file_path)
+        with open(file_path, encoding="utf-8", errors="replace") as f:
+            first_lines = [f.readline() for _ in range(2)]
+    except Exception:
+        return ","
+
+    best_delim = ","
+    best_count = 0
+    for delim in delimiters:
+        count = sum(line.count(delim) for line in first_lines if line)
+        if count > best_count:
+            best_count = count
+            best_delim = delim
+    return best_delim
+
+
+def run_eda(file_path: str, target_column: str | None = None) -> dict[str, Any]:
+    delimiter = _detect_delimiter(file_path)
+    try:
+        df = pd.read_csv(file_path, sep=delimiter)
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e), "delimiter": delimiter}
 
     num_rows, num_cols = df.shape
     warnings = []
@@ -169,8 +193,22 @@ def run_eda(file_path: str, target_column: str | None = None) -> dict[str, Any]:
     if target_column and target_column in df.columns:
         target = df[target_column].dropna()
         if target.dtype.kind in ("i", "u", "f"):
+            # Detect and skip constant columns (zero variance) to prevent
+            # RuntimeWarning: invalid value encountered in divide
+            removed_constant_cols = []
             for col in numeric_cols_list:
                 if col != target_column:
+                    col_std = df[col].std()
+                    if col_std == 0 or pd.isna(col_std):
+                        removed_constant_cols.append(col)
+            if removed_constant_cols:
+                logger.info(
+                    "Correlation preprocessing: removed_constant_columns=%d " "columns=%s",
+                    len(removed_constant_cols),
+                    removed_constant_cols,
+                )
+            for col in numeric_cols_list:
+                if col != target_column and col not in removed_constant_cols:
                     try:
                         corr = df[col].corr(target)
                         correlation_with_target[col] = round(float(corr), 4)
@@ -183,6 +221,7 @@ def run_eda(file_path: str, target_column: str | None = None) -> dict[str, Any]:
     return {
         "num_rows": num_rows,
         "num_columns": num_cols,
+        "delimiter": delimiter,
         "column_types": column_types,
         "missing_value_rate": missing_rate,
         "high_cardinality_columns": high_cardinality,
@@ -280,6 +319,7 @@ def write_mission_brief(
             "file_path": file_path,
             "num_rows": eda_results.get("num_rows", 0),
             "num_columns": eda_results.get("num_columns", 0),
+            "delimiter": eda_results.get("delimiter", ","),
             "column_types": eda_results.get("column_types", {}),
         },
         "data_quality": {
