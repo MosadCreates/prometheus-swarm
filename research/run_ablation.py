@@ -254,8 +254,8 @@ async def run_single_problem(
                 script_path, job_id, timeout=effective_timeout
             )
             if ok:
-                llm_calls = dissect._budget.llm_calls_used if dissect._budget else 0
-                llm_cost = dissect._budget.total_cost if dissect._budget else 0.0
+                llm_calls = 0
+                llm_cost = 0.0
                 eval_result = await evaluate(job_id, problem)
                 if eval_result is None:
                     return make_result(

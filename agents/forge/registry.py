@@ -167,7 +167,6 @@ def _build_registry() -> None:
 
         task_types = ARCHITECTURE_TASK_MAP.get(arch_name, [])
         template_ids = [(arch_name, t) for t in task_types]
-        optuna_fn = (lambda a=arch_name: lambda: define_optuna_space(a))()
 
         if arch_name == "lightgbm":
             register(

@@ -116,7 +116,6 @@ def write_training_script(
     imbalance_method = mission_brief.get("imbalance_strategy", "none")
 
     if plan:
-        arch_selected = plan.get("architecture_selected", {})
         hp = plan.get("hyperparameter_strategy", {})
         budget = plan.get("computational_budget", {})
         pipeline = plan.get("preprocessing_pipeline", [])
@@ -137,8 +136,6 @@ def write_training_script(
                 break
 
         max_trials = hp.get("max_trials", 20) if hp else 20
-        gpu_required = budget.get("gpu_required", False) if budget else False
-        expected_ram_mb = budget.get("estimated_ram_mb", 512) if budget else 512
 
     strategy = get_generation_strategy(confidence)
     FORGE_STRATEGY_ROUTES.labels(strategy=strategy, architecture=architecture, job_id=job_id).inc()

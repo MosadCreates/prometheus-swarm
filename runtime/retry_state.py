@@ -173,21 +173,4 @@ def retry_state_path(job_id: str) -> str:
     return str(get_job_paths(job_id).job_dir / "retry_state.json")
 
 
-def save_retry_state(state: RetryState) -> str:
-    path = retry_state_path(state.job_id)
-    _os.makedirs(_os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        _json.dump(state.to_dict(), f, indent=2)
-    return path
 
-
-def load_retry_state(job_id: str) -> RetryState | None:
-    path = retry_state_path(job_id)
-    if not _os.path.exists(path):
-        return None
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = _json.load(f)
-        return RetryState.from_dict(data)
-    except (_json.JSONDecodeError, KeyError, ValueError):
-        return None

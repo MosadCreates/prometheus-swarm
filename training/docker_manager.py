@@ -12,6 +12,7 @@ import logging
 import os
 import shutil
 from typing import Any
+from runtime.paths import get_paths
 
 logger = logging.getLogger(__name__)
 

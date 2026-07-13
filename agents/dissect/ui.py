@@ -95,8 +95,8 @@ def show_dissect_sandbox_result(console: Console, passed: bool, output: str = ""
         console.print("  [red]\u2717 Sandbox test FAILED[/]")
         if output:
             lines = output.strip().split("\n")[:5]
-            for l in lines:
-                console.print(f"    [dim]{l[:120]}[/]")
+            for ln in lines:
+                console.print(f"    [dim]{ln[:120]}[/]")
             if len(output.strip().split("\n")) > 5:
                 console.print("    [dim]...[/]")
     console.print()

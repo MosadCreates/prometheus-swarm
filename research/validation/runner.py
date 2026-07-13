@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from runtime.paths import get_job_paths
+from research.run_benchmark import ensure_dataset_available
 from research.validation.models import (
     Experiment,
     ExperimentRun,

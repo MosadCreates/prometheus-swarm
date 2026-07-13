@@ -339,7 +339,4 @@ def test_validate_plan_with_multiple_issues():
     ]
     plan = _make_plan(nodes, edges)
     errors = validate_plan(plan)
-    decision_errors = [e for e in errors if "condition" in e.lower() or "decision" in e.lower()]
-    term_errors = [e for e in errors if "terminal" in e.lower() or "failed" in e.lower()]
-    ref_errors = [e for e in errors if "ghost" in e.lower() or "unknown" in e.lower()]
     assert len(errors) >= 2  # at least missing ref + missing terminal/condition

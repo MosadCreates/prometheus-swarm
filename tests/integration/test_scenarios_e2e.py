@@ -449,7 +449,7 @@ async def test_scenario_4_metric_below_threshold_retry():
             use_dissect=False,
             timeout_seconds=60,
         )
-        result = await run_job(config, redis)
+        await run_job(config, redis)
 
         jp = get_job_paths(job_id)
         assert os.path.exists(str(jp.checkpoint_path)), "Checkpoint should exist"

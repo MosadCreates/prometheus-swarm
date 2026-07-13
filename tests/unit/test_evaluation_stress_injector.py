@@ -111,7 +111,6 @@ def test_schema_drift(sample_csv, temp_dir):
         reader = csv.DictReader(f)
         fieldnames = reader.fieldnames or []
         # First two columns should be swapped from original
-        original_fields = ["id", "age", "income", "category", "target"]
         # After swap: [age, id, income, category, target]
         assert fieldnames[0] == "age"  # Was originally second
         assert fieldnames[1] == "id"  # Was originally first

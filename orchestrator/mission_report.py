@@ -690,13 +690,6 @@ def _render_markdown(data: dict[str, Any]) -> str:
     job_id = data.get("job_id", "?")
     created = data.get("created_at", "")[:19].replace("T", " ")
 
-    status_icon = {"COMPLETED": "✅", "PASS": "✅", "ESCALATED": "❌", "FAILED": "❌", "pass": "✅"}
-    icon = "✅" if status in status_icon and status_icon[status] == "✅" else "❌"
-    for key, val in status_icon.items():
-        if key in status.upper() or key == status:
-            icon = val
-            break
-
     lines.append(f"# Mission Report `{job_id[:8]}...`")
     lines.append("")
     lines.append(f"**Status:** {status}")
@@ -930,8 +923,6 @@ def _render_markdown(data: dict[str, Any]) -> str:
     # Evaluation is sec 5 (no failures) or 6 (with failures)
     sec = 7 if failures else 6
     has_comparisons = bool(data.get("prediction_vs_actual"))
-    has_experience_val = bool(data.get("experience_comparison"))
-
     # Deployment
     deploy = data.get("deployment")
     if deploy:
@@ -996,8 +987,8 @@ def _render_markdown(data: dict[str, Any]) -> str:
         lines.append("---")
         lines.append(f"## {sec}. Lessons Learned")
         lines.append("")
-        for l in lessons:
-            lines.append(f"- {l}")
+        for ln in lessons:
+            lines.append(f"- {ln}")
         lines.append("")
 
     lines.append("---")

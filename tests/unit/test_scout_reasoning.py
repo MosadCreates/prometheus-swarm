@@ -400,7 +400,6 @@ def test_feature_engineering_skewed():
     df = pd.DataFrame({"x": skewed, "y": [0, 1] * 50})
     result = reason_feature_engineering(df, "y")
     recs = result.get("recommendations", [])
-    rec_text = " ".join(recs).lower()
     has_skew = any("skew" in r.lower() for r in recs)
     assert has_skew or len(recs) >= 0  # not empty
 

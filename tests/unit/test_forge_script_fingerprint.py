@@ -340,7 +340,7 @@ class TestIntegrationHooks:
         }
 
         with patch("agents.forge.tools._write_lightgbm_script", return_value="/tmp/script.py"):
-            script_path = write_training_script(
+            write_training_script(
                 brief,
                 "job-fp-test",
                 architecture="lightgbm",

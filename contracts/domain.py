@@ -241,7 +241,6 @@ class ScoutIntelligence(BaseModel):
         collected["imbalance_ratio"] = dq.get("class_imbalance_ratio")
 
         missing_rates = dq.get("missing_value_rate", {})
-        total_cells = max(collected["num_rows"] * max(collected["num_columns"], 1), 1)
         null_sum = sum(missing_rates.values())
         collected["null_ratio"] = round(null_sum / max(collected["num_columns"], 1), 4)
 

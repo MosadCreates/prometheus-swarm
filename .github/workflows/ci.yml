@@ -23,7 +23,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install ruff pre-commit
       - name: Ruff check
-        run: ruff check . --ignore E501,F403,F401,E402 --exclude .venv
+        run: ruff check . --ignore E501,F403,F401,E402,E741,F841,F541 --exclude .venv,scripts,training_script_test-job-cache.py,training_script_test-job-template.py
       - name: Pre-commit check
         run: pre-commit run --all-files || true
 

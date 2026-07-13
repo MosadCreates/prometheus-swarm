@@ -218,7 +218,7 @@ def test_strategy_changes_across_retries():
 
 def test_retry_state_persistence():
     """RetryState can be saved to and loaded from disk."""
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory():
         original_dir = "outputs/test-persist"
         os.makedirs(original_dir, exist_ok=True)
         try:
@@ -266,7 +266,7 @@ def test_retry_state_persistence():
 
 def test_retry_state_no_history():
     """RetryState with no history loads and has zero attempts."""
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory():
         original_dir = "outputs/test-empty"
         os.makedirs(original_dir, exist_ok=True)
         try:
@@ -628,10 +628,10 @@ def test_append_retry_log_entry_adds_timestamp(tmp_path):
 
 def test_output_dir_isolation():
     """build_next_strategy strategies have isolated output directories."""
-    s1 = build_next_strategy(attempt=1)
-    s2 = build_next_strategy(attempt=2)
-    s3 = build_next_strategy(attempt=3)
-    s4 = build_next_strategy(attempt=4)
+    _ = build_next_strategy(attempt=1)
+    _ = build_next_strategy(attempt=2)
+    _ = build_next_strategy(attempt=3)
+    _ = build_next_strategy(attempt=4)
 
     # Each retry has different output_dir pattern
     outputs = [f"outputs/job_x/retry_{i}" for i in (1, 2, 3, 4)]

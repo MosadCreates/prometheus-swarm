@@ -9,6 +9,7 @@ import sys
 import time
 import traceback as tb_module
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from agents.base import BaseAgent
@@ -262,7 +263,7 @@ class FurnaceAgent(BaseAgent):
         self._save_logs(workspace_root, combined_log, stdout_log, stderr_log)
 
         if exit_code != 0:
-            error_lines = [l for l in combined_log.split("\n") if l.strip()]
+            error_lines = [ln for ln in combined_log.split("\n") if ln.strip()]
             last_30 = error_lines[-30:] if len(error_lines) > 30 else error_lines
             error_detail = "\n".join(last_30)
             self._container_error_log = combined_log
@@ -355,16 +356,11 @@ class FurnaceAgent(BaseAgent):
             if total_raw:
                 self._total_trials = int(total_raw)
         elapsed = time.time() - self._start_time if self._start_time else 0
-        eta = ""
         if self._total_trials and self._current_trial:
             remaining = self._total_trials - self._current_trial
             if remaining > 0 and self._current_trial > 0:
                 per_trial = elapsed / self._current_trial
                 eta_secs = per_trial * remaining
-                if eta_secs > 60:
-                    eta = f"{eta_secs/60:.0f}m {eta_secs%60:.0f}s"
-                else:
-                    eta = f"{eta_secs:.0f}s"
         metric_match = re.search(
             r"(AUC|ROC AUC|Accuracy|RMSE|MAE|F1)[:\s]*([\d.]+)", line, re.IGNORECASE
         )

@@ -299,7 +299,6 @@ def add_data_fallback_options(script: str) -> str:
 
             # Build the wrapped version
             read_csv_count += 1
-            original_line = lines[i]
 
             new_lines.append(
                 f"{indent}# FAILSAFE: encoding fallback — try utf-8 first, fall back to latin-1"

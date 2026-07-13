@@ -252,7 +252,7 @@ class TestRecordRepairRedis:
         mock_redis.hget.side_effect = hget
 
         with patch("agents.forge.prevention.push_prevention_rule", new_callable=AsyncMock) as push:
-            with patch("shared.metrics.FORGE_ERROR_PREVENTIONS_AUTO") as met:
+            with patch("shared.metrics.FORGE_ERROR_PREVENTIONS_AUTO"):
                 from agents.forge.quality_feedback import record_repair_redis
 
                 await record_repair_redis(mock_redis, "job-1", "dtype_mismatch", "lightgbm", False)

@@ -239,12 +239,10 @@ async def run_campaign_live(
         logger.info(f"CAMPAIGN RUN {run_idx}/{num_runs}")
         logger.info(f"{'='*60}")
 
-        run_id = make_run_id()
         run_results_cond: list[dict] = []
 
         for problem in problems:
             job_id = make_job_id(problem["id"])
-            dataset_path = resolve_dataset_path(problem)
 
             # Ensure dataset
             local_path = await ensure_dataset_available(problem)
@@ -292,7 +290,6 @@ async def run_campaign_live(
                 pass
 
         # Compute metrics for this run from new patch_log entries
-        post_patch_count = len(load_patch_log())
         new_entries = load_patch_log()[pre_patch_count:]
         metrics = compute_run_metrics(new_entries, run_results_cond)
 

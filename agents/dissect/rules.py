@@ -83,7 +83,6 @@ def fix_dtype_mismatch(script: str, message: str) -> str | None:
 
     pattern = r"could not convert string to float:\s*'([^']+)'"
     m = re.search(pattern, message)
-    bad_value = m.group(1) if m else None
 
     m2 = re.search(r"'([^']+)'.*dtype", message)
     column_hint = m2.group(1) if m2 else None
@@ -325,11 +324,11 @@ def fix_empty_dataset(script: str, message: str) -> str | None:
 
 
 LINE_FIXES = [
-    lambda l: l.replace("= =", "==").replace("= ==", "==").replace("! =", "!="),
-    lambda l: l.rstrip(",").rstrip(";") if not l.endswith(":") else l,
-    lambda l: re.sub(r"(\w+)\s*=\s*(\d+)\s+and\s+", r"\1 == \2 and ", l) if "and" in l else l,
-    lambda l: l.replace("NoneType", "type(None)"),
-    lambda l: re.sub(r"'([^']*)'\)\s*{", r"'\1'): {", l) if l.strip().endswith("{") else l,
+    lambda line: line.replace("= =", "==").replace("= ==", "==").replace("! =", "!="),
+    lambda line: line.rstrip(",").rstrip(";") if not line.endswith(":") else line,
+    lambda line: re.sub(r"(\w+)\s*=\s*(\d+)\s+and\s+", r"\1 == \2 and ", line) if "and" in line else line,
+    lambda line: line.replace("NoneType", "type(None)"),
+    lambda line: re.sub(r"'([^']*)'\)\s*{", r"'\1'): {", line) if line.strip().endswith("{") else line,
 ]
 
 # ---- checkpoint_corruption ----

@@ -1,4 +1,5 @@
 """Unit tests for Mission Report generation."""
+# ruff: noqa: E741
 
 import copy
 import json
