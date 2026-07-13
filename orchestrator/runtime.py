@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+from runtime.paths import get_job_paths
 import sys
 
 # Ensure project root is on sys.path so agent modules can be imported
@@ -35,6 +36,7 @@ from agents.furnace.agent import FurnaceAgent
 from agents.arbiter.agent import ArbiterAgent
 from agents.harbor.agent import HarborAgent
 from agents.scout.agent import ScoutAgent
+from contracts.state import MissionState, transition_and_save, canonical_phase
 from memory.redis_client import RedisClient
 from orchestrator.mission_report import generate_mission_report
 from evaluation import config as eval_config
@@ -386,7 +388,7 @@ class OrchestratorRuntime:
         if exists:
             return
         logger.info(f"[job={job_id}] No mission brief found. Running Scout first.")
-        await self._set_job_status(job_id, "SCOUT_ANALYZING", "Scout")
+        await transition_and_save(self.redis, job_id, "SCOUT_RUNNING", agent="Scout")
         if eval_config.PROFILE_MODE:
             record_stage(job_id, "scout", "start")
         scout = ScoutAgent(job_id=job_id)
@@ -437,17 +439,19 @@ class OrchestratorRuntime:
         await self._init_plan_state(plan)
         from bus.publisher import publish
 
+        from contracts.events import PlanCreatedEvent
+
         await publish(
             self.redis,
             STREAM_PLANNER_OUTPUT,
             PLAN_CREATED,
-            {
-                "job_id": job_id,
-                "plan_id": plan.plan_id,
-                "estimated_total_minutes": plan.estimated_total_minutes,
-                "confidence_score": plan.confidence.score,
-                "confidence_assessment": plan.confidence.assessment,
-            },
+            PlanCreatedEvent(
+                job_id=job_id,
+                plan_id=plan.plan_id,
+                estimated_total_minutes=plan.estimated_total_minutes,
+                confidence_score=plan.confidence.score,
+                confidence_assessment=plan.confidence.assessment,
+            ),
         )
         logger.info(
             f"[job={job_id}] Plan {plan.plan_id} created | "
@@ -629,19 +633,23 @@ class OrchestratorRuntime:
         from bus.publisher import publish
 
         if terminal == "__plan_complete__":
+            from contracts.events import PlanCompletedEvent
+
             await publish(
                 self.redis,
                 STREAM_PLANNER_OUTPUT,
                 PLAN_COMPLETED,
-                {"job_id": job_id, "timestamp": datetime.now(timezone.utc).isoformat()},
+                PlanCompletedEvent(job_id=job_id),
             )
             logger.info(f"[job={job_id}] Plan completed successfully")
         elif terminal == "__plan_failed__":
+            from contracts.events import PlanFailedEvent
+
             await publish(
                 self.redis,
                 STREAM_PLANNER_OUTPUT,
                 PLAN_FAILED,
-                {"job_id": job_id, "timestamp": datetime.now(timezone.utc).isoformat()},
+                PlanFailedEvent(job_id=job_id),
             )
             logger.info(f"[job={job_id}] Plan failed")
 
@@ -667,7 +675,7 @@ class OrchestratorRuntime:
         await self._compile_and_store_plan(job_id)
 
         logger.info(f"[job={job_id}] Mission brief ready. Launching Forge.")
-        await self._set_job_status(job_id, "FORGE_WORKING", "Forge")
+        await transition_and_save(self.redis, job_id, "FORGE_RUNNING", agent="Forge")
         if eval_config.PROFILE_MODE:
             record_stage(job_id, "forge", "start")
 
@@ -685,7 +693,7 @@ class OrchestratorRuntime:
         # Mark forge_generate as completed in plan state
         await self._update_plan_state(job_id, "forge_generate", "completed")
         logger.info(f"[job={job_id}] Training script ready. Launching Furnace.")
-        await self._set_job_status(job_id, "FURNACE_TRAINING", "Furnace")
+        await transition_and_save(self.redis, job_id, "FURNACE_RUNNING", agent="Furnace")
         if eval_config.PROFILE_MODE:
             record_stage(job_id, "forge", "end")
             record_stage(job_id, "furnace", "start")
@@ -719,7 +727,7 @@ class OrchestratorRuntime:
         # Mark furnace_train as completed in plan state
         await self._update_plan_state(job_id, "furnace_train", "completed")
         logger.info(f"[job={job_id}] Training complete. Launching Arbiter.")
-        await self._set_job_status(job_id, "ARBITER_EVALUATING", "Arbiter")
+        await transition_and_save(self.redis, job_id, "ARBITER_RUNNING", agent="Arbiter")
         if eval_config.PROFILE_MODE:
             record_stage(job_id, "furnace", "end")
             record_stage(job_id, "arbiter", "start")
@@ -757,7 +765,7 @@ class OrchestratorRuntime:
             )
             return
         logger.info(f"[job={job_id}] Crash event received. Launching Dissect.")
-        await self._set_job_status(job_id, "DISSECT_PATCHING", "Dissect")
+        await transition_and_save(self.redis, job_id, "DISSECT_RUNNING", agent="Dissect")
         if eval_config.PROFILE_MODE:
             record_stage(job_id, "dissect", "start")
 
@@ -828,7 +836,7 @@ class OrchestratorRuntime:
             logger.warning(f"[job={job_id}] Failed to store architecture outcome: {e}")
 
         if decision == "pass":
-            await self._set_job_status(job_id, "HARBOR_DEPLOYING", "Harbor")
+            await transition_and_save(self.redis, job_id, "HARBOR_DEPLOYING", agent="Harbor")
             harbor = HarborAgent(job_id=job_id)
             harbor.redis = self._make_redis_client()
             try:
@@ -844,7 +852,13 @@ class OrchestratorRuntime:
             await self._mark_task_completed(job_id, "arbiter_evaluate", condition="pass")
 
         elif decision == "retry":
-            await self._set_job_status(job_id, "FORGE_RETRY", "Forge")
+            await transition_and_save(
+                self.redis,
+                job_id,
+                "RETRY_RUNNING",
+                agent="Forge",
+                message="Score within 15% threshold — retrying with new architecture",
+            )
             # Increment retry counter so Forge can deprioritize previously-tried architectures
             await self.redis.incr(f"job:{job_id}:retry_count")
             logger.info(f"[job={job_id}] Score within 15% — retrying with new architecture")
@@ -868,7 +882,9 @@ class OrchestratorRuntime:
     async def _handle_escalate(self, job_id: str, source: str, reason: str) -> None:
         logger.error(f"[job={job_id}] ESCALATED by {source}: {reason}")
 
-        await self._set_job_status(job_id, "ESCALATED", source)
+        await transition_and_save(
+            self.redis, job_id, "MISSION_FAILED", agent=source, message=f"Escalated: {reason}"
+        )
 
         # Mark plan as failed
         await self._handle_plan_terminal(job_id, "__plan_failed__")
@@ -884,8 +900,9 @@ class OrchestratorRuntime:
             "escalated": True,
         }
 
-        os.makedirs(f"outputs/{job_id}", exist_ok=True)
-        with open(f"outputs/{job_id}/diagnostic_{job_id}.json", "w", encoding="utf-8") as f:
+        jp = get_job_paths(job_id)
+        os.makedirs(str(jp.job_dir), exist_ok=True)
+        with open(str(jp.diagnostic_report_path), "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2)
 
         # Generate mission report for escalated jobs
@@ -908,24 +925,25 @@ class OrchestratorRuntime:
     async def _publish_job_failed(self, job_id: str, source: str, reason: str) -> None:
         from bus.publisher import publish
 
+        from contracts.events import JobFailedEvent
+
         await publish(
             self.redis,
             STREAM_ORCHESTRATOR_OUT,
             JOB_FAILED,
-            {
-                "job_id": job_id,
-                "source_agent": source,
-                "reason": reason,
-                "diagnostic_report_path": (f"outputs/{job_id}/diagnostic_{job_id}.json"),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            },
+            JobFailedEvent(
+                job_id=job_id,
+                source_agent=source,
+                reason=reason,
+                diagnostic_report_path=str(get_job_paths(job_id).diagnostic_report_path),
+            ),
         )
 
     async def _on_endpoint_live(self, data: dict) -> None:
         job_id = data.get("job_id", "?")
         endpoint = data.get("endpoint_url", "?")
         logger.info(f"[job={job_id}] Model live at {endpoint}")
-        await self._set_job_status(job_id, "COMPLETED", "Harbor")
+        await transition_and_save(self.redis, job_id, "HARBOR_COMPLETED", agent="Harbor")
         # Mark plan as completed
         await self._handle_plan_terminal(job_id, "__plan_complete__")
 
@@ -949,7 +967,9 @@ class OrchestratorRuntime:
         logger.warning(
             f"[job={job_id}] Drift detected: PSI={psi}. " f"Starting new cycle via Scout."
         )
-        await self._set_job_status(job_id, "SCOUT_RETRAIN", "Scout")
+        await transition_and_save(
+            self.redis, job_id, "SCOUT_RETRAIN", agent="Scout", message=f"Drift detected: PSI={psi}"
+        )
 
         file_path = await self.redis.get(f"job:{job_id}:file_path")
         problem_description = await self.redis.get(f"job:{job_id}:problem_description")
@@ -979,9 +999,9 @@ class OrchestratorRuntime:
             )
 
     async def _set_job_status(self, job_id: str, status: str, agent: str) -> None:
-        await self.redis.set(f"job:{job_id}:status", status)
+        canonical = canonical_phase(status)
+        await transition_and_save(self.redis, job_id, canonical, agent=agent)
         await self.redis.set(f"job:{job_id}:current_agent", agent)
-        logger.info(f"[job={job_id}] Status: {status} (agent: {agent})")
 
 
 async def main() -> None:

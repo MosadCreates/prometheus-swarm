@@ -13,8 +13,10 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
+from runtime.paths import get_job_paths
 
 import redis.asyncio as aioredis
+from contracts.state import MissionState, transition_and_save, canonical_phase
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -129,7 +131,7 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
         forge.redis = rc
         await forge.run()
 
-        script_path = f"scripts/training_script_{job_id}.py"
+        script_path = str(get_job_paths(job_id).script_path)
         if not os.path.exists(script_path):
             result.status = "error"
             result.error_detail = f"Forge failed to generate {script_path}"
@@ -224,7 +226,11 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
             # No Dissect — crashes escalate immediately
             try:
                 await asyncio.wait_for(
-                    furnace.run(script_path=script_path, use_docker=config.use_docker),
+                    furnace.run(
+                        script_path=script_path,
+                        use_docker=config.use_docker,
+                        wait_for_dissect=False,
+                    ),
                     timeout=config.timeout_seconds,
                 )
             except asyncio.TimeoutError:
@@ -381,7 +387,8 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
             except (asyncio.CancelledError, Exception):
                 pass
         try:
-            await rc.set_str(f"job:{job_id}:status", result.status.upper())
+            canonical = canonical_phase(result.status.upper())
+            await transition_and_save(redis_client, job_id, canonical, agent="JobRunner")
         except Exception:
             pass
 

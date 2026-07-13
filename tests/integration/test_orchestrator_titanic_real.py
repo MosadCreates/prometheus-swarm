@@ -15,8 +15,10 @@ import redis.asyncio as aioredis
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.timeout(600)]
 
+from runtime.paths import get_paths
+
 JOB_ID = "test-orch-titanic"
-TITANIC_PATH = os.path.abspath("data/titanic.csv")
+TITANIC_PATH = str(get_paths().data / "titanic.csv")
 TRAINING_IMAGE = "prometheus-training-base"
 TEST_GROUP = "test_orch_group"
 

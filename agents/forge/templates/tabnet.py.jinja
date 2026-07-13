@@ -42,6 +42,15 @@ for _c in df.select_dtypes(include=["int64", "float64"]).columns:
 for _c in df.select_dtypes(include=["object"]).columns:
     df[_c] = df[_c].fillna(df[_c].mode().iloc[0] if not df[_c].mode().empty else "MISSING")
 
+# --- Target encoding: handle string labels like 'Yes'/'No', 'True'/'False' ---
+_target_encoder = LabelEncoder()
+if target.dtype == object or str(target.dtype) == 'category':
+    target = pd.Series(_target_encoder.fit_transform(target), index=target.index)
+    _target_classes = _target_encoder.classes_.tolist()
+else:
+    _target_encoder.fit(target)
+    _target_classes = _target_encoder.classes_.tolist()
+
 X_train, X_test, y_train, y_test = train_test_split(
     df, target, test_size=0.2, random_state=42
 )
@@ -49,10 +58,11 @@ X_train, X_test, y_train, y_test = train_test_split(
 numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolist()
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
-for col in categorical_cols:
-    _le = LabelEncoder()
-    X_train[col] = _le.fit_transform(X_train[col].astype(str))
-    X_test[col] = _le.transform(X_test[col].astype(str))
+# TabNet requires numerical inputs — encode categories with OrdinalEncoder (handles unseen test labels)
+if categorical_cols:
+    _cat_encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+    X_train[categorical_cols] = _cat_encoder.fit_transform(X_train[categorical_cols].astype(str))
+    X_test[categorical_cols] = _cat_encoder.transform(X_test[categorical_cols].astype(str))
 
 scaler = StandardScaler()
 X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
@@ -112,11 +122,16 @@ print(f"RMSE: {rmse:.4f}")
 {% endif %}
 
 _outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
-output_dir = os.path.join(_outputs_dir, "{{ job_id }}", "checkpoints")
+output_dir = os.path.join(_outputs_dir, "checkpoints")
 os.makedirs(output_dir, exist_ok=True)
 checkpoint_path = os.path.join(output_dir, "best.ckpt")
+_checkpoint = {
+    "model": model,
+    "target_encoder": _target_encoder,
+    "target_classes": _target_classes,
+}
 with open(checkpoint_path, "wb") as f:
-    pickle.dump(model, f)
+    pickle.dump(_checkpoint, f)
 print(f"Model saved to {checkpoint_path}")
 np.save(os.path.join(output_dir, "y_test.npy"), y_test.values if hasattr(y_test, 'values') else y_test)
 np.save(os.path.join(output_dir, "y_pred.npy"), y_pred)
@@ -131,6 +146,6 @@ result = {"checkpoint_path": checkpoint_path, "val_score": float(acc), "metric":
 {% else %}
 result = {"checkpoint_path": checkpoint_path, "val_score": float(rmse), "metric": "rmse"}
 {% endif %}
-with open(os.path.join(_outputs_dir, "{{ job_id }}", "result.json"), "w") as f:
+with open(os.path.join(_outputs_dir, "result.json"), "w") as f:
     json.dump(result, f)
 print("TRAINING_COMPLETE")

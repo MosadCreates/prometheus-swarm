@@ -33,6 +33,7 @@ from agents.scout.tools import (
 )
 from bus.events import MISSION_BRIEF_READY, STREAM_SCOUT_OUTPUT
 from bus.publisher import publish
+from prometheus.cli.mission.state_logger import log_mission_state
 from shared.metrics import (
     SCOUT_DATASETS_PROCESSED,
     SCOUT_ANALYSIS_DURATION,
@@ -51,16 +52,23 @@ class ScoutAgent(BaseAgent):
     def system_prompt(self) -> str:
         return SCOUT_SYSTEM_PROMPT
 
-    async def run(self) -> None:
+    async def run(
+        self,
+        progress_callback: Any = None,
+    ) -> None:
         self.logger.info(f"[job={self.job_id}] Scout starting")
         AGENT_RUNS.labels(agent="Scout", job_id=self.job_id).inc()
         record_heartbeat("Scout", self.job_id)
 
-        # In Phase 1, we bypass LLM and use deterministic tools directly
-        # In Phase 2+, Scout will call LLM which calls tools
+        log_mission_state("SCOUT_START", self.job_id, brief=self.job_data)
+
         import time as _time
 
         _start = _time.time()
+
+        if progress_callback:
+            progress_callback("Starting mission...")
+
         problem_description = self.job_data.get("problem_description", "")
         file_path = self.job_data.get("file_path", "")
         target_column = self.job_data.get("target_column")
@@ -75,15 +83,31 @@ class ScoutAgent(BaseAgent):
 
         modality_override = self.job_data.get("modality_override")
 
+        if progress_callback:
+            progress_callback("Loading dataset...")
+
         eda = run_eda(file_path, target_column)
         if "error" in eda:
             record_agent_error("Scout", self.job_id, "eda_failed")
             raise ValueError(f"EDA failed: {eda['error']}")
 
+        if progress_callback:
+            progress_callback("Reading columns...")
+
         # ── Engineering Reasoning (Stage 1) ──────────────────────────────
         df_sample = pd.read_csv(file_path, nrows=100)
+
+        if progress_callback:
+            progress_callback("Detecting modality...")
         modality = detect_modality(file_path, modality_override=modality_override)
+
+        if progress_callback:
+            progress_callback("Detecting task...")
         task_type = infer_task_type(target_column, eda.get("column_types", {}), file_path)
+
+        if progress_callback:
+            progress_callback("Detecting target...")
+
         reasoning = {
             "problem_type": reason_problem_type(problem_description, df_sample, target_column),
             "data_quality": reason_data_quality(eda),
@@ -110,6 +134,9 @@ class ScoutAgent(BaseAgent):
         if imbalance_dec:
             reasoning["imbalance"] = imbalance_dec
 
+        if progress_callback:
+            progress_callback("Profiling dataset...")
+
         # ── Experience-based confidence adjustment + pattern reuse (Stage 3) ──
         try:
             from memory.collections.experience_memory import (
@@ -124,7 +151,6 @@ class ScoutAgent(BaseAgent):
             num_columns = eda.get("num_columns", 0)
             imbalance = eda.get("class_imbalance_ratio")
 
-            # Query by rich dataset profile for better pattern matching
             experiences = query_by_dataset_profile(
                 modality=modality,
                 task_type=task_type,
@@ -140,7 +166,6 @@ class ScoutAgent(BaseAgent):
                     f"past experiences"
                 )
 
-            # Query best pipeline for similar problems to surface proven patterns
             best_pipelines = query_best_pipeline(
                 modality=modality,
                 task_type=task_type,
@@ -176,6 +201,11 @@ class ScoutAgent(BaseAgent):
         SCOUT_DATASETS_PROCESSED.labels(job_id=self.job_id, status="success").inc()
         SCOUT_ANALYSIS_DURATION.labels(job_id=self.job_id).observe(_elapsed)
 
+        if progress_callback:
+            progress_callback("Selecting evaluation metric...")
+
+        _threshold = self.job_data.get("deployment_threshold")
+        _operator = self.job_data.get("deployment_operator", ">")
         brief = write_mission_brief(
             eda_results=eda,
             job_id=self.job_id,
@@ -185,10 +215,18 @@ class ScoutAgent(BaseAgent):
             constraints=self.job_data.get("constraints"),
             modality_override=modality_override,
             engineering_reasoning=reasoning,
+            deployment_threshold=_threshold,
+            deployment_operator=_operator,
         )
+
+        if progress_callback:
+            progress_callback("Building mission brief...")
 
         mission_key = f"job:{self.job_id}:mission_brief"
         await self.redis.set_json(mission_key, brief)
+
+        if progress_callback:
+            progress_callback("Writing mission_brief.json...")
 
         # ── Rich MissionSpecification (Stage 1) ─────────────────────────
         spec = write_mission_spec(
@@ -200,6 +238,8 @@ class ScoutAgent(BaseAgent):
             constraints=self.job_data.get("constraints"),
             modality_override=modality_override,
             engineering_reasoning=reasoning,
+            deployment_threshold=_threshold,
+            deployment_operator=_operator,
         )
         spec_key = f"job:{self.job_id}:mission_spec"
         await self.redis.set_json(spec_key, spec)
@@ -207,15 +247,35 @@ class ScoutAgent(BaseAgent):
         await self.redis.set_str(f"job:{self.job_id}:file_path", file_path)
         await self.redis.set_str(f"job:{self.job_id}:problem_description", problem_description)
 
+        if progress_callback:
+            progress_callback("Publishing MISSION_BRIEF_READY...")
+
+        from contracts.events import MissionBriefReadyEvent
+
         await publish(
             self.redis._client,
             STREAM_SCOUT_OUTPUT,
             MISSION_BRIEF_READY,
-            {
-                "job_id": self.job_id,
-                "mission_brief_redis_key": mission_key,
-                "mission_spec_redis_key": spec_key,
-            },
+            MissionBriefReadyEvent(
+                job_id=self.job_id,
+                mission_brief_redis_key=mission_key,
+                mission_spec_redis_key=spec_key,
+            ),
+        )
+
+        if progress_callback:
+            progress_callback("Complete.")
+
+        log_mission_state(
+            "SCOUT_COMPLETE",
+            self.job_id,
+            brief=brief,
+            metric_name=brief.get("evaluation_metric"),
+            deployment_threshold=brief.get("deployment_threshold"),
+            architecture=brief.get("recommended_architecture_family"),
+            imbalance_strategy=brief.get("imbalance_strategy"),
+            task_type=brief.get("task_type"),
+            confidence=reasoning.get("overall_confidence", "?"),
         )
 
         self.logger.info(
@@ -231,6 +291,7 @@ class ScoutAgent(BaseAgent):
         target_column: str | None = None,
         constraints: dict | None = None,
         modality_override: str | None = None,
+        progress_callback: Any = None,
     ) -> dict[str, Any]:
         self.job_data = {
             "problem_description": problem_description,
@@ -239,5 +300,5 @@ class ScoutAgent(BaseAgent):
             "constraints": constraints,
             "modality_override": modality_override,
         }
-        await self.run()
+        await self.run(progress_callback=progress_callback)
         return await self.redis.get_json(f"job:{self.job_id}:mission_brief")

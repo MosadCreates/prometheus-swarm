@@ -4,11 +4,13 @@ import json
 import redis
 import shutil
 from pathlib import Path
+from runtime.paths import get_job_paths
 
 r = redis.Redis("localhost", 6379, decode_responses=True)
 job_id = "4fcfcff1-78d1-4550-95f0-b932f5868eae"
 
-# Reset status to QUEUED
+# Reset state machine
+r.delete(f"job:{job_id}:mission_state")
 r.set(f"job:{job_id}:status", "QUEUED")
 r.set(f"job:{job_id}:current_agent", "")
 r.delete(f"job:{job_id}:api_cost")
@@ -16,7 +18,8 @@ r.delete(f"job:{job_id}:api_cost_summary")
 r.delete(f"job:{job_id}:checkpoint")
 
 # Clean up old outputs
-for p in [Path(f"outputs/{job_id}"), Path(f"scripts/training_script_{job_id}.py")]:
+jp = get_job_paths(job_id)
+for p in [jp.job_dir, jp.script_path]:
     if p.exists():
         if p.is_dir():
             shutil.rmtree(p)

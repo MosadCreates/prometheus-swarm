@@ -13,14 +13,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 
 from dotenv import load_dotenv  # noqa: E402
+from runtime.paths import get_job_paths, get_paths
 
 load_dotenv()
 
 
 async def main():
     job_id = "titanic-e2e"
-    titanic_path = os.path.abspath("data/titanic.csv")
-    checkpoint_path = f"outputs/{job_id}/checkpoints/best.ckpt"
+    jp = get_job_paths(job_id)
+    titanic_path = str(get_paths().data / "titanic.csv")
+    checkpoint_path = str(jp.checkpoint_path)
 
     # ── Phase 1: Scout ──────────────────────────────────────────────
     print("\n=== PHASE 1: SCOUT ===")
@@ -106,7 +108,15 @@ async def main():
 
     # Load model (Pipeline includes preprocessing, pass raw data)
     with open(checkpoint_path, "rb") as f:
-        model = pickle.load(f)
+        ckpt = pickle.load(f)
+
+    if isinstance(ckpt, dict) and "model" in ckpt:
+        model = ckpt["model"]
+        encoder = ckpt.get("target_encoder")
+        if encoder is not None and y_test.dtype == object:
+            y_test = encoder.transform(y_test)
+    else:
+        model = ckpt
 
     # Predict (Pipeline handles preprocessing internally)
     y_pred = model.predict(X_test_raw)
@@ -135,8 +145,8 @@ async def main():
         "metrics": metrics,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    os.makedirs(f"outputs/{job_id}", exist_ok=True)
-    with open(f"outputs/{job_id}/eval_report_{job_id}.json", "w") as f:
+    os.makedirs(str(jp.job_dir), exist_ok=True)
+    with open(str(jp.eval_report_path), "w") as f:
         json.dump(eval_report, f, indent=2)
 
     if decision != "pass":
@@ -156,7 +166,7 @@ async def main():
     from bus.publisher import publish
     from memory.redis_client import RedisClient
 
-    output_dir = f"outputs/{job_id}/serving"
+    output_dir = str(jp.serving_dir)
     os.makedirs(output_dir, exist_ok=True)
 
     # ONNX conversion (try, fallback to pickle)
@@ -189,7 +199,7 @@ async def main():
         # Configure drift monitoring
         _ = configure_drift_monitor(
             job_id=job_id,
-            training_data_path=f"outputs/{job_id}/training_data.csv",
+            training_data_path=str(jp.training_data_csv_path),
         )
 
         # Publish ENDPOINT_LIVE

@@ -15,7 +15,7 @@ import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OrdinalEncoder
+from sklearn.preprocessing import LabelEncoder as _TargetLabelEncoder, OrdinalEncoder
 from sklearn.pipeline import Pipeline
 import lightgbm as lgb
 
@@ -48,7 +48,20 @@ for _c in df.select_dtypes(include="number").columns:
 for _c in df.select_dtypes(include=["object"]).columns:
     df[_c] = df[_c].fillna(df[_c].mode().iloc[0] if not df[_c].mode().empty else "MISSING")
 
-_n_classes = target.nunique()
+# --- Target encoding: handle string labels like 'Yes'/'No', 'True'/'False' ---
+_target_encoder = _TargetLabelEncoder()
+if target.dtype == object or str(target.dtype) == "category":
+    target = _target_encoder.fit_transform(target)
+    _target_classes = _target_encoder.classes_.tolist()
+else:
+    _target_encoder.fit(target)
+    _target_classes = _target_encoder.classes_.tolist()
+
+_n_classes = (
+    len(set(target))
+    if not hasattr(target, "nunique")
+    else len(set(target.tolist() if hasattr(target, "tolist") else target))
+)
 _n_samples = len(target)
 if _n_samples < 2:
     print(f"WARNING: Dataset has {_n_samples} rows; using all data for train and test")
@@ -89,7 +102,7 @@ if _use_optuna:
             [("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))]
         )
         # FAILSAFE: column validation -- verify expected features exist
-        _expected_cols = list(dict.fromkeys(_numeric_cols + _cat_cols))
+        _expected_cols = list(dict.fromkeys(numeric_cols + categorical_cols))
         _missing_cols = [c for c in _expected_cols if c not in X_train.columns]
         if _missing_cols:
             raise ValueError(
@@ -108,7 +121,7 @@ if _use_optuna:
         return roc_auc_score(y_test, _y_pred)
 
     study = optuna.create_study(direction="maximize")
-    study.optimize(_objective, n_trials=10)
+    study.optimize(_objective, n_trials=20)
     best_params = study.best_params
     best_params["random_state"] = 42
     best_params["verbose"] = -1
@@ -127,7 +140,7 @@ model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 y_proba = model.predict_proba(X_test)[:, 1]
 acc = accuracy_score(y_test, y_pred)
-_y_n_classes = y_test.nunique()
+_y_n_classes = len(np.unique(y_test))
 if _y_n_classes > 1:
     auc = roc_auc_score(y_test, y_proba)
 else:
@@ -136,17 +149,25 @@ print(f"Accuracy: {acc:.4f}")
 print(f"AUC: {auc:.4f}")
 
 _outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
-output_dir = os.path.join(_outputs_dir, "test-job-default", "checkpoints")
+# OUTPUTS_DIR is already job-scoped by the Furnace volume mount,
+# so we write directly to "checkpoints/" without nesting job_id.
+output_dir = os.path.join(_outputs_dir, "checkpoints")
 os.makedirs(output_dir, exist_ok=True)
 checkpoint_path = os.path.join(output_dir, "best.ckpt")
+_checkpoint = {
+    "model": model,
+    "target_encoder": _target_encoder,
+    "target_classes": _target_classes,
+    "feature_names": list(X_train.columns) if hasattr(X_train, "columns") else [],
+}
 with open(checkpoint_path, "wb") as f:
-    pickle.dump(model, f)
+    pickle.dump(_checkpoint, f)
 print(f"Model saved to {checkpoint_path}")
 np.save(os.path.join(output_dir, "y_test.npy"), y_test)
 np.save(os.path.join(output_dir, "y_pred.npy"), y_pred)
 np.save(os.path.join(output_dir, "y_prob.npy"), y_proba)
 
 result = {"checkpoint_path": checkpoint_path, "val_score": float(auc), "metric": "auc_roc"}
-with open(os.path.join(_outputs_dir, "test-job-default", "result.json"), "w") as f:
+with open(os.path.join(_outputs_dir, "result.json"), "w") as f:
     json.dump(result, f)
 print("TRAINING_COMPLETE")

@@ -28,6 +28,7 @@ from prometheus.cli.planner import planner
 from prometheus.cli.benchmark import benchmark
 from prometheus.cli.reproduce import reproduce
 from prometheus.cli.evaluate import evaluate
+from prometheus.cli.mission import mission_cmd as mission
 
 __all__ = [
     "help_cmd",
@@ -57,4 +58,5 @@ __all__ = [
     "planner",
     "reproduce",
     "evaluate",
+    "mission",
 ]

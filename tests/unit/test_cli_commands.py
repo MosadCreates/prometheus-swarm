@@ -234,16 +234,16 @@ def test_replay_shows_events(mock_asyncio_run, runner):
 @patch("orchestrator.mission_report.generate_mission_report", new_callable=AsyncMock)
 @patch("memory.redis_client.RedisClient.connect", new_callable=AsyncMock)
 @patch("memory.redis_client.RedisClient.close", new_callable=AsyncMock)
-def test_report_generates(mock_close, mock_connect, mock_generate, runner, tmp_path):
+def test_report_generates(mock_close, mock_connect, mock_generate, runner, tmp_path, monkeypatch):
     """report generates the mission report and confirms success."""
+    monkeypatch.chdir(tmp_path)
     outputs_dir = tmp_path / "outputs"
     outputs_dir.mkdir()
     json_path = outputs_dir / "mission_report_abc12345.json"
     json_path.write_text(json.dumps({"status": "COMPLETED", "job_id": "abc12345"}))
     mock_generate.return_value = str(json_path)
 
-    with patch("orchestrator.mission_report._OUTPUTS_DIR", outputs_dir):
-        result = runner.invoke(cli, ["report", "abc12345"])
+    result = runner.invoke(cli, ["report", "abc12345"])
     assert result.exit_code == 0
     assert "generated" in result.output.lower()
 
@@ -251,8 +251,11 @@ def test_report_generates(mock_close, mock_connect, mock_generate, runner, tmp_p
 @patch("orchestrator.mission_report.generate_mission_report", new_callable=AsyncMock)
 @patch("memory.redis_client.RedisClient.connect", new_callable=AsyncMock)
 @patch("memory.redis_client.RedisClient.close", new_callable=AsyncMock)
-def test_report_view_markdown(mock_close, mock_connect, mock_generate, runner, tmp_path):
+def test_report_view_markdown(
+    mock_close, mock_connect, mock_generate, runner, tmp_path, monkeypatch
+):
     """report --view renders the markdown report in the terminal."""
+    monkeypatch.chdir(tmp_path)
     outputs_dir = tmp_path / "outputs"
     outputs_dir.mkdir()
     md_path = outputs_dir / "mission_report_abc12345.md"
@@ -261,8 +264,7 @@ def test_report_view_markdown(mock_close, mock_connect, mock_generate, runner, t
     json_path.write_text("{}")
     mock_generate.return_value = str(json_path)
 
-    with patch("orchestrator.mission_report._OUTPUTS_DIR", outputs_dir):
-        result = runner.invoke(cli, ["report", "abc12345", "--view"])
+    result = runner.invoke(cli, ["report", "abc12345", "--view"])
     assert result.exit_code == 0
     assert "Mission Report" in result.output
 

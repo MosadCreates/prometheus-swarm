@@ -218,6 +218,19 @@ def add_runtime_column_validation(script: str) -> str:
         ):
             cat_cols_line = i
 
+    # Detect actual variable names used in script (with or without underscore prefix)
+    _num_var = "numeric_cols"
+    _cat_var = "categorical_cols"
+    if numeric_cols_line is not None:
+        raw = lines[numeric_cols_line].strip()
+        if raw.startswith("_"):
+            _num_var = "_numeric_cols"
+    if cat_cols_line is not None:
+        raw = lines[cat_cols_line].strip()
+        m = re.match(r"^(_?[a-z_]+)\s*=", raw)
+        if m:
+            _cat_var = m.group(1).strip()
+
     # Also look for model.fit() insertion point
     for i, line in enumerate(lines):
         stripped = line.strip()
@@ -234,7 +247,7 @@ def add_runtime_column_validation(script: str) -> str:
 
     validation_block = (
         f"{indent}# FAILSAFE: column validation -- verify expected features exist\n"
-        f"{indent}_expected_cols = list(dict.fromkeys(_numeric_cols + _cat_cols))\n"
+        f"{indent}_expected_cols = list(dict.fromkeys({_num_var} + {_cat_var}))\n"
         f"{indent}_missing_cols = [c for c in _expected_cols if c not in X_train.columns]\n"
         f"{indent}if _missing_cols:\n"
         f"{indent}    raise ValueError(\n"

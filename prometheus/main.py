@@ -104,6 +104,7 @@ def _register_commands():
         benchmark,
         reproduce,
         evaluate,
+        mission,
     )
 
     cli.add_command(workspace)
@@ -126,6 +127,7 @@ def _register_commands():
     cli.add_command(benchmark)
     cli.add_command(reproduce)
     cli.add_command(evaluate)
+    cli.add_command(mission)
 
     cli.add_command(help_cmd)
     cli.add_command(commands_cmd)
@@ -152,6 +154,9 @@ def _register_commands():
         "ex": "explain",
         "rp": "replay",
         "rpt": "report",
+        "mission": "new-mission",
+        "new": "new-mission",
+        "start": "new-mission",
     },
     context_settings=dict(help_option_names=[]),
 )

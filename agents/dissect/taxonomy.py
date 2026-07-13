@@ -45,6 +45,9 @@ class TaxonomyEntry:
     terminal: bool = False
     preferred_strategy: str = "cascade"
     pipeline_stage: str = "training"
+    # ── Repair lifecycle fields ─────────────────────────────────────────
+    repairable: bool = True  # False means skip repair → escalate immediately
+    max_attempts: int = 3  # Max patch attempts before escalation (1‑3)
 
 
 TAXONOMY: list[TaxonomyEntry] = [
@@ -113,6 +116,8 @@ TAXONOMY: list[TaxonomyEntry] = [
             r"cannot convert",
             r"not supported between instances",
             r"expected target dtype",
+            r"Invalid classes inferred",
+            r"Expected.*\[0 1\].*got",
         ],
         repair_strategy="Detect non-numeric column; add LabelEncoder or OrdinalEncoder",
         deterministic=True,
@@ -146,6 +151,8 @@ TAXONOMY: list[TaxonomyEntry] = [
         cascade_level=0,
         has_rule=True,
         terminal=True,
+        repairable=False,
+        max_attempts=1,
         preferred_strategy="terminal",
     ),
     TaxonomyEntry(
@@ -254,6 +261,8 @@ TAXONOMY: list[TaxonomyEntry] = [
         cascade_level=0,
         has_rule=True,
         terminal=True,
+        repairable=False,
+        max_attempts=1,
         preferred_strategy="terminal",
     ),
     TaxonomyEntry(
@@ -271,6 +280,8 @@ TAXONOMY: list[TaxonomyEntry] = [
         cascade_level=0,
         has_rule=True,
         terminal=True,
+        repairable=False,
+        max_attempts=1,
         preferred_strategy="terminal",
     ),
     TaxonomyEntry(
@@ -331,6 +342,22 @@ TAXONOMY: list[TaxonomyEntry] = [
         cascade_level=0,
         has_rule=True,
         sub_strategies=["reorder_args", "ast_fix", "add_missing_paren"],
+        preferred_strategy="rule",
+    ),
+    TaxonomyEntry(
+        category="unseen_label",
+        exception_types=["ValueError"],
+        message_patterns=[
+            r"y contains new labels",
+            r"unseen label",
+            r"previously unseen",
+            r"contains new label",
+            r"new label",
+        ],
+        repair_strategy="Replace per-column LabelEncoder with OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1); use mapping dict with fillna(-1) for unseen categories in test set",
+        deterministic=True,
+        cascade_level=0,
+        has_rule=True,
         preferred_strategy="rule",
     ),
     TaxonomyEntry(
@@ -507,3 +534,19 @@ def get_repair_strategy(category: str) -> str:
         if entry.category == category:
             return entry.repair_strategy
     return "Unknown error - escalate to human"
+
+
+def is_repairable(category: str) -> bool:
+    """True if Dissect should attempt repair; False means escalate immediately."""
+    for entry in TAXONOMY:
+        if entry.category == category:
+            return entry.repairable
+    return True  # default to repairable for unknown categories
+
+
+def get_max_attempts(category: str) -> int:
+    """Max patch attempts before escalation (1‑3)."""
+    for entry in TAXONOMY:
+        if entry.category == category:
+            return entry.max_attempts
+    return 3

@@ -97,14 +97,19 @@ def write_training_script(
         Path to the written training script.
     """
     if architecture is None:
-        architecture = select_architecture(mission_brief)
+        raise ValueError(
+            "write_training_script requires an explicit architecture argument. "
+            "The caller (ForgeAgent.run) must select architecture from RetryPlan, "
+            "Scout spec, or decision tree — this function must not re-derive it. "
+            "This prevents accidental RetryPlan overrides."
+        )
 
     plan = engineering_plan or {}
 
     # Extract plan-driven parameters with sensible defaults
     validation_strategy = "train_val_split"
     imbalance_method = "none"
-    max_trials = 10
+    max_trials = 20
     gpu_required = False
     expected_ram_mb = 512
 
@@ -131,7 +136,7 @@ def write_training_script(
                 imbalance_method = "class_weight"
                 break
 
-        max_trials = hp.get("max_trials", 10) if hp else 10
+        max_trials = hp.get("max_trials", 20) if hp else 20
         gpu_required = budget.get("gpu_required", False) if budget else False
         expected_ram_mb = budget.get("estimated_ram_mb", 512) if budget else 512
 
@@ -266,7 +271,7 @@ def _write_xgboost_script(
     scripts_dir: str = "./scripts",
     design_summary: str | None = None,
     validation_strategy: str = "train_val_split",
-    max_trials: int = 10,
+    max_trials: int = 20,
 ) -> str:
     """Generate an XGBoost training script."""
     task_type = mission_brief["task_type"]
@@ -335,7 +340,8 @@ def _write_xgboost_script(
         final_fit = ""
 
     header_design = _design_header_block(design_summary)
-    script = f'''"""
+    script = f'''#!/usr/bin/env python3
+"""
 Training script for job {job_id}
 Architecture: xgboost
 Task: {task_type}
@@ -351,9 +357,9 @@ import warnings
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import accuracy_score, mean_squared_error
+from sklearn.metrics import accuracy_score, mean_squared_error, roc_auc_score
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OrdinalEncoder
+from sklearn.preprocessing import LabelEncoder as _TargetLabelEncoder, OrdinalEncoder
 from sklearn.pipeline import Pipeline
 import xgboost as xgb
 
@@ -388,6 +394,15 @@ for _c in df.select_dtypes(include=["object"]).columns:
     if _converted.dtype in ("int64", "float64"):
         df[_c] = _converted
 
+# --- Target encoding: handles string labels like 'Yes'/'No', 'True'/'False' ---
+_target_encoder = _TargetLabelEncoder()
+if target.dtype == object or str(target.dtype) == 'category':
+    target = _target_encoder.fit_transform(target)
+    _target_classes = _target_encoder.classes_.tolist()
+else:
+    _target_encoder.fit(target)
+    _target_classes = _target_encoder.classes_.tolist()
+
 {split_and_cv}
 numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolist()
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
@@ -410,8 +425,8 @@ if _use_optuna:
             params["verbosity"] = 0
             _model = Pipeline([("preprocessor", preprocessor), ("estimator", xgb.XGBClassifier(**params))])
             _model.fit(X_train, y_train)
-            _y_pred = _model.predict(X_test)
-            return accuracy_score(y_test, _y_pred)
+            _y_prob = _model.predict_proba(X_test)[:, 1]
+            return roc_auc_score(y_test, _y_prob)
     else:
         def _objective(trial):
             params = {{}}
@@ -452,11 +467,17 @@ else:
     {eval_metrics}
 
 _outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
-output_dir = os.path.join(_outputs_dir, "{job_id}", "checkpoints")
+output_dir = os.path.join(_outputs_dir, "checkpoints")
 os.makedirs(output_dir, exist_ok=True)
 checkpoint_path = os.path.join(output_dir, "best.ckpt")
+_checkpoint = {{
+    "model": model,
+    "target_encoder": _target_encoder,
+    "target_classes": _target_classes,
+    "feature_names": list(X_train.columns) if hasattr(X_train, 'columns') else [],
+}}
 with open(checkpoint_path, "wb") as f:
-    pickle.dump(model, f)
+    pickle.dump(_checkpoint, f)
 print(f"Model saved to {{checkpoint_path}}")
 np.save(os.path.join(output_dir, "y_test.npy"), y_test)
 np.save(os.path.join(output_dir, "y_pred.npy"), y_pred)
@@ -464,8 +485,8 @@ if {is_classification}:
     y_prob_full = model.predict_proba(X_test)
     if y_prob_full.shape[1] == 2:
         y_prob_full = y_prob_full[:, 1]
-    np.save(os.path.join(output_dir, "y_prob.npy"), y_prob_full)
-'''
+    np.save(os.path.join(output_dir, "y_prob.npy"), y_prob_full)'''
+
     script_path = os.path.join(scripts_dir, f"training_script_{job_id}.py")
     os.makedirs(scripts_dir, exist_ok=True)
     with open(script_path, "w", encoding="utf-8") as f:
@@ -480,7 +501,7 @@ def _write_tabnet_script(
     scripts_dir: str = "./scripts",
     design_summary: str | None = None,
     validation_strategy: str = "train_val_split",
-    max_trials: int = 10,
+    max_trials: int = 20,
 ) -> str:
     """Generate a TabNet training script for large tabular datasets."""
     task_type = mission_brief["task_type"]
@@ -509,7 +530,8 @@ def _write_tabnet_script(
             "target = df.pop(_target_col)"
         )
     header_design = _design_header_block(design_summary)
-    script = f'''"""
+    script = f'''#!/usr/bin/env python3
+"""
 Training script for job {job_id}
 Architecture: tabnet
 Task: {task_type}
@@ -557,6 +579,15 @@ for _c in df.select_dtypes(include=["object"]).columns:
     if _converted.dtype in ("int64", "float64"):
         df[_c] = _converted
 
+# --- Target encoding: handles string labels like 'Yes'/'No', 'True'/'False' ---
+_target_encoder = LabelEncoder()
+if target.dtype == object or str(target.dtype) == 'category':
+    target = pd.Series(_target_encoder.fit_transform(target), index=target.index)
+    _target_classes = _target_encoder.classes_.tolist()
+else:
+    _target_encoder.fit(target)
+    _target_classes = _target_encoder.classes_.tolist()
+
 X_train, X_test, y_train, y_test = train_test_split(
     df, target, test_size=0.2, random_state=42
 )
@@ -565,9 +596,10 @@ numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolis
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
 # TabNet requires numerical inputs — encode categories and scale
-for col in categorical_cols:
-    X_train[col] = LabelEncoder().fit_transform(X_train[col].astype(str))
-    X_test[col] = LabelEncoder().fit_transform(X_test[col].astype(str))
+if categorical_cols:
+    _cat_encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+    X_train[categorical_cols] = _cat_encoder.fit_transform(X_train[categorical_cols].astype(str))
+    X_test[categorical_cols] = _cat_encoder.transform(X_test[categorical_cols].astype(str))
 
 scaler = StandardScaler()
 X_train[numeric_cols] = scaler.fit_transform(X_train[numeric_cols])
@@ -626,11 +658,16 @@ else:
     print(f"RMSE: {{rmse:.4f}}")
 
 _outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
-output_dir = os.path.join(_outputs_dir, "{job_id}", "checkpoints")
+output_dir = os.path.join(_outputs_dir, "checkpoints")
 os.makedirs(output_dir, exist_ok=True)
 checkpoint_path = os.path.join(output_dir, "best.ckpt")
+_checkpoint = {{
+    "model": model,
+    "target_encoder": _target_encoder,
+    "target_classes": _target_classes,
+}}
 with open(checkpoint_path, "wb") as f:
-    pickle.dump(model, f)
+    pickle.dump(_checkpoint, f)
 print(f"Model saved to {{checkpoint_path}}")
 np.save(os.path.join(output_dir, "y_test.npy"), np.array(y_test))
 np.save(os.path.join(output_dir, "y_pred.npy"), np.array(y_pred))
@@ -654,7 +691,7 @@ def _write_lightgbm_script(
     design_summary: str | None = None,
     validation_strategy: str = "train_val_split",
     imbalance_method: str = "none",
-    max_trials: int = 10,
+    max_trials: int = 20,
 ) -> str:
     task_type = mission_brief["task_type"]
     target = mission_brief.get("target_column", "target")
@@ -687,11 +724,13 @@ def _write_lightgbm_script(
     smote_import = ""
     smote_step = ""
     class_weight_param = ""
+    class_weight_objective_line = ""
     if imbalance_method == "smote":
         smote_import = "from imblearn.over_sampling import SMOTE\nfrom imblearn.pipeline import Pipeline as ImbPipeline\n"
         smote_step = "model = ImbPipeline([('preprocessor', preprocessor), ('smote', SMOTE(random_state=42)), ('estimator', estimator)])\n"
     elif imbalance_method == "class_weight" and is_classification:
-        class_weight_param = ', "class_weight": "balanced"'
+        class_weight_param = ', class_weight="balanced"'
+        class_weight_objective_line = '            params["class_weight"] = "balanced"\n'
 
     eval_metrics = (
         'y_pred_class = (y_pred > 0.5).astype(int)\nprint(f"Accuracy: {accuracy_score(y_test, y_pred_class):.4f}")'
@@ -734,7 +773,8 @@ model.fit(X_train, y_train)
         final_fit = ""
 
     header_design = _design_header_block(design_summary)
-    script = f'''"""
+    script = f'''#!/usr/bin/env python3
+"""
 Training script for job {job_id}
 Architecture: lightgbm
 Task: {task_type}
@@ -751,9 +791,9 @@ import warnings
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import accuracy_score, mean_squared_error
+from sklearn.metrics import accuracy_score, mean_squared_error, roc_auc_score
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OrdinalEncoder
+from sklearn.preprocessing import LabelEncoder as _TargetLabelEncoder, OrdinalEncoder
 from sklearn.pipeline import Pipeline
 import lightgbm as lgb
 {smote_import}
@@ -788,6 +828,15 @@ for _c in df.select_dtypes(include=["object"]).columns:
     if _converted.dtype in ("int64", "float64"):
         df[_c] = _converted
 
+# --- Target encoding: handles string labels like 'Yes'/'No', 'True'/'False' ---
+_target_encoder = _TargetLabelEncoder()
+if target.dtype == object or str(target.dtype) == 'category':
+    target = _target_encoder.fit_transform(target)
+    _target_classes = _target_encoder.classes_.tolist()
+else:
+    _target_encoder.fit(target)
+    _target_classes = _target_encoder.classes_.tolist()
+
 {split_and_cv}
 numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolist()
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
@@ -808,10 +857,10 @@ if _use_optuna:
                     params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
             params["random_state"] = 42
             params["verbosity"] = -1
-            _model = Pipeline([("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))])
+            {class_weight_objective_line}            _model = Pipeline([("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))])
             _model.fit(X_train, y_train)
-            _y_pred = _model.predict(X_test)
-            return accuracy_score(y_test, _y_pred)
+            _y_prob = _model.predict_proba(X_test)[:, 1]
+            return roc_auc_score(y_test, _y_prob)
     else:
         def _objective(trial):
             params = {{}}
@@ -851,11 +900,17 @@ else:
     {eval_metrics}
 
 _outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
-output_dir = os.path.join(_outputs_dir, "{job_id}", "checkpoints")
+output_dir = os.path.join(_outputs_dir, "checkpoints")
 os.makedirs(output_dir, exist_ok=True)
 checkpoint_path = os.path.join(output_dir, "best.ckpt")
+_checkpoint = {{
+    "model": model,
+    "target_encoder": _target_encoder,
+    "target_classes": _target_classes,
+    "feature_names": list(X_train.columns) if hasattr(X_train, 'columns') else [],
+}}
 with open(checkpoint_path, "wb") as f:
-    pickle.dump(model, f)
+    pickle.dump(_checkpoint, f)
 print(f"Model saved to {{checkpoint_path}}")
 np.save(os.path.join(output_dir, "y_test.npy"), y_test)
 np.save(os.path.join(output_dir, "y_pred.npy"), y_pred)
@@ -880,7 +935,7 @@ def _write_distilbert_script(
     job_id: str,
     scripts_dir: str = "./scripts",
     design_summary: str | None = None,
-    max_trials: int = 10,
+    max_trials: int = 20,
 ) -> str:
     task_type = mission_brief["task_type"]
     target = mission_brief.get("target_column", "target")
@@ -889,7 +944,8 @@ def _write_distilbert_script(
     data_delimiter = mission_brief.get("dataset", {}).get("delimiter", ",")
 
     header_design = _design_header_block(design_summary)
-    script = f'''"""
+    script = f'''#!/usr/bin/env python3
+"""
 Training script for job {job_id}
 Architecture: distilbert
 Task: {task_type}
@@ -911,10 +967,10 @@ from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import LabelEncoder
 warnings.filterwarnings("ignore")
 
-JOB_ID = "{job_id}"
 DATA_PATH = os.path.join(os.getenv("DATA_DIR", "./data"), "{data_filename}")
 TARGET_COL = "{target}"
-OUTPUT_DIR = os.path.join(os.getenv("OUTPUTS_DIR", "./outputs"), JOB_ID, "checkpoints")
+_outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
+OUTPUT_DIR = os.path.join(_outputs_dir, "checkpoints")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 df = pd.read_csv(DATA_PATH, sep="{data_delimiter}")
@@ -984,7 +1040,7 @@ np.save(os.path.join(OUTPUT_DIR, "y_test.npy"), np.array(val_labels))
 np.save(os.path.join(OUTPUT_DIR, "y_pred.npy"), np.array(all_preds))
 
 result = {{"checkpoint_path": checkpoint_path, "val_score": float(val_acc), "metric": "accuracy"}}
-with open(os.path.join("outputs", JOB_ID, "result.json"), "w") as f:
+with open(os.path.join(_outputs_dir, "result.json"), "w") as f:
     json.dump(result, f)
 print("TRAINING_COMPLETE")
 '''
@@ -1003,7 +1059,7 @@ def _write_efficientnet_script(
     job_id: str,
     scripts_dir: str = "./scripts",
     design_summary: str | None = None,
-    max_trials: int = 10,
+    max_trials: int = 20,
 ) -> str:
     task_type = mission_brief["task_type"]
     file_path = mission_brief["dataset"]["file_path"]
@@ -1011,7 +1067,8 @@ def _write_efficientnet_script(
     data_delimiter = mission_brief.get("dataset", {}).get("delimiter", ",")
 
     header_design = _design_header_block(design_summary)
-    script = f'''"""
+    script = f'''#!/usr/bin/env python3
+"""
 Training script for job {job_id}
 Architecture: efficientnet
 Task: {task_type}
@@ -1036,9 +1093,9 @@ from sklearn.preprocessing import LabelEncoder
 from PIL import Image
 warnings.filterwarnings("ignore")
 
-JOB_ID = "{job_id}"
 DATA_PATH = os.path.join(os.getenv("DATA_DIR", "./data"), "{data_filename}")
-OUTPUT_DIR = os.path.join(os.getenv("OUTPUTS_DIR", "./outputs"), JOB_ID, "checkpoints")
+_outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
+OUTPUT_DIR = os.path.join(_outputs_dir, "checkpoints")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 df = pd.read_csv(DATA_PATH, sep="{data_delimiter}")
@@ -1116,7 +1173,7 @@ np.save(os.path.join(OUTPUT_DIR, "y_test.npy"), np.array(all_labels))
 np.save(os.path.join(OUTPUT_DIR, "y_pred.npy"), np.array(all_preds))
 
 result = {{"checkpoint_path": checkpoint_path, "val_score": float(val_acc), "metric": "accuracy"}}
-with open(os.path.join("outputs", JOB_ID, "result.json"), "w") as f:
+with open(os.path.join(_outputs_dir, "result.json"), "w") as f:
     json.dump(result, f)
 print("TRAINING_COMPLETE")
 '''

@@ -21,6 +21,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from runtime.paths import get_job_paths
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
@@ -174,7 +176,7 @@ async def run_arbiter_eval(job_id: str, task_type: str) -> dict | None:
         make_decision,
     )
 
-    ckpt_dir = Path(f"outputs/{job_id}/checkpoints")
+    ckpt_dir = get_job_paths(job_id).checkpoints_dir
 
     if not (ckpt_dir / "y_test.npy").exists():
         logger.warning(f"[{job_id}] No y_test.npy found at {ckpt_dir}")
@@ -454,7 +456,8 @@ async def evaluate(job_id: str, problem: dict) -> dict | None:
     task = problem["task_type"]
     result = await run_arbiter_eval(job_id, task)
     if result is None:
-        ckpt_dir = Path(f"outputs/{job_id}/checkpoints")
+        jp = get_job_paths(job_id)
+        ckpt_dir = jp.checkpoints_dir
         if ckpt_dir.exists():
             shutil.rmtree(str(ckpt_dir.parent))
         return None
@@ -801,10 +804,11 @@ async def _run_single_problem(
 
     # Clean up training script and outputs
     try:
-        script_path = f"scripts/training_script_{job_id}.py"
+        jp = get_job_paths(job_id)
+        script_path = str(jp.script_path)
         if os.path.exists(script_path):
             os.unlink(script_path)
-        ckpt_dir = Path(f"outputs/{job_id}")
+        ckpt_dir = jp.job_dir
         if ckpt_dir.exists():
             shutil.rmtree(str(ckpt_dir))
     except Exception:

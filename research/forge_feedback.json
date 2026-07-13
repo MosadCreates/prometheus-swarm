@@ -3,64 +3,116 @@
     "unknown::shape_mismatch": {
       "architecture": "unknown",
       "category": "shape_mismatch",
-      "count": 149,
-      "last_seen": "2026-07-09T21:16:23.027703+00:00",
+      "count": 405,
+      "last_seen": "2026-07-13T22:23:26.068305+00:00",
       "recommendation": "Avoid errors of type shape_mismatch in unknown scripts"
     },
     "lightgbm::dtype_mismatch": {
       "architecture": "lightgbm",
       "category": "dtype_mismatch",
-      "count": 167,
-      "last_seen": "2026-07-09T21:16:58.556673+00:00",
+      "count": 392,
+      "last_seen": "2026-07-12T15:21:42.116319+00:00",
       "recommendation": "Add LabelEncoder/OrdinalEncoder for categorical columns during preprocessing; use pd.to_numeric with errors='coerce' for mixed-type columns"
     },
     "unknown::missing_column": {
       "architecture": "unknown",
       "category": "missing_column",
-      "count": 39,
-      "last_seen": "2026-07-09T20:18:01.738248+00:00",
+      "count": 40,
+      "last_seen": "2026-07-10T14:30:37.814210+00:00",
       "recommendation": "Verify all column names used in script match actual dataset columns; use df.columns to list available columns before referencing them"
     },
     "unknown::name_error": {
       "architecture": "unknown",
       "category": "name_error",
-      "count": 4,
-      "last_seen": "2026-07-09T18:40:06.807262+00:00",
+      "count": 6,
+      "last_seen": "2026-07-12T16:46:40.604414+00:00",
       "recommendation": "Never generate JS-style literals (false, true, null); use Python literals"
+    },
+    "unknown::syntax_error": {
+      "architecture": "unknown",
+      "category": "syntax_error",
+      "count": 1,
+      "last_seen": "2026-07-10T15:50:31.985576+00:00",
+      "recommendation": "Run ast.parse() on generated script before writing to file; use black or autopep8 formatter"
+    },
+    "unknown::feature_mismatch": {
+      "architecture": "unknown",
+      "category": "feature_mismatch",
+      "count": 2,
+      "last_seen": "2026-07-11T18:18:50.280434+00:00",
+      "recommendation": "Avoid errors of type feature_mismatch in unknown scripts"
+    },
+    "unknown::unseen_label": {
+      "architecture": "unknown",
+      "category": "unseen_label",
+      "count": 1,
+      "last_seen": "2026-07-11T18:07:27.988319+00:00",
+      "recommendation": "Avoid errors of type unseen_label in unknown scripts"
+    },
+    "unknown::checkpoint_corruption": {
+      "architecture": "unknown",
+      "category": "checkpoint_corruption",
+      "count": 1,
+      "last_seen": "2026-07-11T18:40:32.422093+00:00",
+      "recommendation": "Delete corrupt checkpoint; increase save frequency"
     }
   },
   "category_by_architecture": {
     "unknown": {
-      "shape_mismatch": 149,
-      "missing_column": 39,
-      "name_error": 4
+      "shape_mismatch": 405,
+      "missing_column": 40,
+      "name_error": 6,
+      "syntax_error": 1,
+      "feature_mismatch": 2,
+      "unseen_label": 1,
+      "checkpoint_corruption": 1
     },
     "lightgbm": {
-      "dtype_mismatch": 167
+      "dtype_mismatch": 392
     }
   },
   "top_failures": [
     {
-      "key": "lightgbm::dtype_mismatch",
-      "count": 167,
-      "recommendation": "Add LabelEncoder/OrdinalEncoder for categorical columns during preprocessing; use pd.to_numeric with errors='coerce' for mixed-type columns"
-    },
-    {
       "key": "unknown::shape_mismatch",
-      "count": 149,
+      "count": 405,
       "recommendation": "Avoid errors of type shape_mismatch in unknown scripts"
     },
     {
+      "key": "lightgbm::dtype_mismatch",
+      "count": 392,
+      "recommendation": "Add LabelEncoder/OrdinalEncoder for categorical columns during preprocessing; use pd.to_numeric with errors='coerce' for mixed-type columns"
+    },
+    {
       "key": "unknown::missing_column",
-      "count": 39,
+      "count": 40,
       "recommendation": "Verify all column names used in script match actual dataset columns; use df.columns to list available columns before referencing them"
     },
     {
       "key": "unknown::name_error",
-      "count": 4,
+      "count": 6,
       "recommendation": "Never generate JS-style literals (false, true, null); use Python literals"
+    },
+    {
+      "key": "unknown::feature_mismatch",
+      "count": 2,
+      "recommendation": "Avoid errors of type feature_mismatch in unknown scripts"
+    },
+    {
+      "key": "unknown::syntax_error",
+      "count": 1,
+      "recommendation": "Run ast.parse() on generated script before writing to file; use black or autopep8 formatter"
+    },
+    {
+      "key": "unknown::unseen_label",
+      "count": 1,
+      "recommendation": "Avoid errors of type unseen_label in unknown scripts"
+    },
+    {
+      "key": "unknown::checkpoint_corruption",
+      "count": 1,
+      "recommendation": "Delete corrupt checkpoint; increase save frequency"
     }
   ],
-  "total_jobs_tracked": 359,
-  "total_repairs_needed": 207
+  "total_jobs_tracked": 848,
+  "total_repairs_needed": 477
 }

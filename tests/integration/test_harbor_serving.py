@@ -10,6 +10,7 @@ import sys
 import tempfile
 
 import joblib
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -24,16 +25,20 @@ from agents.harbor.tools import generate_fastapi_app, serialize_to_onnx
 
 @pytest.fixture(scope="module")
 def model_and_serving():
-    """Train a tiny sklearn Pipeline and generate a FastAPI serving app dir."""
+    """Train a Pipeline with enough data + estimators to learn meaningful probabilities."""
     import lightgbm as lgb
 
-    df = pd.DataFrame(
-        {
-            "Age": [25.0, 30.0, 35.0, 22.0, 40.0, 28.0, 33.0, 45.0, 27.0, 38.0],
-            "Sex": ["M", "F", "M", "F", "M", "F", "M", "F", "M", "F"],
-            "target": [0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
-        }
-    )
+    np.random.seed(42)
+    n = 150
+    ages = np.random.uniform(20, 60, n)
+    sexes = np.random.choice(["M", "F"], n)
+    targets = []
+    for age, sex in zip(ages, sexes):
+        prob = 0.3 + 0.4 * (sex == "F") + 0.3 * (age - 30) / 30
+        prob = min(max(prob, 0.0), 1.0)
+        targets.append(1 if np.random.random() < prob else 0)
+
+    df = pd.DataFrame({"Age": ages, "Sex": sexes, "target": targets})
     X = df[["Age", "Sex"]]
     y = df["target"]
 
@@ -46,7 +51,7 @@ def model_and_serving():
     model = Pipeline(
         [
             ("preprocessor", preprocessor),
-            ("estimator", lgb.LGBMClassifier(n_estimators=10, random_state=42, verbose=-1)),
+            ("estimator", lgb.LGBMClassifier(n_estimators=100, random_state=42, verbose=-1)),
         ]
     )
     model.fit(X, y)
@@ -55,7 +60,7 @@ def model_and_serving():
 
 @pytest.fixture(scope="module")
 def serving_dir(model_and_serving):
-    """Create a serving directory with model + generated FastAPI app."""
+    """Create a serving directory with model + generated FastAPI app using contract."""
     tmpdir = tempfile.mkdtemp()
 
     pkl_path = os.path.join(tmpdir, "model.pkl")
@@ -73,13 +78,16 @@ def serving_dir(model_and_serving):
     model_format = "onnx" if success else "pickle"
     model_path = onnx_path if success else pkl_path
 
+    # Auto-detect contract path
+    contract_path = model_path.replace(".onnx", "_contract.json").replace(".pkl", "_contract.json")
+    if not os.path.exists(contract_path):
+        contract_path = None
+
     generate_fastapi_app(
         model_path=os.path.abspath(model_path),
         output_dir=tmpdir,
         model_format=model_format,
-        feature_names=["Age", "Sex"],
-        numeric_cols=["Age"],
-        categorical_cols=["Sex"],
+        contract_path=contract_path,
     )
 
     return tmpdir, model_format
@@ -118,6 +126,24 @@ class TestHarborServing:
         assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text}"
         data = r.json()
         assert "predictions" in data
+        assert "probability" in data, f"Response missing 'probability' field: {data}"
+        assert (
+            "class_probabilities" in data
+        ), f"Response missing 'class_probabilities' field: {data}"
+        prob = data["probability"]
+        assert isinstance(prob, list), f"probability should be a list, got {type(prob)}"
+        assert len(prob) == 1, f"Expected 1 probability value, got {len(prob)}"
+        assert 0.0 <= prob[0] <= 1.0, f"Probability {prob[0]} outside [0, 1]"
+
+    def test_predict_probability_differs_by_sex(self, test_client):
+        """Male and Female with same Age should yield clearly different probabilities."""
+        r1 = test_client.post("/predict", json={"Age": 25.0, "Sex": "M"})
+        r2 = test_client.post("/predict", json={"Age": 25.0, "Sex": "F"})
+        assert r1.status_code == 200 and r2.status_code == 200
+        p_male = r1.json()["probability"][0]
+        p_female = r2.json()["probability"][0]
+        diff = abs(p_male - p_female)
+        assert diff > 0.01, f"Male probability {p_male} vs Female {p_female} diff={diff} too small"
 
     def test_predict_batch(self, test_client):
         r = test_client.post(
@@ -131,6 +157,10 @@ class TestHarborServing:
         data = r.json()
         predictions = data.get("predictions", [])
         assert len(predictions) == 2
+        assert "probability" in data
+        assert len(data["probability"]) == 2
+        assert "class_probabilities" in data
+        assert len(data["class_probabilities"]) == 2
 
     def test_invalid_input_returns_error(self, test_client):
         r = test_client.post("/predict", json={"bad_key": "not_a_number"})

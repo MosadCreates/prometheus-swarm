@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from runtime.paths import get_job_paths
 from research.validation.models import (
     Experiment,
     ExperimentRun,
@@ -278,7 +279,7 @@ def _cleanup(script_path: str, job_id: str) -> None:
     except Exception:
         pass
     try:
-        ckpt_dir = Path(f"outputs/{job_id}")
+        ckpt_dir = get_job_paths(job_id).job_dir
         if ckpt_dir.exists():
             shutil.rmtree(str(ckpt_dir))
     except Exception:

@@ -16,18 +16,30 @@ def job_list_table(jobs: list[dict]) -> Table:
 
 
 def deploy_list_table(containers: list[dict]) -> Table:
-    table = Table(title="Deployed Endpoints")
-    table.add_column("Name")
+    table = Table(title="Active Deployments")
+    table.add_column("Job ID")
+    table.add_column("Port")
+    table.add_column("Health")
     table.add_column("Status")
     table.add_column("Image")
-    table.add_column("Ports")
+    table.add_column("Container")
     for c in containers:
-        ports_str = (
-            ", ".join(f"{k}->{v[0]['HostPort'] if v else'?'}" for k, v in c["ports"].items())
-            if c["ports"]
-            else ""
+        port_str = str(c.get("host_port") or "?")
+        health_str = c.get("health", "?")
+        if health_str == "healthy":
+            health_display = "[green]healthy[/]"
+        elif health_str in ("unreachable", "n/a"):
+            health_display = f"[red]{health_str}[/]"
+        else:
+            health_display = f"[yellow]{health_str}[/]"
+        table.add_row(
+            c.get("job_id", "?"),
+            port_str,
+            health_display,
+            c.get("status", "?"),
+            c.get("image", "?"),
+            c.get("name", "?"),
         )
-        table.add_row(c["name"], c["status"], c["image"], ports_str)
     return table
 
 

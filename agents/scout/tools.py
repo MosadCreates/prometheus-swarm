@@ -276,8 +276,6 @@ def suggest_imbalance_strategy(imbalance_ratio: float | None) -> str:
         return "smote"
     elif imbalance_ratio > 5:
         return "class_weight"
-    elif imbalance_ratio > 3:
-        return "focal_loss"
     return "none"
 
 
@@ -300,43 +298,54 @@ def write_mission_brief(
     constraints: dict | None = None,
     modality_override: str | None = None,
     engineering_reasoning: dict[str, Any] | None = None,
+    deployment_threshold: float | None = None,
+    deployment_operator: str = ">",
 ) -> dict[str, Any]:
+    from contracts import DatasetInfo, DataQuality, Constraints, MissionBrief
+
     task_type = infer_task_type(target_column, eda_results.get("column_types", {}), file_path)
     metric = select_evaluation_metric(task_type, eda_results.get("class_imbalance_ratio"))
     modality = detect_modality(file_path, modality_override=modality_override)
     imbalance_strategy = suggest_imbalance_strategy(eda_results.get("class_imbalance_ratio"))
 
-    brief = {
-        "schema_version": "1.0",
-        "job_id": job_id,
-        "problem_description": problem_description,
-        "task_type": task_type,
-        "modality": modality,
-        "target_column": target_column,
-        "evaluation_metric": metric,
-        "constraints": constraints or {"max_latency_ms": None, "max_model_size_mb": None},
-        "dataset": {
-            "file_path": file_path,
-            "num_rows": eda_results.get("num_rows", 0),
-            "num_columns": eda_results.get("num_columns", 0),
-            "delimiter": eda_results.get("delimiter", ","),
-            "column_types": eda_results.get("column_types", {}),
-        },
-        "data_quality": {
-            "class_imbalance_ratio": eda_results.get("class_imbalance_ratio"),
-            "missing_value_rate": eda_results.get("missing_value_rate", {}),
-            "high_cardinality_columns": eda_results.get("high_cardinality_columns", []),
-            "data_warnings": eda_results.get("data_warnings", []),
-        },
-        "imbalance_strategy": imbalance_strategy,
-        "recommended_architecture_family": select_architecture_family(
+    raw_constraints = constraints or {"max_latency_ms": None, "max_model_size_mb": None}
+    if isinstance(raw_constraints, dict):
+        raw_constraints["deployment_threshold"] = deployment_threshold
+        raw_constraints["deployment_operator"] = deployment_operator
+
+    brief = MissionBrief(
+        job_id=job_id,
+        problem_description=problem_description,
+        task_type=task_type,
+        modality=modality,
+        target_column=target_column,
+        evaluation_metric=metric,
+        constraints=(
+            Constraints(**raw_constraints) if isinstance(raw_constraints, dict) else raw_constraints
+        ),
+        deployment_threshold=deployment_threshold,
+        deployment_operator=deployment_operator or ">",
+        dataset=DatasetInfo(
+            file_path=file_path,
+            num_rows=eda_results.get("num_rows", 0),
+            num_columns=eda_results.get("num_columns", 0),
+            delimiter=eda_results.get("delimiter", ","),
+            column_types=eda_results.get("column_types", {}),
+        ),
+        data_quality=DataQuality(
+            class_imbalance_ratio=eda_results.get("class_imbalance_ratio"),
+            missing_value_rate=eda_results.get("missing_value_rate", {}),
+            high_cardinality_columns=eda_results.get("high_cardinality_columns", []),
+            data_warnings=eda_results.get("data_warnings", []),
+        ),
+        imbalance_strategy=imbalance_strategy,
+        recommended_architecture_family=select_architecture_family(
             modality, task_type, eda_results.get("num_rows", 0)
         ),
-        "engineering_reasoning": engineering_reasoning or {},
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+        engineering_reasoning=engineering_reasoning or {},
+    )
 
-    return brief
+    return brief.model_dump()
 
 
 def _compute_expected_metric_range(
@@ -461,6 +470,8 @@ def write_mission_spec(
     constraints: dict | None = None,
     modality_override: str | None = None,
     engineering_reasoning: dict[str, Any] | None = None,
+    deployment_threshold: float | None = None,
+    deployment_operator: str = ">",
 ) -> dict[str, Any]:
     """Write a rich MissionSpecification — the authoritative mission analysis.
 
@@ -491,7 +502,7 @@ def write_mission_spec(
     overall_confidence = reasoning.get("overall_confidence", 0.85)
 
     spec = {
-        "spec_version": "2.0",
+        "schema_version": "2.0",
         "job_id": job_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "objective": {
@@ -501,6 +512,8 @@ def write_mission_spec(
             "target_column": target_column,
             "evaluation_metric": metric,
             "constraints": constraints or {"max_latency_ms": None, "max_model_size_mb": None},
+            "deployment_threshold": deployment_threshold,
+            "deployment_operator": deployment_operator,
         },
         "dataset_analysis": {
             "file_path": file_path,
@@ -533,7 +546,10 @@ def write_mission_spec(
             "details": reasoning.get("leakage", {}).get("rationale", ""),
             "sources": [],
         },
-        "risks": reasoning.get("risks", []),
+        "risks": [
+            r if isinstance(r, dict) else {"message": r, "severity": "medium"}
+            for r in reasoning.get("risks", [])
+        ],
         "recommended_pipeline": {
             "preprocessing": reasoning.get("preprocessing", {}).get("selected", "passthrough"),
             "preprocessing_rationale": reasoning.get("preprocessing", {}).get("rationale", ""),
@@ -585,4 +601,6 @@ def write_mission_spec(
         },
     }
 
-    return spec
+    from contracts import MissionSpecification
+
+    return MissionSpecification(**spec).model_dump()

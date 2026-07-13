@@ -15,7 +15,9 @@ load_dotenv()
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.timeout(600)]
 
-TITANIC_PATH = os.path.abspath("data/titanic.csv")
+from runtime.paths import get_paths, get_job_paths
+
+TITANIC_PATH = str(get_paths().data / "titanic.csv")
 TRAINING_IMAGE = "prometheus-training-base"
 
 
@@ -110,7 +112,7 @@ async def test_job_runner_dissect_activates_on_crash():
     redis = aioredis.Redis(host="localhost", port=6379, decode_responses=True)
 
     job_id = f"test-dissect-{uuid.uuid4().hex[:8]}"
-    broken_script = f"scripts/training_script_{job_id}.py"
+    broken_script = str(get_job_paths(job_id).script_path)
 
     try:
         config = JobConfig(

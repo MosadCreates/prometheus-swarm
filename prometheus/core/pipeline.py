@@ -27,12 +27,14 @@ warnings.warn(
 import logging
 import os
 from typing import Any
+from runtime.paths import get_job_paths
 
 from agents.scout.agent import ScoutAgent
 from agents.forge.agent import ForgeAgent
 from agents.furnace.agent import FurnaceAgent
 from agents.arbiter.agent import ArbiterAgent
 from agents.harbor.agent import HarborAgent
+from contracts.state import MissionState, transition_and_save, canonical_phase
 from memory.redis_client import RedisClient
 
 logger = logging.getLogger(__name__)
@@ -62,7 +64,13 @@ async def run_pipeline(
     scout = ScoutAgent(job_id)
     await scout.redis.connect()
     try:
-        await scout.redis.set_str(f"job:{job_id}:status", "SCOUT_RUNNING")
+        await transition_and_save(
+            scout.redis._client,
+            job_id,
+            "SCOUT_RUNNING",
+            agent="Scout",
+            message="Starting Scout analysis",
+        )
         brief = await scout.run_with_data(
             problem_description=problem_description,
             file_path=file_path,
@@ -74,7 +82,9 @@ async def run_pipeline(
     except PipelineError:
         raise
     except Exception as e:
-        await scout.redis.set_str(f"job:{job_id}:status", "FAILED")
+        await transition_and_save(
+            scout.redis._client, job_id, "MISSION_FAILED", agent="Scout", message=str(e)
+        )
         raise PipelineError(str(e), "scout", job_id) from e
     finally:
         await scout.redis.close()
@@ -85,10 +95,12 @@ async def run_pipeline(
     forge = ForgeAgent(job_id)
     await forge.redis.connect()
     try:
-        await forge.redis.set_str(f"job:{job_id}:status", "FORGE_RUNNING")
+        await transition_and_save(forge.redis._client, job_id, "FORGE_RUNNING", agent="Forge")
         script_path = await forge.run_with_brief(brief)
     except Exception as e:
-        await forge.redis.set_str(f"job:{job_id}:status", "FAILED")
+        await transition_and_save(
+            forge.redis._client, job_id, "MISSION_FAILED", agent="Forge", message=str(e)
+        )
         raise PipelineError(str(e), "forge", job_id) from e
     finally:
         await forge.redis.close()
@@ -104,15 +116,17 @@ async def run_pipeline(
     furnace = FurnaceAgent(job_id)
     await furnace.redis.connect()
     try:
-        await furnace.redis.set_str(f"job:{job_id}:status", "FURNACE_TRAINING")
+        await transition_and_save(furnace.redis._client, job_id, "FURNACE_RUNNING", agent="Furnace")
         await furnace.run(script_path=script_path, use_docker=False)
     except Exception as e:
-        await furnace.redis.set_str(f"job:{job_id}:status", "FAILED")
+        await transition_and_save(
+            furnace.redis._client, job_id, "MISSION_FAILED", agent="Furnace", message=str(e)
+        )
         raise PipelineError(str(e), "furnace", job_id) from e
     finally:
         await furnace.redis.close()
 
-    checkpoint_path = os.path.abspath(f"outputs/{job_id}/checkpoints/best.ckpt")
+    checkpoint_path = str(get_job_paths(job_id).checkpoint_path)
     if not os.path.exists(checkpoint_path):
         raise PipelineError(
             f"Furnace completed but no checkpoint found at {checkpoint_path}",
@@ -130,7 +144,7 @@ async def run_pipeline(
     arbiter = ArbiterAgent(job_id)
     await arbiter.redis.connect()
     try:
-        await arbiter.redis.set_str(f"job:{job_id}:status", "ARBITER_EVALUATING")
+        await transition_and_save(arbiter.redis._client, job_id, "ARBITER_RUNNING", agent="Arbiter")
         await arbiter.redis.set_json(
             f"job:{job_id}:checkpoint", {"checkpoint_path": checkpoint_path}
         )
@@ -141,7 +155,7 @@ async def run_pipeline(
                 "total_crashes_recovered": crash_count,
             }
         )
-        report_path = f"outputs/{job_id}/eval_report_{job_id}.json"
+        report_path = str(get_job_paths(job_id).eval_report_path)
         if not os.path.exists(report_path):
             raise PipelineError(
                 f"Arbiter did not write eval report to {report_path}", "arbiter", job_id
@@ -151,7 +165,9 @@ async def run_pipeline(
     except PipelineError:
         raise
     except Exception as e:
-        await arbiter.redis.set_str(f"job:{job_id}:status", "FAILED")
+        await transition_and_save(
+            arbiter.redis._client, job_id, "MISSION_FAILED", agent="Arbiter", message=str(e)
+        )
         raise PipelineError(str(e), "arbiter", job_id) from e
     finally:
         await arbiter.redis.close()
@@ -163,12 +179,30 @@ async def run_pipeline(
     result["eval_report_path"] = report_path
 
     if report["decision"] != "pass":
-        status = "ESCALATED" if report["decision"] == "escalate" else "RETRY_NEEDED"
-        status_client = RedisClient()
-        await status_client.connect()
-        await status_client.set_str(f"job:{job_id}:status", status)
-        await status_client.close()
-        result["status"] = status.lower()
+        if report["decision"] == "escalate":
+            tc = RedisClient()
+            await tc.connect()
+            await transition_and_save(
+                tc._client,
+                job_id,
+                "MISSION_FAILED",
+                agent="Arbiter",
+                message=report.get("reason", ""),
+            )
+            await tc.close()
+            result["status"] = "escalated"
+        else:
+            tc = RedisClient()
+            await tc.connect()
+            await transition_and_save(
+                tc._client,
+                job_id,
+                "RETRY_PENDING",
+                agent="Arbiter",
+                message=report.get("reason", ""),
+            )
+            await tc.close()
+            result["status"] = "retry_needed"
         result["endpoint_url"] = None
         return result
 
@@ -176,7 +210,7 @@ async def run_pipeline(
     harbor = HarborAgent(job_id)
     await harbor.redis.connect()
     try:
-        await harbor.redis.set_str(f"job:{job_id}:status", "HARBOR_DEPLOYING")
+        await transition_and_save(harbor.redis._client, job_id, "HARBOR_DEPLOYING", agent="Harbor")
         primary_value = report["metrics"].get("auc_roc") or report["metrics"].get("rmse", 0.0)
         await harbor.on_evaluation_pass(
             {
@@ -184,15 +218,17 @@ async def run_pipeline(
                 "primary_metric_value": primary_value,
             }
         )
-        deploy_config_path = f"outputs/{job_id}/serving/deploy_config.json"
+        deploy_config_path = str(get_job_paths(job_id).deploy_config_path)
         result["endpoint_url"] = None
         if os.path.exists(deploy_config_path):
             with open(deploy_config_path) as f:
                 deploy_config = json.load(f)
             result["endpoint_url"] = deploy_config.get("endpoint_url")
-        await harbor.redis.set_str(f"job:{job_id}:status", "COMPLETE")
+        await transition_and_save(harbor.redis._client, job_id, "HARBOR_COMPLETED", agent="Harbor")
     except Exception as e:
-        await harbor.redis.set_str(f"job:{job_id}:status", "FAILED")
+        await transition_and_save(
+            harbor.redis._client, job_id, "MISSION_FAILED", agent="Harbor", message=str(e)
+        )
         raise PipelineError(str(e), "harbor", job_id) from e
     finally:
         await harbor.redis.close()

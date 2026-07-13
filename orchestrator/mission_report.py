@@ -9,11 +9,9 @@ import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
+from runtime.paths import get_job_paths, get_paths
 
 logger = logging.getLogger(__name__)
-
-_OUTPUTS_DIR = os.getenv("OUTPUTS_DIR", "./outputs")
-_PATCH_LOG_PATH = os.getenv("PATCH_LOG_PATH", "./research/patch_log.jsonl")
 
 
 async def generate_mission_report(
@@ -41,14 +39,15 @@ async def generate_mission_report(
     data = _compute_prediction_vs_actual(data)
     data = _generate_lessons_learned(data)
 
-    out_dir = os.path.join(_OUTPUTS_DIR, job_id)
+    jp = get_job_paths(job_id)
+    out_dir = jp.job_dir
     os.makedirs(out_dir, exist_ok=True)
 
-    json_path = os.path.join(out_dir, f"mission_report_{job_id}.json")
+    json_path = out_dir / f"mission_report_{job_id}.json"
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, default=str)
 
-    md_path = os.path.join(out_dir, f"mission_report_{job_id}.md")
+    md_path = out_dir / f"mission_report_{job_id}.md"
     md_content = _render_markdown(data)
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(md_content)
@@ -63,7 +62,7 @@ async def generate_mission_report(
 def _read_patch_log_for_job(job_id: str) -> list[dict[str, Any]]:
     """Read all patch log entries for the given job from patch_log.jsonl."""
     entries: list[dict[str, Any]] = []
-    path = _PATCH_LOG_PATH
+    path = str(get_paths().research / "patch_log.jsonl")
     if not os.path.exists(path):
         return entries
     try:
@@ -319,7 +318,7 @@ async def _compile_report_data(
         "best_val_metric": training.get("best_val_metric"),
         "total_epochs": training.get("total_epochs"),
         "checkpoint_path": training.get(
-            "checkpoint_path", f"outputs/{job_id}/checkpoints/best.ckpt"
+            "checkpoint_path", str(get_job_paths(job_id).checkpoint_path)
         ),
         "total_crashes": crash_count,
         "crashes_recovered": training.get("total_crashes_recovered", 0),
@@ -366,7 +365,7 @@ async def _compile_report_data(
 
     # ── Evaluation ───────────────────────────────────────────────────────
     eval_report: dict = {}
-    eval_path = os.path.join(_OUTPUTS_DIR, job_id, f"eval_report_{job_id}.json")
+    eval_path = str(get_job_paths(job_id).eval_report_path)
     try:
         if os.path.exists(eval_path):
             with open(eval_path, encoding="utf-8") as f:

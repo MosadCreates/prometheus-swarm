@@ -97,6 +97,16 @@ def _build() -> list[Command]:
             experimental=True,
             since="v0.3.0",
         ),
+        Command(
+            "new-mission",
+            "System",
+            "Start a new machine learning mission and describe your problem.",
+            tier=1,
+            implemented=True,
+            examples=["prometheus new-mission", "prometheus mission"],
+            aliases=["mission", "new", "start"],
+            related=["solve"],
+        ),
         # ── Config ──────────────────────────────────────────────────
         Command(
             "config show",

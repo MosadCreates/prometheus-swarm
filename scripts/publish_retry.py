@@ -26,6 +26,7 @@ r.xadd(
 )
 
 # Also set status to QUEUED
+r.delete(f"job:{job_id}:mission_state")
 r.set(f"job:{job_id}:status", "QUEUED")
 r.set(f"job:{job_id}:current_agent", "")
 r.delete(f"job:{job_id}:api_cost")

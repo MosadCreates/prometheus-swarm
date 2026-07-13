@@ -135,7 +135,7 @@ def _build_variables(
         "use_smote": imbalance == "smote",
         "use_class_weight": imbalance == "class_weight",
         "enable_optuna": True,
-        "optuna_max_trials": 10,
+        "optuna_max_trials": 20,
         "enable_early_stopping": num_rows > 10000,
         "design_summary": (design_summary or "").strip(),
         "num_rows": num_rows,

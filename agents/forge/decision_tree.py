@@ -70,6 +70,4 @@ def select_imbalance_strategy(imbalance_ratio, mission_brief):
         return "smote"
     if imbalance_ratio > 5:
         return "class_weight"
-    if imbalance_ratio > 3:
-        return "focal_loss"
     return "none"

@@ -18,7 +18,7 @@ import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OrdinalEncoder
+from sklearn.preprocessing import LabelEncoder as _TargetLabelEncoder, OrdinalEncoder
 from sklearn.pipeline import Pipeline
 import xgboost as xgb
 
@@ -47,7 +47,16 @@ for _c in df.select_dtypes(include=["int64", "float64"]).columns:
 for _c in df.select_dtypes(include=["object"]).columns:
     df[_c] = df[_c].fillna(df[_c].mode().iloc[0] if not df[_c].mode().empty else "MISSING")
 
-_n_classes = target.nunique()
+# --- Target encoding: handle string labels like 'Yes'/'No', 'True'/'False' ---
+_target_encoder = _TargetLabelEncoder()
+if target.dtype == object or str(target.dtype) == 'category':
+    target = _target_encoder.fit_transform(target)
+    _target_classes = _target_encoder.classes_.tolist()
+else:
+    _target_encoder.fit(target)
+    _target_classes = _target_encoder.classes_.tolist()
+
+_n_classes = len(set(target)) if not hasattr(target, 'nunique') else len(set(target.tolist() if hasattr(target, 'tolist') else target))
 _n_samples = len(target)
 if _n_samples < 2:
     print(f"WARNING: Dataset has {_n_samples} rows; using all data for train and test")
@@ -107,16 +116,22 @@ acc = accuracy_score(y_test, y_pred)
 print(f"Accuracy: {acc:.4f}")
 
 _outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
-output_dir = os.path.join(_outputs_dir, "{{ job_id }}", "checkpoints")
+output_dir = os.path.join(_outputs_dir, "checkpoints")
 os.makedirs(output_dir, exist_ok=True)
 checkpoint_path = os.path.join(output_dir, "best.ckpt")
+_checkpoint = {
+    "model": model,
+    "target_encoder": _target_encoder,
+    "target_classes": _target_classes,
+    "feature_names": list(X_train.columns) if hasattr(X_train, 'columns') else [],
+}
 with open(checkpoint_path, "wb") as f:
-    pickle.dump(model, f)
+    pickle.dump(_checkpoint, f)
 print(f"Model saved to {checkpoint_path}")
 np.save(os.path.join(output_dir, "y_test.npy"), y_test)
 np.save(os.path.join(output_dir, "y_pred.npy"), y_pred)
 
 result = {"checkpoint_path": checkpoint_path, "val_score": float(acc), "metric": "accuracy"}
-with open(os.path.join(_outputs_dir, "{{ job_id }}", "result.json"), "w") as f:
+with open(os.path.join(_outputs_dir, "result.json"), "w") as f:
     json.dump(result, f)
 print("TRAINING_COMPLETE")

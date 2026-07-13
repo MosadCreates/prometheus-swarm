@@ -4,6 +4,7 @@ import asyncio
 import os
 import time
 from datetime import datetime, timezone
+from typing import Any
 import uuid
 
 from evaluation import config as eval_config
@@ -22,6 +23,7 @@ from agents.dissect.tools import (
     run_sandbox_test,
 )
 from agents.dissect.validation import validate_patch_pre, validate_patch_post
+from runtime.paths import get_job_paths
 from agents.dissect.patch_log import write_patch_log
 from agents.dissect.budget import RepairBudget
 from agents.dissect.governor import BudgetGovernor
@@ -97,7 +99,9 @@ class DissectAgent(BaseAgent):
             return self.redis._client
         return None
 
-    async def handle_crash(self, crash_event: dict) -> None:
+    async def handle_crash(self, crash_event: dict | Any) -> None:
+        if hasattr(crash_event, "model_dump"):
+            crash_event = crash_event.model_dump()
         self.job_id = crash_event["job_id"]
         self.logger.info(f"[job={self.job_id}] Dissect handling crash")
         record_heartbeat("Dissect", self.job_id)
@@ -315,6 +319,22 @@ class DissectAgent(BaseAgent):
 
             success, msg = apply_patch(script_path, cascade_result.patched_script)
             if not success:
+                entry = self._build_log_entry(
+                    patch_id=str(uuid.uuid4()),
+                    crash_event=crash_event,
+                    category=category,
+                    match_method=match_method,
+                    strategy=strategy,
+                    cascade_level=cascade_result.level if hasattr(cascade_result, "level") else -1,
+                    diff="",
+                    lines_changed=0,
+                    sandbox_passed=False,
+                    confidence=confidence,
+                    attempt_number=attempt_number,
+                )
+                entry["patch_outcome"] = "escalated"
+                entry["escalation_reason"] = "patch_apply_failed"
+                await write_patch_log(self.redis, entry)
                 await self._escalate(crash_event, "patch_apply_failed")
                 return
 
@@ -326,6 +346,22 @@ class DissectAgent(BaseAgent):
                     f"[job={self.job_id}] Pre-sandbox validation failed: "
                     f"{[c['name'] for c in failed]}"
                 )
+                entry = self._build_log_entry(
+                    patch_id=str(uuid.uuid4()),
+                    crash_event=crash_event,
+                    category=category,
+                    match_method=match_method,
+                    strategy=strategy,
+                    cascade_level=cascade_result.level if hasattr(cascade_result, "level") else -1,
+                    diff=diff,
+                    lines_changed=0,
+                    sandbox_passed=False,
+                    confidence=confidence,
+                    attempt_number=attempt_number,
+                )
+                entry["patch_outcome"] = "escalated"
+                entry["escalation_reason"] = f"pre_validation: {failed[0]['name']}"
+                await write_patch_log(self.redis, entry)
                 rollback_patch(script_path)
                 await self._escalate(crash_event, f"pre_validation: {failed[0]['name']}")
                 return
@@ -378,16 +414,18 @@ class DissectAgent(BaseAgent):
                     f"({CASCADE_LEVEL_NAMES.get(cascade_result.level, '?')}) "
                     f"patch_id={patch_id}"
                 )
+                from contracts.events import ResumeTrainingEvent
+
                 await publish(
                     redis_client,
                     STREAM_DISSECT_OUTPUT,
                     RESUME_TRAINING,
-                    {
-                        "job_id": self.job_id,
-                        "patched_script_path": script_path,
-                        "resume_from_checkpoint": f"outputs/{self.job_id}/checkpoints/best.ckpt",
-                        "patch_id": patch_id,
-                    },
+                    ResumeTrainingEvent(
+                        job_id=self.job_id,
+                        patched_script_path=script_path,
+                        resume_from_checkpoint=str(get_job_paths(self.job_id).checkpoint_path),
+                        patch_id=patch_id,
+                    ),
                 )
                 return
             else:
@@ -529,7 +567,6 @@ class DissectAgent(BaseAgent):
             return
 
         sandbox_passed, sandbox_output = await run_sandbox_test(script_path, self.job_id)
-        patch_outcome = "success" if sandbox_passed else "rollback"
 
         if sandbox_passed:
             post = validate_patch_post(self.job_id, sandbox_output)
@@ -540,7 +577,8 @@ class DissectAgent(BaseAgent):
                     f"{[c['name'] for c in failed]} — accepting patch anyway"
                 )
 
-        # ── Build and store log entry ──────────────────────────────────
+        # ── Build log entry AFTER sandbox result — prevents duplicate writes ──
+        patch_outcome = "success" if sandbox_passed else "rollback"
         entry = self._build_log_entry(
             patch_id=patch_id,
             crash_event=crash_event,
@@ -554,6 +592,7 @@ class DissectAgent(BaseAgent):
             confidence=confidence,
             attempt_number=attempt_number,
         )
+        entry["patch_outcome"] = patch_outcome
         await write_patch_log(self.redis, entry)
         self._store_in_memory(patch_id, entry, patch_outcome)
         await record_repair(self.job_id, category, "unknown", sandbox_passed)
@@ -607,24 +646,26 @@ class DissectAgent(BaseAgent):
                     ),
                 )
 
+            from contracts.events import ResumeTrainingEvent
+
             await publish(
                 redis_client,
                 STREAM_DISSECT_OUTPUT,
                 RESUME_TRAINING,
-                {
-                    "job_id": self.job_id,
-                    "patched_script_path": script_path,
-                    "resume_from_checkpoint": f"outputs/{self.job_id}/checkpoints/best.ckpt",
-                    "patch_id": patch_id,
-                },
+                ResumeTrainingEvent(
+                    job_id=self.job_id,
+                    patched_script_path=script_path,
+                    resume_from_checkpoint=str(get_job_paths(self.job_id).checkpoint_path),
+                    patch_id=patch_id,
+                ),
             )
         else:
             self.logger.warning(f"[job={self.job_id}] LLM patch FAILED attempt {attempt_number}")
             rollback_patch(script_path)
 
-            entry["patch_outcome"] = "escalated"
-            entry["escalation_reason"] = "llm_failed"
-            await write_patch_log(self.redis, entry)
+            # Log entry was already written above with patch_outcome="rollback".
+            # Update the store entry so ChromaDB has the escalation, but do NOT
+            # write a second patch_log entry — exactly one per attempt.
             self._store_in_memory(patch_id, entry, "escalated")
             DISSECT_OUTCOMES.labels(outcome="escalate", job_id=self.job_id).inc()
             await self._escalate(crash_event, "llm_failed")
@@ -652,16 +693,18 @@ class DissectAgent(BaseAgent):
 
     async def _escalate(self, crash_event: dict, reason: str) -> None:
         self.logger.error(f"[job={self.job_id}] ESCALATING: {reason}")
+        from contracts.events import EscalateEvent
+
         await publish(
             self.redis._client,
             STREAM_DISSECT_OUTPUT,
             ESCALATE,
-            {
-                "job_id": self.job_id,
-                "source_agent": "Dissect",
-                "reason": reason,
-                "diagnostic_report_path": f"outputs/{self.job_id}/diagnostic_{self.job_id}.json",
-            },
+            EscalateEvent(
+                job_id=self.job_id,
+                source_agent="Dissect",
+                reason=reason,
+                diagnostic_report_path=str(get_job_paths(self.job_id).diagnostic_report_path),
+            ),
         )
 
     def _build_log_entry(
@@ -696,7 +739,7 @@ class DissectAgent(BaseAgent):
             "patch_outcome": "success" if sandbox_passed else "rollback",
             "confidence_score": confidence,
             "attempt_number": attempt_number,
-            "resume_from_checkpoint": f"outputs/{self.job_id}/checkpoints/best.ckpt",
+            "resume_from_checkpoint": str(get_job_paths(self.job_id).checkpoint_path),
             "llm_used_for_repair": cascade_level == 4,
         }
 

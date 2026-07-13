@@ -17,6 +17,8 @@ from bus.events import DRIFT_ALERT, STREAM_HARBOR_OUTPUT
 from bus.publisher import publish
 from serving.drift_monitor import compute_psi
 
+from contracts.domain import PreprocessingContract, PreprocessingStep
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,6 +59,11 @@ def _get_n_features(model: Any) -> int:
 def _extract_estimator_from_pipeline(model: Any) -> tuple[Any, dict]:
     """Extract the final estimator from a sklearn Pipeline and save preprocessing config.
 
+    Uses `step.transformers` (the pre-fit parameter) for identity checks like
+    "passthrough" and "drop", because sklearn's `transformers_` replaces
+    string shortcuts with fitted transformer objects (FunctionTransformer, etc.)
+    after fitting.
+
     Returns:
         (estimator, preprocess_config) where preprocess_config is a dict with:
             - numeric_cols, categorical_cols: column names
@@ -73,6 +80,8 @@ def _extract_estimator_from_pipeline(model: Any) -> tuple[Any, dict]:
     if not hasattr(model, "steps"):
         return model, preprocess_config
 
+    from sklearn.preprocessing import FunctionTransformer
+
     estimator = model.steps[-1][1]
 
     for name, step in model.steps[:-1]:
@@ -80,26 +89,32 @@ def _extract_estimator_from_pipeline(model: Any) -> tuple[Any, dict]:
         preprocess_config["steps"].append((name, step_type))
 
         if step_type == "ColumnTransformer":
-            for name_, transformer, cols in step.transformers_:
-                if isinstance(cols, list):
-                    if transformer == "passthrough":
-                        preprocess_config["numeric_cols"].extend(cols)
-                    elif transformer == "drop":
-                        pass
-                    elif hasattr(transformer, "categories_"):
-                        preprocess_config["categorical_cols"].extend(cols)
-                        cat_data = {
-                            "categories": [c.tolist() for c in transformer.categories_],
-                            "handle_unknown": getattr(transformer, "handle_unknown", "error"),
-                            "unknown_value": getattr(transformer, "unknown_value", None),
-                        }
-                        preprocess_config["cat_encoder"] = cat_data
-                    elif hasattr(transformer, "get_feature_names_out"):
-                        pass
-                if hasattr(transformer, "_feature_names_in"):
-                    preprocess_config["numeric_cols"].extend(list(transformer._feature_names_in))
-                elif isinstance(step, str) and step == "drop":
+            # Use step.transformers (pre-fit) for identity checks,
+            # paired with step.transformers_ (fitted) for attribute access.
+            # This avoids the FunctionTransformer != "passthrough" bug.
+            pre_fit = getattr(step, "transformers", [])
+            post_fit = getattr(step, "transformers_", [])
+            for (name_, transformer_spec, cols), (_, fitted_transformer, _) in zip(
+                pre_fit, post_fit
+            ):
+                if not isinstance(cols, list):
+                    continue
+                if transformer_spec == "passthrough":
+                    preprocess_config["numeric_cols"].extend(cols)
+                elif transformer_spec == "drop":
                     pass
+                elif hasattr(fitted_transformer, "categories_"):
+                    preprocess_config["categorical_cols"].extend(cols)
+                    cat_data = {
+                        "categories": [c.tolist() for c in fitted_transformer.categories_],
+                        "handle_unknown": getattr(fitted_transformer, "handle_unknown", "error"),
+                        "unknown_value": getattr(fitted_transformer, "unknown_value", None),
+                    }
+                    preprocess_config["cat_encoder"] = cat_data
+                else:
+                    # Any other transformer (StandardScaler, MinMaxScaler, custom)
+                    # passthrough columns: add to numeric
+                    preprocess_config["numeric_cols"].extend(cols)
 
     # Fallback: if no numeric/categorical cols from ColumnTransformer, detect from estimator
     if not preprocess_config["numeric_cols"] and not preprocess_config["categorical_cols"]:
@@ -107,6 +122,69 @@ def _extract_estimator_from_pipeline(model: Any) -> tuple[Any, dict]:
             preprocess_config["numeric_cols"] = list(estimator._feature_names_in)
 
     return estimator, preprocess_config
+
+
+def _generate_preprocessing_contract(
+    model: Any,
+    preprocess_config: dict[str, Any],
+    job_id: str = "",
+    onnx_input_name: str = "input",
+) -> PreprocessingContract:
+    """Build a PreprocessingContract from the fitted Pipeline and extracted config.
+
+    This is the SINGLE source of truth for all preprocessing metadata.
+    Everything else (ONNX export, serving app, drift monitor) reads from this contract.
+    """
+    # Detect training framework
+    estimator = model.steps[-1][1] if hasattr(model, "steps") else model
+    module = getattr(estimator, "__module__", "")
+    class_name = type(estimator).__name__
+    if "lightgbm" in module.lower() or "LGBM" in class_name:
+        framework = "lightgbm"
+    elif "xgboost" in module.lower() or "XGB" in class_name:
+        framework = "xgboost"
+    else:
+        framework = "sklearn"
+
+    # Build feature_order: numeric first, then categorical
+    numeric_cols = preprocess_config.get("numeric_cols", [])
+    categorical_cols = preprocess_config.get("categorical_cols", [])
+    feature_order = list(numeric_cols) + list(categorical_cols)
+
+    # Feature types
+    feature_types: dict[str, str] = {}
+    for c in numeric_cols:
+        feature_types[c] = "numeric"
+    for c in categorical_cols:
+        feature_types[c] = "categorical"
+
+    # Ordinal categories from encoder
+    cat_encoder = preprocess_config.get("cat_encoder", {})
+    ordinal_categories = cat_encoder.get("categories", []) if cat_encoder else []
+    handle_unknown = cat_encoder.get("handle_unknown", "error") if cat_encoder else "error"
+    unknown_value = cat_encoder.get("unknown_value", None) if cat_encoder else None
+
+    # Preprocessing pipeline trace
+    raw_steps = preprocess_config.get("steps", [])
+    pipeline_steps = [PreprocessingStep(name=s[0], step_type=s[1]) for s in raw_steps]
+
+    contract = PreprocessingContract(
+        job_id=job_id,
+        training_framework=framework,
+        feature_order=feature_order,
+        feature_types=feature_types,
+        numeric_columns=numeric_cols,
+        categorical_columns=categorical_cols,
+        ordinal_categories=ordinal_categories,
+        ordinal_handle_unknown=handle_unknown,
+        ordinal_unknown_value=unknown_value,
+        preprocessing_pipeline=pipeline_steps,
+        onnx_input_name=onnx_input_name,
+        expected_input_dtype="float32",
+        onnx_input_dtype="tensor(float)",
+    )
+    contract.finalize()
+    return contract
 
 
 def _convert_estimator_to_onnx(
@@ -166,12 +244,13 @@ def serialize_to_onnx(
     feature_names: list[str] | None = None,
     numeric_cols: list[str] | None = None,
     categorical_cols: list[str] | None = None,
+    job_id: str = "",
 ) -> tuple[bool, str]:
     """Serialize a trained model to ONNX format.
 
     For sklearn Pipelines (preprocessor + estimator), extracts the estimator
-    and converts it alone via onnxmltools, saving preprocessing config alongside
-    the ONNX model so the serving template can replicate preprocessing.
+    and converts it alone via onnxmltools, saving a PreprocessingContract
+    alongside the ONNX model so the serving template can replicate preprocessing.
 
     For bare LightGBM/XGBoost/sklearn estimators, converts directly.
 
@@ -183,6 +262,7 @@ def serialize_to_onnx(
         feature_names: Optional list of all input feature column names
         numeric_cols: Optional list of numeric column names
         categorical_cols: Optional list of categorical column names
+        job_id: Optional job ID for the contract
 
     Returns:
         (success, message_or_onnx_path)
@@ -204,6 +284,8 @@ def serialize_to_onnx(
         if detected_type == "sklearn_pipeline":
             estimator, preprocess_config = _extract_estimator_from_pipeline(model)
             n_features = _get_n_features(estimator)
+
+            contract = _generate_preprocessing_contract(model, preprocess_config, job_id=job_id)
             onnx_model = _convert_estimator_to_onnx(estimator, n_features)
 
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -211,6 +293,12 @@ def serialize_to_onnx(
 
             onnx.save_model(onnx_model, output_path)
 
+            # Write the preprocessing contract (SINGLE SOURCE OF TRUTH)
+            contract_path = output_path.replace(".onnx", "_contract.json")
+            with open(contract_path, "w", encoding="utf-8") as f:
+                f.write(contract.model_dump_json(indent=2))
+
+            # Also keep legacy config for backward compat during migration
             config_path = output_path.replace(".onnx", "_preprocess.json")
             with open(config_path, "w", encoding="utf-8") as f:
                 json.dump(preprocess_config, f, indent=2, default=str)
@@ -237,8 +325,13 @@ def generate_fastapi_app(
     feature_names: list[str] | None = None,
     numeric_cols: list[str] | None = None,
     categorical_cols: list[str] | None = None,
+    contract_path: str | None = None,
 ) -> str:
     """Generate a FastAPI serving app from the serving template.
+
+    Uses the PreprocessingContract as the single source of truth.
+    The generated app loads all preprocessing metadata from the contract
+    at startup — no hardcoded FEATURE_NAMES, NUMERIC_COLS, or CATEGORICAL_COLS.
 
     Args:
         model_path: Path to the model file
@@ -247,6 +340,7 @@ def generate_fastapi_app(
         feature_names: Optional list of all input feature column names
         numeric_cols: Optional list of numeric column names
         categorical_cols: Optional list of categorical column names
+        contract_path: Path to the preprocessing_contract.json (optional but preferred)
 
     Returns:
         Path to the generated app file
@@ -261,16 +355,30 @@ def generate_fastapi_app(
     if os.path.abspath(model_path) != os.path.abspath(dest_model_path):
         shutil.copy2(model_path, dest_model_path)
 
+    # Copy contract file if provided (always named preprocessing_contract.json in app dir)
+    contract_filename = None
+    dest_contract_path = os.path.join(output_dir, "preprocessing_contract.json")
+    if contract_path and os.path.exists(contract_path):
+        shutil.copy2(contract_path, dest_contract_path)
+        contract_filename = "preprocessing_contract.json"
+    else:
+        # Try to auto-detect contract from model path
+        alt_contract = model_path.replace(".onnx", "_contract.json").replace(
+            ".pkl", "_contract.json"
+        )
+        if os.path.exists(alt_contract):
+            shutil.copy2(alt_contract, dest_contract_path)
+            contract_filename = "preprocessing_contract.json"
+
     # Use path relative to output_dir (inside Docker, everything is at /app/)
     relative_model_path = model_filename
+    relative_contract_path = contract_filename or ""
 
     app_code = SERVING_TEMPLATE.format(
         model_path=relative_model_path,
         model_format=model_format,
         model_name=model_filename,
-        feature_names=json.dumps(feature_names or []),
-        numeric_cols=json.dumps(numeric_cols or []),
-        categorical_cols=json.dumps(categorical_cols or []),
+        contract_path=relative_contract_path,
     )
 
     app_path = os.path.join(output_dir, "app.py")
@@ -284,6 +392,7 @@ def generate_fastapi_app(
         "numpy>=1.26.4",
         "pandas>=2.2.2",
         "prometheus-client>=0.20.0",
+        "httpx>=0.27.0",
     ]
     if model_format == "pickle":
         base_reqs.extend(["joblib>=1.3.0", "scikit-learn>=1.4.2", "lightgbm>=4.3.0"])
@@ -373,6 +482,9 @@ def deploy_local_compose(
         host_port = _find_available_port()
         auto_allocated = True
 
+    subprocess.run(
+        ["docker", "rm", "-f", container_name], capture_output=True, text=True, timeout=10
+    )
     try:
         result = subprocess.run(
             [
@@ -533,18 +645,19 @@ async def run_drift_check(
 
         if drift_detected:
             logger.warning(f"[job={config['job_id']}] Drift | feature={feature_name} PSI={psi:.4f}")
+            from contracts.events import DriftAlertEvent
+
             await publish(
                 redis_client,
                 STREAM_HARBOR_OUTPUT,
                 DRIFT_ALERT,
-                {
-                    "job_id": config["job_id"],
-                    "psi_score": round(psi, 4),
-                    "psi_threshold": config.get("psi_threshold", 0.2),
-                    "window_size": config.get("psi_window_size", 1000),
-                    "feature": feature_name,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
+                DriftAlertEvent(
+                    job_id=config["job_id"],
+                    psi_score=round(psi, 4),
+                    psi_threshold=config.get("psi_threshold", 0.2),
+                    window_size=config.get("psi_window_size", 1000),
+                    feature=feature_name,
+                ),
             )
 
     return results

@@ -175,6 +175,34 @@ def apply_unified_diff(script_path: str, diff_text: str) -> tuple[bool, str]:
         return False, f"Failed to apply diff: {e}"
 
 
+def _validate_sandbox_env(job_id: str) -> None:
+    """Verify sandbox and Furnace share identical environment.
+
+    Checks:
+        - Docker image name matches Furnace's TRAINING_IMAGE_NAME
+        - Required env vars are present
+        - Script path exists
+
+    Raises RuntimeError on any mismatch.
+    """
+    from runtime.paths import get_job_paths
+
+    jp = get_job_paths(job_id)
+
+    expected_image = os.getenv("TRAINING_IMAGE_NAME", "prometheus-training-base")
+    if not expected_image:
+        raise RuntimeError("Missing TRAINING_IMAGE_NAME env var for sandbox")
+
+    required_vars = ["SCRIPTS_DIR", "OUTPUTS_DIR", "DATA_DIR"]
+    for var in required_vars:
+        if not os.getenv(var):
+            raise RuntimeError(f"Missing required env var for sandbox: {var}")
+
+    scripts_parent = jp.script_path.parent
+    if not os.path.exists(str(scripts_parent)):
+        raise RuntimeError(f"Scripts directory not found: {scripts_parent}")
+
+
 async def run_sandbox_test(script_path: str, job_id: str, max_epochs: int = 3) -> tuple[bool, str]:
     """Run patched script in a Docker sandbox for up to max_epochs to verify it works.
 
@@ -186,23 +214,23 @@ async def run_sandbox_test(script_path: str, job_id: str, max_epochs: int = 3) -
     """
     import docker
     from docker.errors import DockerException
+    from runtime.paths import get_job_paths
+
+    # Verify identical environment before launching
+    _validate_sandbox_env(job_id)
 
     client = docker.from_env()
     image = os.getenv("TRAINING_IMAGE_NAME", "prometheus-training-base")
     sandbox_id = f"{job_id}-{uuid.uuid4().hex[:8]}"
     container_name = f"prometheus-sandbox-{sandbox_id}"
     script_name = os.path.basename(script_path)
+    jp = get_job_paths(job_id)
 
     volumes = {
         os.path.abspath(script_path): {"bind": f"/app/{script_name}", "mode": "ro"},
-        os.path.abspath("data"): {"bind": "/app/data", "mode": "ro"},
-        os.path.abspath("outputs"): {"bind": "/app/outputs", "mode": "rw"},
+        **jp.docker_mounts,
     }
-    environment = {
-        "DATA_DIR": "/app/data",
-        "OUTPUTS_DIR": "/app/outputs",
-        "PYTHONUNBUFFERED": "1",
-    }
+    environment = jp.container_env
 
     loop = asyncio.get_event_loop()
 

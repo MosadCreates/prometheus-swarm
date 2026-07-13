@@ -131,7 +131,7 @@ def test_build_variables_titanic():
     assert "Age" in vars["numeric_cols"]
     assert "Fare" in vars["numeric_cols"]
     assert vars["enable_optuna"] is True
-    assert vars["optuna_max_trials"] == 10
+    assert vars["optuna_max_trials"] == 20
     assert vars["enable_early_stopping"] is False  # only 891 rows
 
 
@@ -272,7 +272,7 @@ def test_render_efficientnet():
 
 
 def test_render_fallback_for_unknown_architecture():
-    script = select_and_render(TITANIC_BRIEF, "test-unknown", None, "catboost")
+    script = select_and_render(TITANIC_BRIEF, "test-unknown", None, "nonexistent_arch")
     assert script is None
 
 

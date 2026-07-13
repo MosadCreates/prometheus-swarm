@@ -8,9 +8,11 @@ import os
 import subprocess
 import pytest
 
+from runtime.paths import get_paths, get_job_paths
+
 pytestmark = [pytest.mark.asyncio, pytest.mark.timeout(300)]
 
-TITANIC_PATH = os.path.abspath("data/titanic.csv")
+TITANIC_PATH = str(get_paths().data / "titanic.csv")
 TRAINING_IMAGE = "prometheus-training-base"
 
 
@@ -131,9 +133,9 @@ async def test_furnace_trains_model_in_docker():
             job_id=job_id,
             run_cmd=[f"/app/scripts/{os.path.basename(actual_script_path)}"],
             volumes={
-                os.path.abspath("scripts"): {"bind": "/app/scripts", "mode": "ro"},
-                os.path.abspath("data"): {"bind": "/app/data", "mode": "ro"},
-                os.path.abspath("outputs"): {"bind": "/app/outputs", "mode": "rw"},
+                str(get_paths().scripts): {"bind": "/app/scripts", "mode": "ro"},
+                str(get_paths().data): {"bind": "/app/data", "mode": "ro"},
+                str(get_paths().outputs): {"bind": "/app/outputs", "mode": "rw"},
             },
             environment={
                 "JOB_ID": job_id,
@@ -154,7 +156,7 @@ async def test_furnace_trains_model_in_docker():
     )
 
     # Verify checkpoint was produced (check file exists and is non-empty)
-    checkpoint_path = f"outputs/{job_id}/checkpoints/best.ckpt"
+    checkpoint_path = str(get_job_paths(job_id).checkpoint_path)
     assert os.path.exists(checkpoint_path), (
         f"Checkpoint not found at {checkpoint_path}. " f"Logs:\n{logs[-2000:]}"
     )

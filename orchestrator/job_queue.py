@@ -8,6 +8,7 @@ from typing import Any
 from memory.redis_client import RedisClient
 from bus.events import MISSION_BRIEF_READY, STREAM_SCOUT_OUTPUT
 from bus.publisher import publish
+from contracts.state import MissionState, transition_and_save, canonical_phase
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ async def submit_job(
     }
 
     await redis.set_json(f"job:{job_id}:meta", job_meta)
-    await redis.set_str(f"job:{job_id}:status", "QUEUED")
+    await MissionState.create_or_load(redis._client, job_id, phase="MISSION_CREATED")
     await redis.set_str(f"job:{job_id}:crash_count", "0")
 
     # Record reproducibility context before Scout touches the job
@@ -68,16 +69,17 @@ async def submit_job(
 
     logger.info(f"Job {job_id} submitted: {problem_description[:80]}...")
 
+    from contracts.events import MissionBriefReadyEvent
+
     await publish(
         redis._client,
         STREAM_SCOUT_OUTPUT,
         MISSION_BRIEF_READY,
-        {
-            "job_id": job_id,
-            "problem_description": problem_description,
-            "dataset_path": dataset_path,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        },
+        MissionBriefReadyEvent(
+            job_id=job_id,
+            problem_description=problem_description,
+            dataset_path=dataset_path,
+        ),
     )
 
     await redis.close()
@@ -98,7 +100,8 @@ async def get_job_status(job_id: str) -> dict[str, Any]:
     await redis.connect()
 
     meta = await redis.get_json(f"job:{job_id}:meta") or {}
-    status = await redis.get_str(f"job:{job_id}:status") or "UNKNOWN"
+    state = await MissionState.load_from_redis(redis._client, job_id)
+    status = state.phase if state else "UNKNOWN"
     crash_count = await redis.get_str(f"job:{job_id}:crash_count") or "0"
 
     await redis.close()
@@ -115,11 +118,17 @@ async def update_job_status(job_id: str, status: str, agent_name: str | None = N
     redis = RedisClient()
     await redis.connect()
 
-    await redis.set_str(f"job:{job_id}:status", status)
+    canonical = canonical_phase(status)
+    await transition_and_save(
+        redis._client,
+        job_id,
+        canonical,
+        agent=agent_name or "",
+    )
 
     if agent_name:
         await redis.set_str(f"job:{job_id}:current_agent", agent_name)
 
-    logger.info(f"Job {job_id} status → {status} (agent: {agent_name})")
+    logger.info(f"Job {job_id} status → {canonical} (agent: {agent_name})")
 
     await redis.close()

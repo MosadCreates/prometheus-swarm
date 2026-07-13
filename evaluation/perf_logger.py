@@ -20,12 +20,13 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from runtime.paths import get_job_paths
 
 logger = logging.getLogger(__name__)
 
 
 def _ensure_log_dir(job_id: str) -> Path:
-    log_dir = Path(f"outputs/{job_id}")
+    log_dir = get_job_paths(job_id).job_dir
     log_dir.mkdir(parents=True, exist_ok=True)
     return log_dir
 
@@ -68,7 +69,7 @@ def record_stage(
 
 def read_perf_log(job_id: str) -> list[dict[str, Any]]:
     """Read a job's performance log. Returns list of entries or empty list."""
-    log_path = Path(f"outputs/{job_id}/perf_log.jsonl")
+    log_path = get_job_paths(job_id).job_dir / "perf_log.jsonl"
     if not log_path.exists():
         return []
     entries = []

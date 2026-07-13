@@ -427,6 +427,92 @@ def fix_label_mismatch(script: str, message: str) -> str | None:
     return script
 
 
+# ---- unseen_label ----
+# Fixes LabelEncoder crash when test set contains categories not seen in training.
+# Pattern: separate fit_transform per train/test -> unified encoder + fillna(-1)
+
+
+def fix_unseen_label(script: str, message: str) -> str | None:
+    if "new label" not in message.lower() and "unseen label" not in message.lower():
+        return None
+
+    # Pattern 1: per-column LabelEncoder with separate fit for train and test
+    #   X_train[col] = LabelEncoder().fit_transform(X_train[col])
+    #   X_test[col] = LabelEncoder().fit_transform(X_test[col])
+    sep_encoder_pattern = re.compile(
+        r"(\s+)(\w+)\[col\]\s*=\s*LabelEncoder\(\)\.fit_transform\(\2\[col\]\)\n"
+        r"\1\2\[col\]\s*=\s*LabelEncoder\(\)\.fit_transform\(\2\[col\]\)"
+    )
+    m = sep_encoder_pattern.search(script)
+    if m:
+        indent = m.group(1)
+        df_var = m.group(2)
+        replacement = (
+            f"{indent}_le = LabelEncoder()\n"
+            f"{indent}{df_var}[col] = _le.fit_transform({df_var}[col].astype(str))\n"
+            f"{indent}_mapping = {{cls: i for i, cls in enumerate(_le.classes_)}}\n"
+            f"{indent}{df_var}[col] = {df_var}[col].astype(str).map(_mapping).fillna(-1).astype(int)"
+        )
+        script = sep_encoder_pattern.sub(replacement, script)
+        return script
+
+    # Pattern 2: OrdinalEncoder or similar with handle_unknown issue
+    # Add fallback for test transform
+    if "OrdinalEncoder" in script and "handle_unknown" not in script:
+        script = script.replace(
+            "OrdinalEncoder()",
+            'OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)',
+        )
+        return script
+
+    # Pattern 3: single LabelEncoder.fit_transform(train) then .transform(test)
+    # Wrap .transform in try/except and fallback
+    # Match: _le = LabelEncoder() ... _le.transform(X_test) or similar
+    le_transform_pattern = re.compile(r"(\.transform\()")
+    if "LabelEncoder" in script and le_transform_pattern.search(script):
+        replacement = (
+            "\n# [Dissect] Handle unseen labels in transform\n"
+            "import pandas as pd\n"
+            "def _safe_transform(encoder, data):\n"
+            "    _mapping = {cls: i for i, cls in enumerate(encoder.classes_)}\n"
+            "    result = pd.Series(data).astype(str).map(_mapping).fillna(-1).astype(int)\n"
+            "    return result.values if hasattr(data, 'shape') else result\n"
+        )
+        script = replacement + script
+        script = _replace_transform_calls(script)
+        return script
+
+    return None
+
+
+def _replace_transform_calls(script: str) -> str:
+    """Replace _le.transform(X) with _safe_transform(_le, X) for LabelEncoder calls."""
+    result = []
+    lines = script.split("\n")
+    in_encoder_block = False
+    encoder_var = None
+    for line in lines:
+        m = re.match(r"^(\s*)(\w+)\s*=\s*LabelEncoder\(\)", line)
+        if m:
+            in_encoder_block = True
+            encoder_var = m.group(2)
+            result.append(line)
+            continue
+        if in_encoder_block and encoder_var:
+            # Replace transform calls on this encoder
+            if f"{encoder_var}.transform(" in line:
+                line = re.sub(
+                    rf"{encoder_var}\.transform\(([^)]+)\)",
+                    rf"_safe_transform({encoder_var}, \1)",
+                    line,
+                )
+            elif not line.strip().startswith(encoder_var) and encoder_var not in line:
+                in_encoder_block = False
+                encoder_var = None
+        result.append(line)
+    return "\n".join(result)
+
+
 # ---- better syntax_error: AST-based ----
 
 
@@ -571,6 +657,7 @@ RULES: dict[str, callable] = {
     "optimizer_divergence": fix_optimizer_divergence,
     "index_error": fix_index_error,
     "label_mismatch": fix_label_mismatch,
+    "unseen_label": fix_unseen_label,
 }
 
 

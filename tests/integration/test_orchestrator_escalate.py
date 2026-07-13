@@ -74,7 +74,7 @@ async def test_handle_escalate_writes_diagnostic_report():
 @pytest.mark.asyncio
 @pytest.mark.timeout(15)
 async def test_handle_escalate_sets_redis_status():
-    """Orchestrator._handle_escalate sets job status to ESCALATED in Redis."""
+    """Orchestrator._handle_escalate sets job status to MISSION_FAILED via state machine."""
     from orchestrator.runtime import OrchestratorRuntime
 
     runtime = OrchestratorRuntime()
@@ -82,6 +82,7 @@ async def test_handle_escalate_sets_redis_status():
     mock_redis = AsyncMock()
     mock_redis.ping = AsyncMock()
     mock_redis.xgroup_create = AsyncMock()
+    mock_redis.get = AsyncMock(return_value=None)
     mock_redis.set = AsyncMock()
     mock_redis.xadd = AsyncMock(return_value=b"123-0")
     runtime.redis = mock_redis
@@ -96,9 +97,17 @@ async def test_handle_escalate_sets_redis_status():
             reason="AUC too low",
         )
 
+    # Verify mission_state key was written (state machine contract)
+    state_calls = [
+        c for c in mock_redis.set.call_args_list if c[0][0] == f"job:{JOB_ID}:mission_state"
+    ]
+    assert len(state_calls) >= 1
+    assert "MISSION_FAILED" in str(state_calls[-1][0][1])
+
+    # Verify backward-compat status key was also written
     status_calls = [c for c in mock_redis.set.call_args_list if c[0][0] == f"job:{JOB_ID}:status"]
     assert len(status_calls) >= 1
-    assert status_calls[-1][0][1] == "ESCALATED"
+    assert "MISSION_FAILED" in str(status_calls[-1][0][1])
 
 
 @pytest.mark.asyncio

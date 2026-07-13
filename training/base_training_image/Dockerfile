@@ -18,6 +18,7 @@ RUN mkdir -p scripts data outputs && \
     imbalanced-learn==0.12.3 \
     optuna==3.6.1 \
     torch==2.3.0 \
-    transformers==4.41.0
+    transformers==4.41.0 \
+    pytorch-tabnet==4.1.0
 
 ENTRYPOINT ["python"]

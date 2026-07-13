@@ -3,8 +3,8 @@
 import copy
 import json
 import os
-import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -349,7 +349,8 @@ def _mock_redis(data: dict) -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_generate_mission_report_writes_json_and_md():
+async def test_generate_mission_report_writes_json_and_md(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     brief = {
         "problem_description": "Test problem",
         "task_type": "classification",
@@ -383,45 +384,46 @@ async def test_generate_mission_report_writes_json_and_md():
     redis_client = _mock_redis(redis_data)
     deploy_data = {"endpoint_url": "http://localhost:8080/predict", "model_format": "onnx"}
 
-    with patch("orchestrator.mission_report._OUTPUTS_DIR", tempfile.mkdtemp()):
-        json_path = await generate_mission_report("job-001", redis_client, deploy_data=deploy_data)
-        assert os.path.exists(json_path)
-        md_path = json_path.replace(".json", ".md")
-        assert os.path.exists(md_path)
+    json_path = Path(
+        await generate_mission_report("job-001", redis_client, deploy_data=deploy_data)
+    )
+    assert json_path.exists()
+    md_path = json_path.with_suffix(".md")
+    assert md_path.exists()
 
-        with open(json_path, encoding="utf-8") as f:
-            report = json.load(f)
-        assert report["job_id"] == "job-001"
-        assert report["status"] == "COMPLETED"
-        assert report["forge_plan"]["architecture_selected"]["name"] == "lightgbm"
-        assert report["deployment"]["endpoint_url"] == "http://localhost:8080/predict"
-        assert len(report["lessons_learned"]) > 0
+    with open(json_path, encoding="utf-8") as f:
+        report = json.load(f)
+    assert report["job_id"] == "job-001"
+    assert report["status"] == "COMPLETED"
+    assert report["forge_plan"]["architecture_selected"]["name"] == "lightgbm"
+    assert report["deployment"]["endpoint_url"] == "http://localhost:8080/predict"
+    assert len(report["lessons_learned"]) > 0
 
 
 @pytest.mark.asyncio
-async def test_generate_mission_report_escalated():
+async def test_generate_mission_report_escalated(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     redis_data = {
         "job:job-001:status": "ESCALATED",
     }
     redis_client = _mock_redis(redis_data)
 
-    with patch("orchestrator.mission_report._OUTPUTS_DIR", tempfile.mkdtemp()):
-        json_path = await generate_mission_report("job-001", redis_client)
-        assert os.path.exists(json_path)
-        with open(json_path, encoding="utf-8") as f:
-            report = json.load(f)
-        assert report["status"] == "ESCALATED"
+    json_path = await generate_mission_report("job-001", redis_client)
+    assert os.path.exists(json_path)
+    with open(json_path, encoding="utf-8") as f:
+        report = json.load(f)
+    assert report["status"] == "ESCALATED"
 
 
 @pytest.mark.asyncio
-async def test_generate_mission_report_silent_on_redis_failure():
+async def test_generate_mission_report_silent_on_redis_failure(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     failing_client = AsyncMock()
     failing_client.get.side_effect = Exception("Redis down")
 
-    with patch("orchestrator.mission_report._OUTPUTS_DIR", tempfile.mkdtemp()):
-        json_path = await generate_mission_report("job-001", failing_client)
-        assert os.path.exists(json_path)
-        with open(json_path, encoding="utf-8") as f:
-            report = json.load(f)
-        assert "error" not in report
-        assert report["job_id"] == "job-001"
+    json_path = await generate_mission_report("job-001", failing_client)
+    assert os.path.exists(json_path)
+    with open(json_path, encoding="utf-8") as f:
+        report = json.load(f)
+    assert "error" not in report
+    assert report["job_id"] == "job-001"

@@ -3,8 +3,11 @@
 Trains a tiny Pipeline (ColumnTransformer + LGBMClassifier) on synthetic data,
 pickles it, calls serialize_to_onnx with feature/numeric/categorical columns,
 and runs inference via onnxruntime to confirm the multi-input scheme works.
+
+Also verifies the PreprocessingContract is generated as the single source of truth.
 """
 
+import json
 import os
 import sys
 import tempfile
@@ -19,6 +22,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder
 
 from agents.harbor.tools import serialize_to_onnx
+from contracts.domain import PreprocessingContract
 
 
 def _train_mini_pipeline() -> tuple[Pipeline, list[str], list[str], list[str]]:
@@ -86,8 +90,7 @@ def test_serialize_onnx_pipeline_lightgbm():
         outputs = session.run(None, {input_name: test_input})
         assert len(outputs) > 0
         pred = outputs[0]
-        assert pred.shape[0] == 1  # one prediction
-        # Output can be 1D (label) or 2D (probabilities) depending on converter
+        assert pred.shape[0] == 1
         assert pred.ndim in (1, 2)
 
         # Test with batch
@@ -96,12 +99,28 @@ def test_serialize_onnx_pipeline_lightgbm():
         assert batch_outputs[0].shape[0] == 2
         assert batch_outputs[0].ndim in (1, 2)
 
-        # Verify preprocess config was saved alongside ONNX
+        # Verify preprocessing contract was saved alongside ONNX
+        contract_path = onnx_path.replace(".onnx", "_contract.json")
+        assert os.path.exists(contract_path), f"Contract not found at {contract_path}"
+
+        with open(contract_path) as f:
+            contract_data = json.load(f)
+        contract = PreprocessingContract.model_validate(contract_data)
+
+        # Verify contract fields
+        assert contract.n_features == 2
+        assert "Age" in contract.numeric_columns
+        assert "Sex" in contract.categorical_columns
+        assert contract.feature_order == ["Age", "Sex"]
+        assert len(contract.ordinal_categories) == 1
+        assert contract.expected_input_shape == [None, 2]
+        assert contract.feature_hash == contract.compute_feature_hash()
+        assert contract.contract_hash == contract.compute_contract_hash()
+        assert len(contract.preprocessing_pipeline) > 0
+
+        # Verify legacy config still exists for backward compat
         config_path = onnx_path.replace(".onnx", "_preprocess.json")
         assert os.path.exists(config_path), f"Preprocess config not found at {config_path}"
-
-        import json
-
         with open(config_path) as f:
             config = json.load(f)
         assert "numeric_cols" in config

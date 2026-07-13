@@ -23,6 +23,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from runtime.paths import get_job_paths
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -284,7 +285,7 @@ async def run_campaign_live(
             # Cleanup
             try:
                 Path(script_path).unlink(missing_ok=True)
-                ckpt_dir = Path(f"outputs/{job_id}")
+                ckpt_dir = get_job_paths(job_id).job_dir
                 if ckpt_dir.exists():
                     shutil.rmtree(str(ckpt_dir))
             except Exception:
@@ -371,13 +372,19 @@ def run_campaign_analysis(
 def main():
     parser = argparse.ArgumentParser(description="Prometheus Swarm campaign runner")
     parser.add_argument("--runs", type=int, default=3, help="Number of campaign runs (repetitions)")
-    parser.add_argument("--count", type=int, default=10, help="Number of problems to use from subset")
+    parser.add_argument(
+        "--count", type=int, default=10, help="Number of problems to use from subset"
+    )
     parser.add_argument("--problems", help="Comma-separated problem IDs (overrides --count)")
     parser.add_argument("--name", default=None, help="Campaign name (auto-generated if not given)")
-    parser.add_argument("--condition", choices=["B", "C", "both"], default="C",
-                        help="Which condition to run")
-    parser.add_argument("--analyze", action="store_true",
-                        help="Analysis-only mode: partitions existing patch_log by time")
+    parser.add_argument(
+        "--condition", choices=["B", "C", "both"], default="C", help="Which condition to run"
+    )
+    parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="Analysis-only mode: partitions existing patch_log by time",
+    )
     args = parser.parse_args()
 
     os.chdir(str(PROJECT_ROOT))
@@ -387,7 +394,7 @@ def main():
         pids = [p.strip().lower() for p in args.problems.split(",")]
         problems = [p for p in problems if p["id"].lower() in pids]
     else:
-        problems = get_10_problem_subset(problems)[:args.count]
+        problems = get_10_problem_subset(problems)[: args.count]
 
     if not problems:
         logger.error("No problems matched")
