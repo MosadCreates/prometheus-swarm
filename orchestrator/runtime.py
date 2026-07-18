@@ -71,6 +71,8 @@ from bus.events import (
     GROUP_HARBOR,
     GROUP_SCOUT,
     GROUP_FRONTEND,
+    STREAM_AGENT_EVENTS,
+    GROUP_COCKPIT,
 )
 
 load_dotenv()
@@ -132,6 +134,7 @@ class OrchestratorRuntime:
             STREAM_SCOUT_OUTPUT: [GROUP_ORCHESTRATOR, GROUP_FORGE],
             STREAM_FORGE_OUTPUT: [GROUP_ORCHESTRATOR, GROUP_FURNACE],
             STREAM_PLANNER_OUTPUT: [GROUP_ORCHESTRATOR],
+            STREAM_AGENT_EVENTS: [GROUP_ORCHESTRATOR, GROUP_COCKPIT],
         }
 
         for stream, groups in streams_groups.items():

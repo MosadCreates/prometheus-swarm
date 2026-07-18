@@ -129,6 +129,10 @@ class JobPaths:
         return self.job_dir / self._base.mission_state_filename
 
     @property
+    def trace_path(self) -> Path:
+        return self.job_dir / "trace.jsonl"
+
+    @property
     def deploy_config_path(self) -> Path:
         return self.serving_dir / self._base.deploy_config_filename
 

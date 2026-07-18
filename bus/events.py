@@ -34,6 +34,7 @@ STREAM_ARBITER_OUTPUT = "arbiter_output"
 STREAM_HARBOR_OUTPUT = "harbor_output"
 STREAM_ORCHESTRATOR_OUT = "orchestrator_output"
 STREAM_PLANNER_OUTPUT = "planner_output"
+STREAM_AGENT_EVENTS = "agent_events"
 
 ALL_EVENT_STREAMS = [
     STREAM_SCOUT_OUTPUT,
@@ -46,7 +47,10 @@ ALL_EVENT_STREAMS = [
     STREAM_HARBOR_OUTPUT,
     STREAM_ORCHESTRATOR_OUT,
     STREAM_PLANNER_OUTPUT,
+    STREAM_AGENT_EVENTS,
 ]
+
+AGENT_EVENT = "AGENT_EVENT"
 
 GROUP_FORGE = "forge_consumers"
 GROUP_FURNACE = "furnace_consumers"
@@ -56,3 +60,4 @@ GROUP_HARBOR = "harbor_consumers"
 GROUP_FRONTEND = "frontend_consumers"
 GROUP_ORCHESTRATOR = "orchestrator_consumers"
 GROUP_SCOUT = "scout_consumers"
+GROUP_COCKPIT = "cockpit_consumers"

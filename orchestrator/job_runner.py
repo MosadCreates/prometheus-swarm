@@ -88,8 +88,17 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
 
     result = JobResult(job_id=job_id, status="error")
     writer_task: asyncio.Task | None = None
+    trace_task: asyncio.Task | None = None
 
     try:
+        # Start trace persister before any agent runs
+        from orchestrator.trace_persister import TracePersister
+
+        trace_persister = TracePersister(redis_client, capture=False)
+        await trace_persister.ensure_group()
+        trace_task = asyncio.create_task(trace_persister.run())
+        await asyncio.sleep(0)
+
         # ── Phase 1: Scout ─────────────────────────────────────────────────
         logger.info(f"[job={job_id}] Phase 1: Scout")
         from agents.scout.agent import ScoutAgent
@@ -384,6 +393,12 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
             writer_task.cancel()
             try:
                 await writer_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        if trace_task is not None:
+            trace_task.cancel()
+            try:
+                await trace_task
             except (asyncio.CancelledError, Exception):
                 pass
         try:

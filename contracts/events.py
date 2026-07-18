@@ -197,3 +197,28 @@ class DriftAlertEvent(EventPayload):
     psi_threshold: float = 0.2
     window_size: int = 1000
     feature: str = ""
+
+
+class AgentEventPayload(EventPayload):
+    """Agent state-transition event for the live Cockpit.
+
+    Schema: prometheus.agent_event.v1
+    Published to STREAM_AGENT_EVENTS so the frontend Cockpit can
+    render a real-time feed of what each agent is doing.
+
+    State machine: idle → thinking / planning / acting → verifying → done / error
+    """
+
+    event_type: str = "AGENT_EVENT"
+    job_id: str
+    event_id: str = ""
+    mission_id: str = ""
+    agent: str = ""
+    seq: int = 0
+    state: str = "idle"
+    summary: str = ""
+    detail: str = ""  # JSON-encoded dict; empty string for no detail
+    duration_ms: int = 0
+    parent_event_id: str = ""
+
+    schema_version: str = "prometheus.agent_event.v1"
