@@ -1,0 +1,530 @@
+# Prometheus Swarm CLI — Complete Redesign
+
+A complete, end-to-end CLI system inspired by Claude Code and Cursor, designed to make every agent's inner workings **visible, trustworthy, and beautiful**. When approved, this plan replaces the existing rendering pipeline with a unified, scroll-based streaming architecture.
+
+---
+
+## The Core Philosophy
+
+> **"Autonomy is legible."** — Every state the user sees must be real, every transition must be earned by an actual backend event, and the streaming must feel alive — like watching a brilliant team work in real time.
+
+The current system has **two competing renderers** ([unified_live.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/ui/claude/unified_live.py) and [live_tree.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/ui/claude/live_tree.py)) that fight for the same job. The new design unifies everything into a single, scroll-based streaming renderer that prints content **once and scrolls down** — exactly like Claude Code and Cursor do. No `rich.Live` screen rewriting. No flickering. Just smooth, permanent output that the user can scroll back through.
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> **This is a fundamental architecture change.** The new renderer abandons `rich.Live` (which rewrites the screen in-place) in favor of a scroll-forward model where each line is printed once and stays. This matches Claude Code / Cursor exactly but means we retire both existing live renderers.
+
+> [!WARNING]
+> **Two renderers get consolidated into one.** Both `unified_live.py` (1076 lines) and `live_tree.py` (998 lines) will be replaced by a single new `stream_renderer.py`. The old files will be kept as `_legacy_*.py` until you're satisfied the new one is stable.
+
+---
+
+## Open Questions
+
+> [!IMPORTANT]
+> 1. **Agent thinking tokens** — Should the thinking stream show raw LLM tokens verbatim (like Claude Code shows its thinking), or should they be summarized/filtered? Currently both raw tokens and filtered summaries are supported — which do you prefer for the new design?
+> 2. **Sound/bell on completion** — Should the CLI emit a terminal bell (`\a`) when a mission completes? Useful when running in background.
+> 3. **Color theme** — The current agent color gradient (blue→indigo→violet→purple→fuchsia→pink) is beautiful. Do you want to keep it exactly, or explore alternatives?
+
+---
+
+## Proposed Changes
+
+### 1. The Splash & Entry Experience
+
+When the user types `prometheus` and hits Enter, they're greeted with a refined, confidence-inspiring experience:
+
+```
+╭─── Prometheus Swarm v0.1.0 ─────────────────────────────────────────────────╮
+│                                                                              │
+│   ▐▛███▜▌       Autonomous ML Engineering                                   │
+│  ▝▟█████▙▘                                                                  │
+│    ▘▘ ▝▝        6 Agents  ·  Scout → Forge → Furnace → Dissect → Arbiter → Harbor │
+│                                                                              │
+│   Quick start                         Features                               │
+│   mission new --file data.csv         Dissect self-patching crash recovery   │
+│   mission list                        Harbor live ONNX + FastAPI serving     │
+│   cockpit                             Arbiter auto model evaluation          │
+│   doctor                              Real-time agent streaming              │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+  prometheus · my-project · 3 missions this week
+  ──────────────────────────────────────────────────
+```
+
+**Change from current**: Keep the existing [splash.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/ui/claude/splash.py) mostly as-is — it's already good. Minor polish: add "Real-time agent streaming" to Features, and ensure the REPL prompt below matches the new streaming style.
+
+---
+
+### 2. The REPL — Natural Language First
+
+The REPL stays mostly as-is from [repl.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/repl.py) but with enhanced prompt styling:
+
+```
+─────────────────────────────────────────────────────────────────────────────
+❯ Train a fraud detection model on transactions.csv with 95% accuracy target
+
+   → starting a new mission from this description
+
+┌─fraud-detect-a3f9───────────────────────────── Elapsed  00:00 ─────── ▶ running──┐
+│ ⠋ Scout ── Forge ── Furnace ── Dissect ── Arbiter ── Harbor                      │
+└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**What stays**: Input handling with vim mode, tab completion, history, Ctrl+R search, stash/restore, editor launch — all the excellent stuff in [input.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/ui/input.py).
+
+**What changes**: The transition from REPL input to mission streaming is now seamless — the mission header prints inline and agent streaming flows below it.
+
+---
+
+### 3. The Mission Streaming Renderer — The Heart of the Redesign
+
+This is where the magic happens. **Every agent streams its inner state to the terminal in real time, scroll-forward, like Claude Code.**
+
+#### Architecture: Scroll-Forward, Not Screen-Rewrite
+
+```
+Current (rich.Live):                    New (scroll-forward):
+┌─────────────────────┐                 ┌─────────────────────┐
+│ Rewrites entire     │                 │ Each line printed    │
+│ screen every 50ms   │                 │ once, scrolls down   │
+│ Causes flicker      │                 │ No flicker ever      │
+│ Can't scroll back   │                 │ Full scrollback      │
+│ Complex state mgmt  │                 │ Simple append model  │
+└─────────────────────┘                 └─────────────────────┘
+```
+
+**The key insight**: Claude Code and Cursor don't use `rich.Live`. They print lines and let them scroll. The active element (the current agent's spinner + thinking stream) lives at the bottom and is the **only thing** that gets rewritten (via `\r` carriage return on a single line). When an agent finishes, its final state is printed permanently and the next agent starts below it.
+
+#### The Visual Flow — Complete Mission Lifecycle
+
+Here's exactly what the user sees, top to bottom, as a mission runs:
+
+```
+┌─fraud-detect-a3f9─────────────────────────────── Elapsed  00:00 ─── ▶ running ─┐
+│ ⠋ Scout ── Forge ── Furnace ── Dissect ── Arbiter ── Harbor                     │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+├── ⠹  Scout   Profiling dataset…  · 00m 03s
+│   ⎿ thinking: Analyzing the dataset structure. I can see 15 columns with…
+```
+
+The **thinking stream** is the key differentiator. As the LLM produces tokens, they appear character-by-character in the `⎿ thinking:` line, exactly like Claude Code shows its reasoning. This line is continuously rewritten via `\r`.
+
+When Scout finishes:
+
+```
+├──  ✔  Scout   Dataset profiled  · 00m 12s
+│   ⎿ task=binary_classification  modality=tabular  confidence=0.94
+│   ⎿ 50,000 rows  15 features
+│   ⎿ Thinking: 847 tokens
+
+──── Scout → Forge ─── dataset profiled, selecting architecture ────
+
+├── ⠙  Forge   Generating training script…  · 00m 02s
+│   ⎿ thinking: Given the tabular binary classification task with 50k rows,
+│     I should consider LightGBM as the primary candidate because…
+```
+
+The transition banner appears, then the next agent starts streaming. The Scout block above is **permanent** — the user can scroll up to review it anytime.
+
+#### Agent Thinking Stream — The Claude Code Effect
+
+This is the signature feature. Each agent's LLM reasoning streams token-by-token:
+
+```
+├── ⠹  Forge   Selecting architecture…  · 00m 05s
+│   ⎿ thinking: The dataset has 50,000 rows with 15 features. For binary
+│     classification on tabular data of this scale, I'll evaluate:
+│     1. LightGBM — fast training, handles categorical features natively
+│     2. XGBoost — strong baseline, good with imbalanced data
+│     3. Random Forest — robust but slower
+│     Considering the class imbalance ratio of 12.3:1, LightGBM with
+│     scale_pos_weight would be optimal. Confidence: 92%
+│   ⎿ ◆ Selected: LightGBM (confidence=0.92)
+│   ⎿ ◆ Rationale: Handles categorical features, fast training, native imbalance support
+```
+
+**How it works technically:**
+1. The `thinking` line uses `\r` to overwrite itself as new tokens arrive (just like Claude Code)
+2. When a thinking block exceeds 4 visible lines, older lines are "finalized" (printed permanently) and only the last 4 lines remain in the rewritable zone
+3. When the agent transitions to `planning` or `acting`, the thinking stream is finalized with a token count summary
+4. Planning decisions appear as `◆` bullet points
+5. Acting steps appear as `▶` bullet points
+
+#### Furnace Training — Live Progress
+
+Furnace gets special treatment because it has long-running, measurable progress:
+
+```
+├── ⠼  Furnace   Training LightGBM  · 02m 31s
+│   ⎿ thinking: Starting cross-validated training with 5 folds…
+│   ├── Training  ████████████░░░░░░░░░░░░  48%  Fold 3/5  Epoch 7/10
+│   ⎿ ▶ Fold 1: auc_roc=0.8934  loss=0.2341
+│   ⎿ ▶ Fold 2: auc_roc=0.8891  loss=0.2412
+│   ⎿ ▶ Fold 3: training…
+```
+
+The progress bar is the **only** rewritable line (aside from the spinner). Fold results print permanently as they complete.
+
+#### Dissect Cascade — Self-Healing Visualization
+
+```
+├── ⚡  Dissect   Auto-patching crash  · 00m 08s
+│   ⎿ thinking: The training script crashed with a KeyError on column
+│     'transaction_amount'. This is a Level 1 fix — simple column rename…
+│   ├── Cascade  ✔ L1 → ✔ L2 → ⠹ L3 → ○ L4 → ○ L5
+│   ⎿ ✔ L1: Column rename (transaction_amount → amount)
+│   ⎿ ✔ L2: Type coercion (str → float)
+│   ⎿ ⠹ L3: Analyzing missing value pattern…
+```
+
+#### Arbiter Evaluation
+
+```
+├── ⠧  Arbiter   Evaluating model  · 00m 15s
+│   ⎿ thinking: Running validation metrics on the held-out test set…
+│   ⎿ ▶ AUC-ROC: 0.9234
+│   ⎿ ▶ F1: 0.8721
+│   ⎿ ▶ Precision: 0.8934  Recall: 0.8512
+│   ⎿ ◆ Decision: PASSED · AUC-ROC=0.9234 (≥ 0.9000 ✔)
+```
+
+#### Harbor Deployment
+
+```
+├── ⠏  Harbor   Deploying model  · 00m 22s
+│   ⎿ thinking: Converting to ONNX format and starting FastAPI server…
+│   ⎿ ▶ Model exported: model.onnx (2.4MB)
+│   ⎿ ▶ Starting FastAPI server on port 8000…
+│   ⎿ ▶ Health check: ✔ Healthy (23ms)
+
+└── ✔  Harbor   Model live  · 00m 28s
+│   ⎿ Endpoint: http://localhost:8000
+│   ⎿ Format: ONNX
+│   ⎿ Health: ✔ Healthy (23ms)
+```
+
+#### Mission Complete — The Summary Card
+
+When all agents finish, a beautiful completion card appears:
+
+```
+╭───────────── Mission Summary · fraud-detect-a3f9 ─────────────────────╮
+│                                                                        │
+│  ✔ fraud-detect-a3f9                                                   │
+│                                                                        │
+│  Result    LightGBM · AUC-ROC: 0.9234 (≥ 0.9000 ✔)                   │
+│  Duration  03m 42s                                                     │
+│  Crashes   1 repaired (column_rename)                                  │
+│                                                                        │
+│  Serving   ● http://localhost:8000                                     │
+│  Model     LightGBM (ONNX)                                            │
+│  Predict   POST http://localhost:8000/predict                          │
+│  Swagger   GET  http://localhost:8000/docs                             │
+│  Health    ✔ Healthy (23ms)                                            │
+│                                                                        │
+│  Artifacts                                                             │
+│  ✔ model.onnx (2.4MB)                                                 │
+│  ✔ training_script.py (6.3KB)                                         │
+│  ✔ evaluation_report.json (1.2KB)                                     │
+│                                                                        │
+│  Next steps                                                            │
+│  • curl -X POST http://localhost:8000/predict -d @input.json           │
+│  • prometheus mission report fraud-detect                              │
+│  • prometheus model export --to ./deploy                               │
+│                                                                        │
+╰────────────────────────────────────────────────────────────────────────╯
+
+─────────────────────────────────────────────────────────────────────────────
+  ✔ Mission complete · 03m 42s · 6 agents · 4,231 tokens · $0.0234
+─────────────────────────────────────────────────────────────────────────────
+```
+
+---
+
+### 4. The Streaming Engine — Technical Architecture
+
+#### [NEW] `prometheus/ui/stream/renderer.py` — The Core Renderer
+
+This replaces both `unified_live.py` and `live_tree.py` with a single, clean implementation:
+
+```python
+class StreamRenderer:
+    """Scroll-forward streaming renderer — Claude Code style.
+    
+    Design principles:
+    1. Lines are printed ONCE and scroll up (no rich.Live)
+    2. Only the ACTIVE LINE (spinner + thinking tail) rewrites via \r
+    3. All state is driven by real Redis events (Rule 1)
+    4. Full scrollback — user can scroll up to review any agent
+    """
+```
+
+**Key methods:**
+- `run()` — Main event loop, polls Redis streams
+- `_emit_permanent(text)` — Print a line that will never change (finalized agent, subaction, etc.)
+- `_update_active(text)` — Rewrite the bottom active line (spinner, thinking stream)
+- `_handle_agent_event(msg)` — Route agent state changes
+- `_handle_thinking_delta(msg)` — Append tokens to the thinking stream
+- `_finalize_agent(name)` — Print the agent's final state permanently
+- `_start_agent(name)` — Begin streaming for a new agent
+- `_render_summary()` — Print the completion card
+
+#### [NEW] `prometheus/ui/stream/__init__.py`
+
+Package init.
+
+#### [NEW] `prometheus/ui/stream/thinking_stream.py` — Token-by-Token Streaming
+
+The Claude Code-style thinking visualizer:
+
+```python
+class ThinkingStream:
+    """Manages the live thinking token stream for one agent.
+    
+    Tokens arrive one at a time from the LLM. This class:
+    1. Buffers them into word-wrapped lines
+    2. Finalizes complete lines (printed permanently, scroll up)
+    3. Keeps the last N characters in the "active tail" (rewritten via \r)
+    4. Applies a subtle glow animation to the active tail
+    """
+```
+
+**The key innovation**: Instead of buffering all tokens and rendering them in a `rich.Live` frame, we **finalize lines as they complete**. This means:
+- Completed thinking lines scroll up and become permanent scrollback
+- Only the current partial line is rewritten
+- The user sees tokens appear in real-time, exactly like Claude Code
+- No flicker, no screen jumping, smooth continuous output
+
+#### [NEW] `prometheus/ui/stream/agent_badge.py` — Agent Identity Badges
+
+```python
+def render_badge(name: str, status: str, elapsed: float, summary: str, tick: float) -> str:
+    """Render a single agent badge line.
+    
+    Active:    ├── ⠹  Scout   Profiling dataset…  · 00m 03s
+    Complete:  ├── ✔  Scout   Dataset profiled  · 00m 12s
+    Error:     ├── ✘  Scout   Failed  · 00m 02s
+    Pending:   │   ○  Forge   queued
+    """
+```
+
+#### [NEW] `prometheus/ui/stream/progress_bar.py` — Inline Progress
+
+Reuses the logic from the existing [progress_bar.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/ui/components/streaming/progress_bar.py) but renders as a single ANSI line for scroll-forward output.
+
+#### [NEW] `prometheus/ui/stream/summary_card.py` — Mission Summary
+
+Reuses the data model from [mission_summary.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/ui/components/streaming/mission_summary.py) but renders in the scroll-forward style.
+
+#### [NEW] `prometheus/ui/stream/header.py` — Mission Header
+
+The top banner that shows mission ID, elapsed time, and the pipeline ribbon.
+
+#### [NEW] `prometheus/ui/stream/transition.py` — Agent Handoff Lines
+
+The `─── Scout → Forge ─── reason ───` transition lines.
+
+---
+
+### 5. Integration Points
+
+#### [MODIFY] [mission/__init__.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/cli/mission/__init__.py)
+
+The `mission new` and `mission watch` commands switch from `UnifiedLiveRenderer` to the new `StreamRenderer`.
+
+#### [MODIFY] [repl.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/repl.py)
+
+When a natural-language mission is triggered from the REPL, the stream renderer runs inline (no screen clear, no `rich.Live` takeover).
+
+#### Untouched — Event Bus
+
+The entire event system stays exactly as-is:
+- [bus/events.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/bus/events.py) — All stream names and event types unchanged
+- [agents/base.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/agents/base.py) — Agent base class unchanged
+- Redis Streams (`agent_events`, `agent_thinking`, `subaction_progress`) — All unchanged
+
+The new renderer simply consumes these same streams with a different visual output.
+
+---
+
+### 6. The Theme System
+
+The existing [theme.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/ui/theme.py) is excellent and stays. We add a few new semantic tokens:
+
+```python
+# New tokens for scroll-forward renderer
+stream_thinking = Color("#8E8E93")      # Thinking text (dim, italic)
+stream_thinking_active = Color("#B0B0B4")  # Active thinking tail (brighter)
+stream_finalized = Color("#5FD75F")     # Finalized/done text
+stream_subaction = Color("#8E8E93")     # Subaction detail lines
+stream_badge_active_bg = Color("#1A1A2E")  # Active agent background highlight
+stream_cost = Color("#D7AF00")          # Token cost display
+```
+
+The agent color gradient is preserved exactly:
+- Scout: `#3B82F6` (blue)
+- Forge: `#6366F1` (indigo)
+- Furnace: `#8B5CF6` (violet)
+- Dissect: `#A855F7` (purple)
+- Arbiter: `#D946EF` (fuchsia)
+- Harbor: `#EC4899` (pink)
+
+---
+
+### 7. Token Count & Cost Tracking
+
+Every agent block shows token count. The mission summary includes total cost:
+
+```
+─────────────────────────────────────────────────────────────────────────────
+  ✔ Mission complete · 03m 42s · 6 agents · 4,231 tokens · $0.0234
+─────────────────────────────────────────────────────────────────────────────
+```
+
+This uses the existing cost tracking in [base.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/agents/base.py) (`_log_api_cost`, `api_cost_summary`).
+
+---
+
+### 8. Error States — Beautiful Failure
+
+When things go wrong, the CLI should still feel professional:
+
+```
+├── ✘  Furnace   Training crashed  · 01m 42s
+│   ⎿ Error: KeyError: 'transaction_amount' at training_script.py:47
+│   ⎿ thinking: The column name doesn't match. Let me check the dataset schema…
+
+──── Furnace → Dissect ─── crash detected, initiating self-repair ────
+
+├── ⚡  Dissect   Auto-patching crash  · 00m 00s
+│   ⎿ thinking: I can see the issue. The column was renamed in preprocessing…
+```
+
+If a mission fails terminally:
+
+```
+╭──────────── Mission Failed · fraud-detect-a3f9 ──────────────────────╮
+│                                                                       │
+│  ✘ fraud-detect-a3f9                                                  │
+│                                                                       │
+│  Failed at  Forge (after 00m 42s)                                     │
+│  Error      Could not generate valid training script                  │
+│  Reason     Unsupported data format: .parquet with nested structs      │
+│                                                                       │
+│  Agents     ✔ Scout  ✘ Forge  ○ Furnace  ○ Dissect  ○ Arbiter  ○ Harbor│
+│                                                                       │
+│  Next steps                                                            │
+│  • prometheus mission logs fraud-detect --agent Forge                  │
+│  • prometheus doctor                                                   │
+│                                                                       │
+╰───────────────────────────────────────────────────────────────────────╯
+```
+
+---
+
+### 9. Non-Mission Commands — Consistent Styling
+
+All non-mission commands (`doctor`, `agent list`, `config`, etc.) get the same visual treatment:
+
+```
+❯ doctor
+
+  ● System Diagnostics
+  ──────────────────────────────────
+
+  ✔ Python          3.12.4
+  ✔ Redis           7.2.1 (localhost:6379)
+  ✔ Docker          27.0.3
+  ✔ GPU             NVIDIA RTX 4090 (24GB)
+  ✘ Orchestrator    not running
+    ⎿ Fix: prometheus daemon start
+
+  4/5 checks passed
+```
+
+---
+
+### 10. The `--quiet` and `--json` Modes
+
+The existing `run_quiet()` in [unified_live.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/ui/claude/unified_live.py) stays mostly as-is for `--format=plain`. The `--format=json` mode emits NDJSON.
+
+---
+
+### 11. File Structure — New Files
+
+```
+prometheus/ui/stream/
+├── __init__.py           # Package init, public API
+├── renderer.py           # Main StreamRenderer class (~400 lines)
+├── thinking_stream.py    # Token-by-token thinking visualizer (~120 lines)
+├── agent_badge.py        # Agent badge line rendering (~80 lines)
+├── progress_bar.py       # Inline progress bar (~60 lines)
+├── summary_card.py       # Mission summary card (~200 lines)
+├── header.py             # Mission header banner (~100 lines)
+├── transition.py         # Agent handoff lines (~40 lines)
+└── cost_tracker.py       # Token/cost summary line (~50 lines)
+```
+
+**Total new code**: ~1,050 lines (replaces ~2,074 lines in the two old renderers)
+
+---
+
+### 12. File Structure — Modified Files
+
+| File | Change |
+|------|--------|
+| [theme.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/ui/theme.py) | Add ~8 new semantic color tokens |
+| [mission/__init__.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/cli/mission/__init__.py) | Switch renderer import |
+| [repl.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/repl.py) | Seamless mission-in-REPL streaming |
+| [bus/events.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/bus/events.py) | No changes |
+| [agents/base.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/agents/base.py) | No changes |
+
+### 13. File Structure — Retired Files (kept as `_legacy_*`)
+
+| File | Replacement |
+|------|-------------|
+| [unified_live.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/ui/claude/unified_live.py) | `prometheus/ui/stream/renderer.py` |
+| [live_tree.py](file:///c:/Users/moham/OneDrive/Desktop/prometheus-swarm/prometheus/ui/claude/live_tree.py) | `prometheus/ui/stream/renderer.py` |
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- `pytest tests/ui/test_stream_renderer.py` — Unit tests for each component
+- `pytest tests/ui/test_thinking_stream.py` — Token streaming behavior
+- `pytest tests/ui/test_agent_badge.py` — Badge rendering for all states
+- `pytest tests/ui/test_summary_card.py` — Summary card rendering
+- End-to-end: Run a real mission and verify the event-to-output mapping
+
+### Manual Verification
+- Run `prometheus` → type a natural language mission description → observe the full streaming lifecycle
+- Verify scrollback works (scroll up to review completed agents)
+- Verify no flickering on Windows Terminal
+- Verify `--no-color` mode produces clean, readable plain text
+- Verify narrow terminal (< 80 cols) reflows gracefully
+- Test Ctrl+C interruption at every stage
+- Compare visual quality side-by-side with Claude Code's streaming
+
+---
+
+## Implementation Order
+
+Once approved, I'll execute in this exact sequence:
+
+1. **Create `prometheus/ui/stream/` package** with all new files
+2. **Build the thinking stream** — the core innovation, get it perfect first
+3. **Build the agent badge** — the visual identity of each agent block
+4. **Build the renderer** — tie it all together with event polling
+5. **Build the summary card** — the mission completion experience
+6. **Wire into `mission new`** — replace the renderer import
+7. **Wire into the REPL** — seamless inline streaming
+8. **Add theme tokens** — new semantic colors
+9. **Test everything** — automated + manual verification
+10. **Rename old files** — `unified_live.py` → `_legacy_unified_live.py`

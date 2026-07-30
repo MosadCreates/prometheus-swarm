@@ -48,14 +48,17 @@ def _git_commit() -> tuple[str, str, bool]:
         commit = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             capture_output=True, text=True, cwd=_REPO_ROOT, timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         ).stdout.strip()
         branch = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True, text=True, cwd=_REPO_ROOT, timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         ).stdout.strip()
         status = subprocess.run(
             ["git", "status", "--porcelain"],
             capture_output=True, text=True, cwd=_REPO_ROOT, timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         ).stdout.strip()
         return commit, branch, bool(status)
     except Exception:

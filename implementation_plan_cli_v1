@@ -1,0 +1,263 @@
+# Prometheus Swarm CLI — Updated Streaming Design
+
+## What Changed From v1
+
+> [!IMPORTANT]
+> **Critical correction**: Only **Dissect** calls the LLM with `stream=True`. The other 5 agents are purely deterministic — no LLM calls anywhere. The design is updated below to reflect exactly what each agent can actually stream. Everything else you liked stays identical.
+
+### The Per-Agent Streaming Truth Table
+
+| Agent | LLM? | What It Actually Does | What We Stream |
+|-------|------|----------------------|----------------|
+| **Scout** | ❌ | Deterministic reasoning (`reasoning.py`) — dataset profiling, task detection, feature analysis | **Activity steps** as they happen: profiling → task detection → feature analysis → schema output |
+| **Forge** | ❌ | F-string template generators, confidence router — architecture selection | **Decision steps**: candidate evaluation → architecture selection → script generation |
+| **Furnace** | ❌ | Docker container management — trains inside containers | **Training progress**: epoch/fold progress bar + live metrics (loss, auc) as they arrive |
+| **Dissect** | ✅ `stream=True` | LLM-powered crash diagnosis + patching | **Raw LLM tokens verbatim** (the Claude Code effect) + cascade level progression |
+| **Arbiter** | ❌ | Deterministic metric computation + decision tree | **Metric results**: each metric as computed → threshold comparison → pass/fail decision |
+| **Harbor** | ❌ | ONNX serialization + Docker compose deployment | **Deployment steps**: export → container build → health check → endpoint live |
+
+---
+
+## Updated Visual Flow
+
+The overall structure is **identical** to v1. Same scroll-forward architecture, same badge styling, same summary card, same transitions. Only the **content inside each agent's streaming area** changes to match reality.
+
+### Scout — Activity Steps (No Thinking)
+
+```
+├── ⠹  Scout   Profiling dataset…  · 00m 03s
+│   ⎿ Scanning transactions.csv (50,000 rows × 15 columns)
+│   ⎿ ▶ Detected task: binary_classification (confidence: 0.94)
+│   ⎿ ▶ Modality: tabular
+│   ⎿ ▶ Class imbalance: 12.3:1
+```
+
+No `thinking:` prefix — Scout doesn't think via LLM. Instead, each subaction event from the agent prints as a `▶` step the moment it's emitted. These are the real `agent_events` with `state=acting` or `state=planning` that Scout already publishes.
+
+When Scout finishes:
+
+```
+├── ✔  Scout   Dataset profiled  · 00m 12s
+│   ⎿ task=binary_classification  modality=tabular  confidence=0.94
+│   ⎿ 50,000 rows  15 features
+
+──── Scout → Forge ─── dataset profiled, selecting architecture ────
+```
+
+### Forge — Decision Steps (No Thinking)
+
+```
+├── ⠙  Forge   Selecting architecture…  · 00m 02s
+│   ⎿ ▶ Evaluating candidates: LightGBM, XGBoost, RandomForest
+│   ⎿ ◆ Selected: LightGBM (confidence: 0.92)
+│   ⎿ ◆ Rationale: Native categorical support, handles 12.3:1 imbalance
+│   ⎿ ▶ Generating training script…
+```
+
+Forge's steps come from its `agent_events` with `state=planning` (architecture selection) and `state=acting` (script generation). The `◆` bullets are planning decisions, `▶` bullets are actions — same visual language as v1, just without the `thinking:` stream.
+
+### Furnace — Training Progress (The Longest Agent)
+
+This is unchanged from v1 — Furnace was already designed around progress bars, not thinking:
+
+```
+├── ⠼  Furnace   Training LightGBM  · 02m 31s
+│   ├── Training  ████████████░░░░░░░░░░░░  48%  Fold 3/5  Epoch 7/10
+│   ⎿ ▶ Fold 1: auc_roc=0.8934  loss=0.2341
+│   ⎿ ▶ Fold 2: auc_roc=0.8891  loss=0.2412
+│   ⎿ ▶ Fold 3: training…
+```
+
+The progress bar is driven by real `subaction_progress` events. Fold results print permanently as they arrive from `agent_events`.
+
+### Dissect — THE Signature Feature (Raw LLM Token Stream) ⭐
+
+This is the **only** agent where the Claude Code thinking effect applies, and that makes it even more powerful — it's special, rare, and meaningful. When Dissect activates, the user sees something no other agent does:
+
+```
+├── ⚡  Dissect   Auto-patching crash  · 00m 08s
+│   ⎿ thinking: The training script crashed with a KeyError on column
+│     'transaction_amount'. Looking at the Scout spec, the original column
+│     name is 'txn_amount' — this is a simple rename mismatch from the
+│     preprocessing step. I'll apply a Level 1 fix: column rename in the
+│     training script at line 47 where the column is first referenced.
+│     Let me also check if there are other references to this column…
+│   ├── Cascade  ✔ L1 → ○ L2 → ○ L3 → ○ L4 → ○ L5
+│   ⎿ ✔ Patch applied: line 47 — 'transaction_amount' → 'txn_amount'
+```
+
+**Why this is even better than v1**: Because Dissect is the *only* agent that reasons via LLM, the thinking stream becomes a **signature moment** — the one point in the pipeline where the user sees raw AI reasoning in action. It's not diluted across 6 agents. It's concentrated and impactful. When Dissect activates (which only happens on crashes), the thinking stream signals: "something went wrong, and here's the AI actually reasoning about how to fix it." That's trustworthy.
+
+The `⚡` badge (already in the current code) further signals Dissect is special.
+
+**Technical detail**: Raw tokens from the `agent_thinking` Redis stream are shown verbatim, character-by-character. The thinking line rewrites via `\r` as new tokens arrive. When lines wrap, completed lines are finalized (printed permanently) and only the active tail rewrites.
+
+### Arbiter — Metric Results (No Thinking)
+
+```
+├── ⠧  Arbiter   Evaluating model  · 00m 15s
+│   ⎿ ▶ Computing validation metrics…
+│   ⎿ ▶ AUC-ROC: 0.9234
+│   ⎿ ▶ F1: 0.8721
+│   ⎿ ▶ Precision: 0.8934  Recall: 0.8512
+│   ⎿ ◆ Decision: PASSED · AUC-ROC=0.9234 (≥ 0.9000 ✔)
+```
+
+Each metric appears the moment Arbiter computes it (via `agent_events` with `state=acting`). The final decision is a `◆` planning decision. Clean, factual, no fake thinking.
+
+### Harbor — Deployment Steps (No Thinking)
+
+```
+├── ⠏  Harbor   Deploying model  · 00m 22s
+│   ⎿ ▶ Exporting model to ONNX format…
+│   ⎿ ▶ Model exported: model.onnx (2.4MB)
+│   ⎿ ▶ Building FastAPI container…
+│   ⎿ ▶ Starting server on port 8000…
+│   ⎿ ▶ Health check: ✔ Healthy (23ms)
+
+└── ✔  Harbor   Model live  · 00m 28s
+    ⎿ Endpoint: http://localhost:8000
+    ⎿ Format: ONNX
+    ⎿ Health: ✔ Healthy (23ms)
+```
+
+---
+
+## Answered Open Questions
+
+Per your direction:
+
+1. **Thinking tokens**: ✅ Raw LLM tokens shown **verbatim** — applies only to Dissect (the only agent that has them)
+2. **Terminal bell**: ✅ Emit `\a` when mission completes (both success and failure)
+3. **Colors**: ✅ Kept exactly as-is — the blue→pink gradient is preserved
+
+---
+
+## Updated Technical Architecture
+
+### The Three Streaming Modes (Per Agent)
+
+The renderer now has three rendering modes instead of one:
+
+```python
+class AgentStreamMode(Enum):
+    ACTIVITY = "activity"     # Scout, Forge, Arbiter, Harbor — step-by-step subactions
+    PROGRESS = "progress"     # Furnace — progress bar + epoch metrics
+    THINKING = "thinking"     # Dissect — raw LLM token stream + cascade
+```
+
+```python
+AGENT_STREAM_MODES = {
+    "Scout":   AgentStreamMode.ACTIVITY,
+    "Forge":   AgentStreamMode.ACTIVITY,
+    "Furnace": AgentStreamMode.PROGRESS,
+    "Dissect": AgentStreamMode.THINKING,
+    "Arbiter": AgentStreamMode.ACTIVITY,
+    "Harbor":  AgentStreamMode.ACTIVITY,
+}
+```
+
+### What Each Mode Does
+
+#### `ACTIVITY` mode (Scout, Forge, Arbiter, Harbor)
+- Listens to `agent_events` stream for `state=planning|acting|verifying|done|error`
+- Each event with a summary prints immediately as `⎿ ▶` (acting) or `⎿ ◆` (planning)
+- Subactions from `subaction_progress` print as they arrive
+- The spinner + agent badge rewrites via `\r` for the elapsed timer
+- **No thinking stream, no token display** — these agents don't produce tokens
+
+#### `PROGRESS` mode (Furnace)
+- Same as ACTIVITY, plus:
+- The progress bar renders inline, updates via `\r` rewrite on the progress line
+- Fold/epoch results print permanently below as they complete
+- Driven by `subaction_progress` events with numeric `progress` values
+
+#### `THINKING` mode (Dissect only)
+- Same as ACTIVITY, plus:
+- Raw tokens from `agent_thinking` stream render character-by-character
+- The `⎿ thinking:` line rewrites via `\r` as tokens arrive
+- Completed thinking lines finalize (scroll up, permanent)
+- Cascade panel shows below thinking stream
+- Token count shown on finalization
+
+### Rewrite Zones
+
+At any moment, **at most 2 lines** are being rewritten:
+
+| Line | What rewrites | When |
+|------|--------------|------|
+| Badge line | `├── ⠹  Scout   Profiling…  · 00m 03s` | Always (spinner + elapsed timer) |
+| Thinking tail | `│   ⎿ thinking: …tokens…` | Only during Dissect's `THINKING` mode |
+
+Everything else prints once and stays. Zero flicker.
+
+---
+
+## Updated File Structure
+
+No changes from v1 — same 8 new files:
+
+```
+prometheus/ui/stream/
+├── __init__.py           # Package init, public API
+├── renderer.py           # Main StreamRenderer class (~400 lines)
+│                         # Now with AgentStreamMode routing
+├── thinking_stream.py    # Token-by-token thinking — Dissect only (~120 lines)
+├── agent_badge.py        # Agent badge line rendering (~80 lines)
+├── progress_bar.py       # Inline progress bar — Furnace (~60 lines)
+├── summary_card.py       # Mission summary card (~200 lines)
+├── header.py             # Mission header banner (~100 lines)
+├── transition.py         # Agent handoff lines (~40 lines)
+└── cost_tracker.py       # Token/cost summary line + terminal bell (~50 lines)
+```
+
+### Cost Tracker Update
+
+The `cost_tracker.py` now also handles the terminal bell:
+
+```python
+def render_completion_line(duration: str, agent_count: int, tokens: int, cost: float, success: bool) -> str:
+    bell = "\a"  # Terminal bell
+    icon = "✔" if success else "✘"
+    status = "Mission complete" if success else "Mission failed"
+    return f"{bell}{'─' * width}\n  {icon} {status} · {duration} · {agent_count} agents · {tokens:,} tokens · ${cost:.4f}\n{'─' * width}"
+```
+
+---
+
+## What Stays Identical From v1
+
+- ✅ Scroll-forward architecture (no `rich.Live`)
+- ✅ Agent badge styling (`├── ⠹  Scout   …`)
+- ✅ Transition banners (`──── Scout → Forge ───`)
+- ✅ Mission header box
+- ✅ Summary card (completion experience)
+- ✅ Error states (beautiful failure)
+- ✅ Theme system (exact same colors)
+- ✅ REPL integration (inline streaming)
+- ✅ `--quiet` and `--json` modes
+- ✅ File structure (8 new files in `prometheus/ui/stream/`)
+- ✅ Integration points (same 2 files modified)
+- ✅ Retired files (same 2 files → `_legacy_*`)
+
+---
+
+## Verification Plan
+
+Same as v1, with one addition:
+
+### Automated Tests
+- `pytest tests/ui/test_stream_renderer.py` — Unit tests for each component
+- `pytest tests/ui/test_thinking_stream.py` — Token streaming (Dissect only)
+- `pytest tests/ui/test_agent_badge.py` — Badge rendering for all states
+- `pytest tests/ui/test_summary_card.py` — Summary card rendering
+- **NEW**: `pytest tests/ui/test_stream_modes.py` — Verify ACTIVITY/PROGRESS/THINKING routing
+- End-to-end: Run a real mission and verify the event-to-output mapping
+
+### Manual Verification
+- Same as v1, plus:
+- Verify Scout/Forge/Arbiter/Harbor show **only** activity steps (no thinking stream)
+- Verify Dissect shows raw token stream when it activates
+- Verify Furnace shows progress bar with live updates
+- Verify terminal bell sounds on mission completion
+- Trigger a crash to verify Dissect's thinking stream activates properly

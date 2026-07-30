@@ -449,6 +449,7 @@ async def build_docker_image(image_name: str, app_dir: str) -> tuple[bool, str]:
                 capture_output=True,
                 text=True,
                 timeout=300,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         )
 
@@ -499,7 +500,11 @@ async def deploy_local_compose(
 
     await asyncio.to_thread(
         lambda: subprocess.run(
-            ["docker", "rm", "-f", container_name], capture_output=True, text=True, timeout=10
+            ["docker", "rm", "-f", container_name], 
+            capture_output=True, 
+            text=True, 
+            timeout=10,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
         )
     )
     try:
@@ -519,7 +524,8 @@ async def deploy_local_compose(
                 ],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=120,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         )
 

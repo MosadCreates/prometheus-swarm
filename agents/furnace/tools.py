@@ -18,10 +18,13 @@ async def launch_training_container(
 
     cmd = [sys.executable, abs_path]
 
+    import subprocess
+    
     process = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
 
     logger.info(f"[job={job_id}] Training process started (PID: {process.pid})")

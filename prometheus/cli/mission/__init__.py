@@ -285,12 +285,13 @@ def _run_blocking(
             except Exception:
                 pass
 
-        from prometheus.ui.claude.unified_live import UnifiedLiveRenderer, run_quiet
+        from prometheus.ui.claude.unified_live import run_quiet
+        from prometheus.ui.stream.renderer import StreamRenderer
 
         if quiet:
             live_task = asyncio.create_task(run_quiet(ui_redis, config.job_id))
         else:
-            renderer = UnifiedLiveRenderer(
+            renderer = StreamRenderer(
                 ui_redis,
                 config.job_id,
                 description,
@@ -427,9 +428,9 @@ def _launch_live_tree(
             decode_responses=True,
         )
         try:
-            from prometheus.ui.claude.unified_live import run_unified_live
+            from prometheus.ui.stream.renderer import run_stream
 
-            await run_unified_live(
+            await run_stream(
                 redis, mission_id, problem_description, dataset_name=dataset_name, num_rows=num_rows
             )
         finally:

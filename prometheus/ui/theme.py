@@ -153,6 +153,15 @@ class Theme:
     tree_connector = Color("#2A2A2A")
     tree_badge_bg = Color("#2C3E50")
 
+    # ── Scroll-forward stream renderer tokens ────────────────────────────
+    stream_thinking = Color("#8E8E93")       # Thinking text (dim, italic)
+    stream_thinking_active = Color("#B0B0B4")  # Active thinking tail (brighter)
+    stream_finalized = Color("#5FD7D7")      # Finalized/done text (cyan/teal instead of bright green)
+    stream_subaction = Color("#8E8E93")      # Subaction detail lines
+    stream_running = Color("#5F87AF")        # Running indicator (slate blue)
+    stream_cost = Color("#D7AF00")           # Token cost display
+
+
     @classmethod
     def rich_theme(cls):
         from rich.theme import Theme as RichTheme
@@ -222,5 +231,12 @@ class Theme:
                 "completion_border": str(cls.completion_border),
                 "completion_border_error": str(cls.completion_border_error),
                 "badge_text": str(cls.badge_text),
+                # Stream renderer
+                "stream_thinking": str(cls.stream_thinking),
+                "stream_thinking_active": str(cls.stream_thinking_active),
+                "stream_finalized": str(cls.stream_finalized),
+                "stream_subaction": str(cls.stream_subaction),
+                "stream_running": str(cls.stream_running),
+                "stream_cost": str(cls.stream_cost),
             }
         )

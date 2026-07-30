@@ -98,6 +98,7 @@ def _validate_python_script(
             capture_output=True,
             text=True,
             check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except subprocess.CalledProcessError as e:
         logger.error(f"[job={job_id}] Script failed py_compile:\n{e.stderr}")

@@ -716,18 +716,29 @@ def _copy_to_clipboard_impl(text: str, *, console: Console) -> None:
     except ImportError:
         pass
     try:
-        if os.name == "nt":
-            proc = subprocess.Popen(["clip"], stdin=subprocess.PIPE, shell=True)
-            proc.communicate(text.encode("utf-8"))
+        if sys.platform == "win32":
+            proc = subprocess.Popen(
+                ["clip"], 
+                stdin=subprocess.PIPE, 
+                shell=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if proc.stdin:
+                proc.stdin.write(text.encode("utf-8"))
+                proc.stdin.close()
+            proc.wait()
         else:
-            for cmd in (
-                ["pbcopy"],
-                ["xclip", "-selection", "clipboard"],
-                ["xsel", "--clipboard", "--input"],
-            ):
+            for cmd in [["pbcopy"], ["xclip", "-selection", "clipboard"], ["xsel", "-b"]]:
                 try:
-                    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-                    proc.communicate(text.encode("utf-8"))
+                    proc = subprocess.Popen(
+                        cmd, 
+                        stdin=subprocess.PIPE,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                    if proc.stdin:
+                        proc.stdin.write(text.encode("utf-8"))
+                        proc.stdin.close()
+                    proc.wait()
                     break
                 except FileNotFoundError:
                     continue
