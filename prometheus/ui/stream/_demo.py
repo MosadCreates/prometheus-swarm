@@ -22,7 +22,7 @@ from prometheus.ui.stream.agent_badge import (
     render_badge, render_subaction, render_thinking_line,
     render_thinking_summary, render_detail_line, text_to_ansi,
 )
-from prometheus.ui.stream.header import render_header, HEADER_LINE_COUNT
+from prometheus.ui.stream.header import render_header, HEADER_LINE_COUNT, supports_cursor_movement
 from prometheus.ui.stream.progress_bar import render_progress
 from prometheus.ui.stream.transition import render_transition
 from prometheus.ui.stream.summary_card import SummaryData, render_summary
@@ -97,7 +97,7 @@ def main():
     # Update header
     header = render_header("fraud-detect-a3f9", agent_states, "running", 13, tick + 13, width)
     if supports_cursor_movement():
-        # write_header_update(header, lines_since)
+        pass
 
     # ── Forge ──
     agent_states["Forge"] = "running"
@@ -133,7 +133,7 @@ def main():
     # Update header
     header = render_header("fraud-detect-a3f9", agent_states, "running", 22, tick + 22, width)
     if supports_cursor_movement():
-        # write_header_update(header, lines_since)
+        pass
 
     # ── Furnace ──
     agent_states["Furnace"] = "running"
@@ -269,7 +269,7 @@ def main():
     # ── Final header update ──
     header = render_header("fraud-detect-a3f9", agent_states, "complete", 222, tick + 222, width)
     if supports_cursor_movement():
-        # write_header_update(header, lines_since)
+        pass
 
     # ── Summary card ──
     emit("")

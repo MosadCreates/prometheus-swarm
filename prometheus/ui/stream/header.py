@@ -158,7 +158,6 @@ def render_header(
 
 def supports_cursor_movement() -> bool:
     """Check if the terminal supports ANSI cursor movement."""
-    import sys
     return sys.stdout.isatty()
 
 def write_header_update(header: str, lines_since: int) -> None:
@@ -166,7 +165,6 @@ def write_header_update(header: str, lines_since: int) -> None:
     if not supports_cursor_movement():
         return
         
-    import sys
     import shutil
     try:
         term_height = shutil.get_terminal_size().lines

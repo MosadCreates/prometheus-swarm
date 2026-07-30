@@ -691,7 +691,6 @@ class StreamRenderer:
                     agent.end_time = time.monotonic()
 
     def _scan_artifacts(self) -> list[dict[str, Any]]:
-        import os
         artifacts_dir = os.path.join(os.getcwd(), "outputs", self._mission_id)
         artifacts = []
         if os.path.isdir(artifacts_dir):
