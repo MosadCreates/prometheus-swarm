@@ -592,6 +592,8 @@ async def _run_furnace_with_retry(
 ) -> bool:
     from agents.furnace.agent import FurnaceAgent
     from agents.dissect.agent import DissectAgent
+    from bus.events import STREAM_FURNACE_CRASH, CRASH_EVENT, RESUME_TRAINING, STREAM_DISSECT_OUTPUT
+    from bus.publisher import publish
     from memory.redis_client import RedisClient
     from prometheus.cli.mission.ui import (
         show_furnace_error,
@@ -608,6 +610,84 @@ async def _run_furnace_with_retry(
     max_crash_cycles = 3
     last_crash: dict[str, Any] | None = None
     log_dir = retry_log_output_dir or output_dir
+
+    async def _run_dissect_handler(furnace_agent: FurnaceAgent) -> None:
+        """Watch furnace_crash stream and run Dissect concurrently."""
+        nonlocal last_crash
+        last_stream_id = "$"
+        for _ in range(30):
+            try:
+                results = await redis_client.xread(
+                    {STREAM_FURNACE_CRASH: last_stream_id},
+                    count=1,
+                    block=20000,
+                )
+                if not results:
+                    break
+                _, messages = results[0]
+                for msg_id, raw_fields in messages:
+                    msg = {}
+                    for k, v in raw_fields.items():
+                        key = k.decode() if isinstance(k, bytes) else k
+                        val = v.decode() if isinstance(v, bytes) else v
+                        try:
+                            msg[key] = json.loads(val)
+                        except (json.JSONDecodeError, TypeError):
+                            msg[key] = val
+                    if msg.get("job_id") != job_id:
+                        continue
+                    if msg.get("event_type") != CRASH_EVENT:
+                        continue
+                    last_crash = msg
+
+                    renderer.print(
+                        f"\n  [yellow]Crash detected (cycle {cycle + 1}/{max_crash_cycles}) — launching Dissect repair...[/]\n"
+                    )
+                    logger.info(f"[job={job_id}] Launching Dissect for crash cycle {cycle + 1}")
+
+                    dissect = DissectAgent(job_id=job_id)
+                    dissect.redis = RedisClient()
+                    dissect.redis._client = redis_client
+                    result = await dissect.handle_crash(last_crash)
+
+                    logger.info(f"[job={job_id}] Dissect repair done — publishing RESUME_TRAINING")
+                    renderer.print("  [green]Dissect repair complete — resuming Furnace...[/]\n")
+
+                    if result and getattr(result, "patched_script_path", None):
+                        await publish(
+                            redis_client,
+                            STREAM_DISSECT_OUTPUT,
+                            RESUME_TRAINING,
+                            {
+                                "job_id": job_id,
+                                "patched_script_path": result.patched_script_path,
+                                "resume_from_checkpoint": getattr(
+                                    result, "resume_from_checkpoint", None
+                                ),
+                                "patch_id": getattr(result, "patch_id", ""),
+                                "epoch_count": furnace_agent._epoch_count,
+                            },
+                        )
+                    else:
+                        await publish(
+                            redis_client,
+                            STREAM_DISSECT_OUTPUT,
+                            RESUME_TRAINING,
+                            {
+                                "job_id": job_id,
+                                "patched_script_path": "",
+                                "resume_from_checkpoint": last_crash.get("last_checkpoint_path"),
+                                "patch_id": "",
+                                "epoch_count": furnace_agent._epoch_count,
+                            },
+                        )
+                    return
+                last_stream_id = ">"
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                logger.warning(f"[job={job_id}] Dissect handler error: {e}")
+                return
 
     for cycle in range(max_crash_cycles):
         logger.info(
@@ -638,15 +718,33 @@ async def _run_furnace_with_retry(
                     else (last_crash.get("last_checkpoint_path") if last_crash else None)
                 )
 
-                await agent.run(
-                    script_path=script_path,
-                    use_docker=True,
-                    progress_callback=progress,
-                    wait_for_dissect=False,
-                    resume_from=ckpt,
-                    search_space_json=search_space_json,
-                    output_dir_override=output_dir or None,
+                furnace_task = asyncio.create_task(
+                    agent.run(
+                        script_path=script_path,
+                        use_docker=True,
+                        progress_callback=progress,
+                        wait_for_dissect=True,
+                        resume_from=ckpt,
+                        search_space_json=search_space_json,
+                        output_dir_override=output_dir or None,
+                    )
                 )
+
+                dissect_task = asyncio.create_task(_run_dissect_handler(agent))
+
+                done, pending = await asyncio.wait(
+                    [furnace_task, dissect_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                for task in pending:
+                    task.cancel()
+                    try:
+                        await task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+
+                furnace_result = await furnace_task
             finally:
                 if agent is not None:
                     agent.redis._client = None
@@ -713,20 +811,6 @@ async def _run_furnace_with_retry(
                     wait_for_dissect=True,
                 )
                 return False
-
-            renderer.print(
-                f"\n  [yellow]Crash detected (cycle {cycle + 1}/{max_crash_cycles}) — launching Dissect repair...[/]\n"
-            )
-            logger.info(f"[job={job_id}] Launching Dissect for crash cycle {cycle + 1}")
-
-            dissect = DissectAgent(job_id=job_id)
-            dissect.redis = RedisClient()
-            dissect.redis._client = redis_client
-
-            await dissect.handle_crash(last_crash)
-
-            logger.info(f"[job={job_id}] Dissect repair done — re-running Furnace")
-            renderer.print("  [green]Dissect repair complete — re-running Furnace...[/]\n")
 
         except Exception as e:
             logger.error(f"[job={job_id}] Furnace retry crash cycle {cycle + 1} failed: {e}")

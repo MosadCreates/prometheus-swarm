@@ -196,14 +196,17 @@ def _convert_estimator_to_onnx(
 
     Uses onnxmltools for tree models (compatible with skl2onnx's type system
     when used stand-alone, not inside a Pipeline).
+
+    Note: onnxmltools requires its own FloatTensorType from
+    onnxmltools.convert.common.data_types — the generic
+    onnxconverter_common.data_types.FloatTensorType is rejected at runtime.
     """
     module = getattr(estimator, "__module__", "")
     class_name = type(estimator).__name__
 
-    from onnxconverter_common.data_types import FloatTensorType
-
     if "lightgbm" in module.lower() or "LGBM" in class_name:
         from onnxmltools.convert import convert_lightgbm
+        from onnxmltools.convert.common.data_types import FloatTensorType
 
         initial_types = [("input", FloatTensorType([None, n_features]))]
         return convert_lightgbm(
@@ -215,6 +218,7 @@ def _convert_estimator_to_onnx(
 
     if "xgboost" in module.lower() or "XGB" in class_name:
         from onnxmltools.convert import convert_xgboost
+        from onnxmltools.convert.common.data_types import FloatTensorType
 
         initial_types = [("input", FloatTensorType([None, n_features]))]
         return convert_xgboost(
@@ -363,10 +367,17 @@ def generate_fastapi_app(
         contract_filename = "preprocessing_contract.json"
     else:
         # Try to auto-detect contract from model path
-        alt_contract = model_path.replace(".onnx", "_contract.json").replace(
-            ".pkl", "_contract.json"
+        basename = os.path.basename(model_path)
+        alt_variants = [
+            model_path.replace(".onnx", "_contract.json"),
+            model_path.replace(".pkl", "_contract.json"),
+            model_path.replace(".ckpt", "_contract.json"),
+            model_path.replace(".joblib", "_contract.json"),
+        ]
+        alt_contract = next(
+            (p for p in alt_variants if p != model_path and os.path.exists(p)), None
         )
-        if os.path.exists(alt_contract):
+        if alt_contract and os.path.exists(alt_contract):
             shutil.copy2(alt_contract, dest_contract_path)
             contract_filename = "preprocessing_contract.json"
 
@@ -404,8 +415,8 @@ def generate_fastapi_app(
     return app_path
 
 
-def build_docker_image(image_name: str, app_dir: str) -> tuple[bool, str]:
-    """Build a Docker image for the serving app."""
+async def build_docker_image(image_name: str, app_dir: str) -> tuple[bool, str]:
+    """Build a Docker image for the serving app (async, non-blocking)."""
     dockerfile_path = os.path.join(app_dir, "Dockerfile")
     extra_packages = []
     if os.path.exists(os.path.join(app_dir, "requirements.txt")):
@@ -432,17 +443,21 @@ def build_docker_image(image_name: str, app_dir: str) -> tuple[bool, str]:
         f.write(dockerfile_content)
 
     try:
-        result = subprocess.run(
-            ["docker", "build", "-t", image_name, app_dir],
-            capture_output=True,
-            text=True,
-            timeout=300,
+        result = await asyncio.to_thread(
+            lambda: subprocess.run(
+                ["docker", "build", "-t", image_name, app_dir],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
         )
 
         if result.returncode == 0:
             return True, f"Image built: {image_name}"
         else:
             return False, f"Docker build failed: {result.stderr}"
+    except subprocess.TimeoutExpired:
+        return False, "Docker build timed out after 300s"
     except Exception as e:
         return False, f"Docker build error: {e}"
 
@@ -468,12 +483,12 @@ def _release_port(port: int) -> None:
     _PORT_LOCK.pop(port, None)
 
 
-def deploy_local_compose(
+async def deploy_local_compose(
     image_name: str,
     container_name: str,
     host_port: int | None = None,
 ) -> tuple[bool, str]:
-    """Deploy a model serving container via Docker Compose.
+    """Deploy a model serving container via Docker Compose (async, non-blocking).
 
     If host_port is None, automatically finds an available port.
     """
@@ -482,26 +497,30 @@ def deploy_local_compose(
         host_port = _find_available_port()
         auto_allocated = True
 
-    subprocess.run(
-        ["docker", "rm", "-f", container_name], capture_output=True, text=True, timeout=10
+    await asyncio.to_thread(
+        lambda: subprocess.run(
+            ["docker", "rm", "-f", container_name], capture_output=True, text=True, timeout=10
+        )
     )
     try:
-        result = subprocess.run(
-            [
-                "docker",
-                "run",
-                "-d",
-                "--name",
-                container_name,
-                "-p",
-                f"{host_port}:8080",
-                "--restart",
-                "unless-stopped",
-                image_name,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
+        result = await asyncio.to_thread(
+            lambda: subprocess.run(
+                [
+                    "docker",
+                    "run",
+                    "-d",
+                    "--name",
+                    container_name,
+                    "-p",
+                    f"{host_port}:8080",
+                    "--restart",
+                    "unless-stopped",
+                    image_name,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
         )
 
         if result.returncode == 0:
@@ -513,6 +532,10 @@ def deploy_local_compose(
             if auto_allocated:
                 _release_port(host_port)
             return False, f"Deploy failed: {result.stderr}"
+    except subprocess.TimeoutExpired:
+        if auto_allocated:
+            _release_port(host_port)
+        return False, "Container deploy timed out after 30s"
     except Exception as e:
         if auto_allocated:
             _release_port(host_port)

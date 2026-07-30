@@ -5,6 +5,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 from prometheus.ui.console import console
+from prometheus.ui.theme import Theme
 
 
 def ErrorPanel(
@@ -15,7 +16,11 @@ def ErrorPanel(
     _console: Console = console,
 ) -> Panel:
     text = Text()
-    text.append(f"\n  {message}\n", style="red")
+    text.append(f"\n  {message}\n", style=str(Theme.error))
     if hint:
-        text.append(f"\n  [dim]Try:[/dim] [cyan]{hint}[/cyan]\n")
-    return Panel(text, title=f"[bold red]{title}[/]", border_style="red")
+        text.append(f"\n  [dim]Try:[/dim] [{Theme.info}]{hint}[/{Theme.info}]\n")
+    return Panel(
+        text,
+        title=f"[bold {Theme.error}]{title}[/]",
+        border_style=str(Theme.error),
+    )

@@ -1,5 +1,5 @@
 """
-Scout Agent ? The Perceiver.
+Scout Agent — The Perceiver.
 Accepts a raw problem description + dataset, produces a mission_brief.json
 with structured engineering reasoning (Stage 1).
 """
@@ -31,6 +31,7 @@ from agents.scout.tools import (
     write_mission_brief,
     write_mission_spec,
 )
+from bus.agent_events import AgentEventTracker, emit_subaction_progress
 from bus.events import MISSION_BRIEF_READY, STREAM_SCOUT_OUTPUT
 from bus.publisher import publish
 from prometheus.cli.mission.state_logger import log_mission_state
@@ -40,6 +41,16 @@ from shared.metrics import (
     AGENT_RUNS,
     record_heartbeat,
     record_agent_error,
+)
+from prometheus.ui.detail_types import (
+    ScoutDatasetDetail,
+    ScoutDataQualityDetail,
+    ScoutTaskDetail,
+    ScoutMetricDetail,
+    ScoutModalityDetail,
+    ScoutRecommendationDetail,
+    ScoutConfidenceDetail,
+    DetailType,
 )
 
 
@@ -66,6 +77,9 @@ class ScoutAgent(BaseAgent):
 
         _start = _time.time()
 
+        tracker = AgentEventTracker(self.redis._client, self.job_id, "Scout")
+        await tracker.emit("thinking", "Starting analysis...")
+
         if progress_callback:
             progress_callback("Starting mission...")
 
@@ -74,10 +88,14 @@ class ScoutAgent(BaseAgent):
         target_column = self.job_data.get("target_column")
 
         if not file_path:
+            await tracker.error("Missing file path", detail={"error": "file_path required"})
             record_agent_error("Scout", self.job_id, "missing_file_path")
             raise ValueError(f"file_path required for Scout job {self.job_id}")
 
         if not os.path.exists(file_path):
+            await tracker.error(
+                "Dataset not found", detail={"error": f"File not found: {file_path}"}
+            )
             record_agent_error("Scout", self.job_id, "file_not_found")
             raise FileNotFoundError(f"Dataset not found: {file_path}")
 
@@ -86,13 +104,18 @@ class ScoutAgent(BaseAgent):
         if progress_callback:
             progress_callback("Loading dataset...")
 
+        await tracker.emit("acting", "Profiling dataset...", detail={"task": "EDA"})
         eda = run_eda(file_path, target_column)
+        await emit_subaction_progress(self.redis._client, self.job_id, "Scout", "EDA complete", 0.3)
         if "error" in eda:
+            await tracker.error(f"EDA failed: {eda['error']}")
             record_agent_error("Scout", self.job_id, "eda_failed")
             raise ValueError(f"EDA failed: {eda['error']}")
 
         if progress_callback:
             progress_callback("Reading columns...")
+
+        await tracker.emit("thinking", "Analysing dataset characteristics...")
 
         # ── Engineering Reasoning (Stage 1) ──────────────────────────────
         df_sample = pd.read_csv(file_path, nrows=100)
@@ -136,6 +159,10 @@ class ScoutAgent(BaseAgent):
 
         if progress_callback:
             progress_callback("Profiling dataset...")
+
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Scout", "Engineering reasoning complete", 0.6
+        )
 
         # ── Experience-based confidence adjustment + pattern reuse (Stage 3) ──
         try:
@@ -191,6 +218,10 @@ class ScoutAgent(BaseAgent):
         except Exception as exc:
             self.logger.warning(f"[job={self.job_id}] Experience query failed (non-fatal): {exc}")
 
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Scout", "Experience synthesis complete", 0.8
+        )
+
         # Compute overall confidence as average of all decision confidences
         confs = [
             d["confidence"] for d in reasoning.values() if isinstance(d, dict) and "confidence" in d
@@ -201,8 +232,23 @@ class ScoutAgent(BaseAgent):
         SCOUT_DATASETS_PROCESSED.labels(job_id=self.job_id, status="success").inc()
         SCOUT_ANALYSIS_DURATION.labels(job_id=self.job_id).observe(_elapsed)
 
+        await tracker.emit(
+            "planning",
+            "Selecting architecture and strategy...",
+            detail={
+                "confidence": reasoning.get("overall_confidence"),
+                "architecture": reasoning.get("architecture", {}).get("selected"),
+            },
+        )
+
         if progress_callback:
             progress_callback("Selecting evaluation metric...")
+
+        await tracker.emit(
+            "acting",
+            "Writing mission specification...",
+            detail={"task_type": task_type, "modality": modality},
+        )
 
         _threshold = self.job_data.get("deployment_threshold")
         _operator = self.job_data.get("deployment_operator", ">")
@@ -263,6 +309,26 @@ class ScoutAgent(BaseAgent):
             ),
         )
 
+        await tracker.emit("verifying", "Validating mission specification...")
+
+        # Emit structured detail events for the new UI
+        await self._emit_structured_details(brief, spec, reasoning, eda)
+
+        dataset_info = brief.get("dataset", {}) or {}
+        data_quality = brief.get("data_quality", {}) or {}
+        await tracker.done(
+            "Mission spec ready",
+            detail={
+                "task_type": brief.get("task_type"),
+                "modality": brief.get("modality"),
+                "confidence": reasoning.get("overall_confidence"),
+                "num_rows": dataset_info.get("num_rows"),
+                "num_columns": dataset_info.get("num_columns"),
+                "evaluation_metric": brief.get("evaluation_metric"),
+                "class_imbalance": data_quality.get("class_imbalance_ratio"),
+            },
+        )
+
         if progress_callback:
             progress_callback("Complete.")
 
@@ -282,6 +348,106 @@ class ScoutAgent(BaseAgent):
             f"[job={self.job_id}] MissionSpecification ready | "
             f"task={brief['task_type']} modality={brief['modality']} "
             f"confidence={reasoning.get('overall_confidence', '?')}"
+        )
+
+    async def _emit_structured_details(
+        self,
+        brief: dict[str, Any],
+        spec: dict[str, Any],
+        reasoning: dict[str, Any],
+        eda: dict[str, Any],
+    ) -> None:
+        """Emit structured detail events for the new streaming UI."""
+        tracker = AgentEventTracker(self.redis._client, self.job_id, "Scout")
+
+        # Dataset detail
+        ds = brief.get("dataset", {})
+        dq = brief.get("data_quality", {})
+        await tracker.emit(
+            "acting",
+            "Dataset profiled",
+            detail=ScoutDatasetDetail(
+                num_rows=ds.get("num_rows", 0),
+                num_columns=ds.get("num_columns", 0),
+                file_path=ds.get("file_path", ""),
+                delimiter=ds.get("delimiter", ","),
+                column_types=ds.get("column_types", {}),
+                memory_mb=eda.get("memory_usage_bytes", 0) / (1024 * 1024),
+            ).model_dump(),
+        )
+
+        # Data quality detail
+        await tracker.emit(
+            "acting",
+            "Data quality analyzed",
+            detail=ScoutDataQualityDetail(
+                missing_values=dq.get("missing_value_rate", {}),
+                high_cardinality=dq.get("high_cardinality_columns", []),
+                class_imbalance_ratio=dq.get("class_imbalance_ratio"),
+                outlier_counts=dq.get("outlier_counts", {}),
+                duplicate_rows=dq.get("duplicate_rows", 0),
+                warnings=dq.get("data_warnings", []),
+            ).model_dump(),
+        )
+
+        # Task type detail
+        task_dec = reasoning.get("problem_type", {})
+        await tracker.emit(
+            "acting",
+            "Task type inferred",
+            detail=ScoutTaskDetail(
+                task_type=brief.get("task_type", "classification"),
+                confidence=task_dec.get("confidence", 0.85),
+                rationale=task_dec.get("rationale", ""),
+                alternatives=task_dec.get("alternatives", []),
+            ).model_dump(),
+        )
+
+        # Metric detail
+        await tracker.emit(
+            "acting",
+            "Evaluation metric selected",
+            detail=ScoutMetricDetail(
+                metric=brief.get("evaluation_metric", "auc_roc"),
+                reason=f"Selected for {brief.get('task_type')} with imbalance {dq.get('class_imbalance_ratio')}",
+            ).model_dump(),
+        )
+
+        # Modality detail
+        await tracker.emit(
+            "acting",
+            "Modality detected",
+            detail=ScoutModalityDetail(
+                modality=brief.get("modality", "tabular"),
+                confidence=0.9,
+            ).model_dump(),
+        )
+
+        # Architecture recommendation
+        arch_dec = reasoning.get("architecture", {})
+        await tracker.emit(
+            "acting",
+            "Architecture recommended",
+            detail=ScoutRecommendationDetail(
+                architecture=brief.get("recommended_architecture_family", "lightgbm"),
+                confidence=arch_dec.get("confidence", 0.85),
+                rationale=arch_dec.get("rationale", ""),
+                alternatives=arch_dec.get("alternatives", []),
+            ).model_dump(),
+        )
+
+        # Overall confidence
+        await tracker.emit(
+            "verifying",
+            "Mission brief complete",
+            detail=ScoutConfidenceDetail(
+                overall=reasoning.get("overall_confidence", 0.85),
+                per_decision={
+                    k: v.get("confidence", 0)
+                    for k, v in reasoning.items()
+                    if isinstance(v, dict) and "confidence" in v
+                },
+            ).model_dump(),
         )
 
     async def run_with_data(

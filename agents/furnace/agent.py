@@ -14,6 +14,7 @@ from typing import Any
 
 from agents.base import BaseAgent
 from agents.furnace.prompts import FURNACE_SYSTEM_PROMPT
+from bus.agent_events import AgentEventTracker, emit_subaction_progress, emit_agent_event
 from bus.events import (
     CRASH_EVENT,
     EPOCH_COMPLETE,
@@ -39,6 +40,15 @@ from shared.metrics import (
 )
 from contracts import CrashEvent, RepairResult
 from training.docker_manager import DockerManager
+from prometheus.ui.detail_types import (
+    FurnaceEpochDetail,
+    FurnaceTrialDetail,
+    FurnaceMetricDetail,
+    FurnaceTimeDetail,
+    FurnaceContainerDetail,
+    FurnaceCheckpointDetail,
+)
+from prometheus.ui.components.streaming.progress_bar import create_training_bar
 
 
 class FurnaceAgent(BaseAgent):
@@ -81,6 +91,12 @@ class FurnaceAgent(BaseAgent):
         AGENT_RUNS.labels(agent="Furnace", job_id=self.job_id).inc()
         record_heartbeat("Furnace", self.job_id)
 
+        self._agent_tracker = AgentEventTracker(self.redis._client, self.job_id, "Furnace")
+        await self._agent_tracker.emit(
+            "acting", "Preparing training run...", detail={"script_path": script_path}
+        )
+        self._last_trial: int = 0
+
         jp = get_job_paths(self.job_id)
         checkpoint_path = resume_from or str(jp.checkpoint_path)
         log_mission_state(
@@ -102,6 +118,11 @@ class FurnaceAgent(BaseAgent):
 
         while True:
             try:
+                await self._agent_tracker.emit(
+                    "acting",
+                    "Launching training container...",
+                    detail={"use_docker": use_docker, "script_path": current_script},
+                )
                 if use_docker:
                     await self._launch_and_monitor_docker(
                         current_script,
@@ -116,6 +137,24 @@ class FurnaceAgent(BaseAgent):
                 await self._finalize_training(current_script)
                 if progress_callback:
                     progress_callback("Complete.")
+
+                await self._agent_tracker.emit(
+                    "verifying",
+                    "Validating trained model...",
+                    detail={
+                        "best_metric": self._best_val_metric,
+                        "checkpoint_path": str(jp.checkpoint_path),
+                    },
+                )
+
+                await self._agent_tracker.done(
+                    "Training complete",
+                    detail={
+                        "best_metric": self._best_val_metric,
+                        "epochs": self._epoch_count,
+                        "crashes_recovered": self._crashes_recovered,
+                    },
+                )
 
                 log_mission_state(
                     "FURNACE_COMPLETE",
@@ -133,6 +172,11 @@ class FurnaceAgent(BaseAgent):
                 return
             except Exception as e:
                 crash_attempt += 1
+                tracker = getattr(self, "_agent_tracker", None)
+                if tracker is not None:
+                    asyncio.create_task(
+                        tracker.emit("acting", f"Crash #{crash_attempt}: {type(e).__name__}")
+                    )
                 resume_payload = await self._handle_crash(
                     e,
                     current_script,
@@ -144,6 +188,11 @@ class FurnaceAgent(BaseAgent):
                     self.logger.error(
                         f"[job={self.job_id}] Furnace giving up after crash handling."
                     )
+                    tracker = getattr(self, "_agent_tracker", None)
+                    if tracker is not None:
+                        asyncio.create_task(
+                            tracker.error(f"Crash recovery failed after {crash_attempt} attempt(s)")
+                        )
                     if not wait_for_dissect:
                         return
                     return
@@ -237,6 +286,10 @@ class FurnaceAgent(BaseAgent):
         if progress_callback:
             progress_callback("Training started...")
 
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Furnace", "Model training in progress", 0.5
+        )
+
         try:
             await self.docker.launch_container(
                 job_id=self.job_id,
@@ -249,6 +302,10 @@ class FurnaceAgent(BaseAgent):
             )
         except Exception as e:
             raise RuntimeError(f"Container startup failed: {e}")
+
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Furnace", "Training container launched", 0.2
+        )
 
         self._start_time = time.time()
 
@@ -348,45 +405,249 @@ class FurnaceAgent(BaseAgent):
         except Exception as e:
             self.logger.warning(f"[job={self.job_id}] Could not copy dataset: {e}")
 
+    def _is_noisy_line(self, line: str) -> bool:
+        lower = line.lower()
+        noisy_patterns = [
+            "trial",
+            "finished with value",
+            "downloading",
+            "already up-to-date",
+            "some weights of",
+            "huggingface",
+            "config.json",
+            "model.safetensors",
+            "pytorch_model.bin",
+            "vocab.txt",
+            "tokenizer.json",
+            "special_tokens_map",
+            "|",
+            "/",
+            "\r",
+            "early stopping",
+            "best epoch",
+            "optimization step",
+            "loss:",
+        ]
+        for pat in noisy_patterns:
+            if pat in lower:
+                return True
+        return False
+
     def _on_training_log(self, line: str, progress_callback: Any = None) -> None:
+        stripped = line.strip()
+        if not stripped:
+            return
+
+        # 1. Structured JSON progress lines — cleanest protocol
+        if stripped.startswith("{") and "}" in stripped:
+            try:
+                payload = json.loads(stripped)
+                if isinstance(payload, dict) and payload.get("type") == "progress":
+                    self._handle_json_progress(payload)
+                    return
+            except (json.JSONDecodeError, ValueError, TypeError):
+                pass
+
+        # 2. Eval-iteration output: [N] <dataset>'s <metric>: <value>  (LightGBM)
+        #    or [N] <dataset>-<metric>:<value>  (XGBoost)
+        eval_iter_match = re.search(r"\[\d+\].*?(\w[\w_]*)\s*[:\-]\s*(\d+\.?\d*)", stripped)
+        if eval_iter_match:
+            metric_name = eval_iter_match.group(1)
+            metric_value = float(eval_iter_match.group(2))
+            # Only accept known metric names to avoid false positives
+            if metric_name.lower() in (
+                "auc",
+                "rmse",
+                "logloss",
+                "mae",
+                "mse",
+                "accuracy",
+                "acc",
+                "f1",
+            ):
+                self._epoch_count += 1
+                self._track_metric(metric_name, metric_value)
+                # Emit structured detail for epoch
+                asyncio.create_task(
+                    self._emit_epoch_detail(
+                        epoch=self._epoch_count,
+                        total_epochs=100,  # Will be updated from JSON if available
+                        trial=self._current_trial,
+                        total_trials=self._total_trials,
+                        train_loss=metric_value,
+                        val_loss=metric_value,
+                        metric_name=metric_name,
+                        metric_value=metric_value,
+                        best_score=self._best_val_metric,
+                    )
+                )
+                asyncio.create_task(
+                    emit_subaction_progress(
+                        self.redis._client,
+                        self.job_id,
+                        "Furnace",
+                        f"Iter {self._epoch_count} — {metric_name}: {metric_value:.4f}",
+                        progress=min(1.0, self._epoch_count / max(1, (self._total_trials or 100))),
+                    )
+                )
+                return
+
+        # 3. Trial tracking (Optuna search iterations)
         trial_match = re.search(r"Trial\s+(\d+)\s*/?\s*(\d*)", line, re.IGNORECASE)
         if trial_match:
-            self._current_trial = int(trial_match.group(1))
+            new_trial = int(trial_match.group(1))
             total_raw = trial_match.group(2)
             if total_raw:
                 self._total_trials = int(total_raw)
-        elapsed = time.time() - self._start_time if self._start_time else 0
-        if self._total_trials and self._current_trial:
-            remaining = self._total_trials - self._current_trial
-            if remaining > 0 and self._current_trial > 0:
-                per_trial = elapsed / self._current_trial
-                eta_secs = per_trial * remaining
+            if new_trial != self._last_trial and new_trial > 0:
+                self._last_trial = new_trial
+                self._current_trial = new_trial
+                tracker = getattr(self, "_agent_tracker", None)
+                if tracker is not None:
+                    asyncio.create_task(
+                        tracker.emit(
+                            "planning",
+                            f"Trial {new_trial} of {self._total_trials or '?'}",
+                            detail=FurnaceTrialDetail(
+                                trial=new_trial,
+                                total_trials=self._total_trials or 0,
+                                params={},
+                                score=None,
+                            ).model_dump(),
+                        )
+                    )
+            else:
+                self._current_trial = new_trial
+
+        # 4. Direct metric line: "AUC: 0.8234" / "Accuracy: 0.91"
         metric_match = re.search(
             r"(AUC|ROC AUC|Accuracy|RMSE|MAE|F1)[:\s]*([\d.]+)", line, re.IGNORECASE
         )
         if metric_match:
             metric_name = metric_match.group(1).upper()
             metric_value = float(metric_match.group(2))
-            if metric_name in ("AUC", "ROC AUC"):
-                self._best_val_metric = max(self._best_val_metric, metric_value)
-            elif metric_name == "ACCURACY":
-                self._best_val_metric = max(self._best_val_metric, metric_value)
-            elif metric_name == "RMSE":
-                self._best_val_metric = (
-                    metric_value
-                    if self._best_val_metric == 0.0
-                    else min(self._best_val_metric, metric_value)
-                )
             self._epoch_count += 1
-            FURNACE_EPOCHS.labels(job_id=self.job_id).inc()
-            FURNACE_BEST_VAL_METRIC.labels(job_id=self.job_id, metric_type=metric_name.lower()).set(
-                metric_value
+            self._track_metric(metric_name, metric_value)
+            # Emit structured detail for epoch
+            asyncio.create_task(
+                self._emit_epoch_detail(
+                    epoch=self._epoch_count,
+                    total_epochs=100,
+                    trial=self._current_trial,
+                    total_trials=self._total_trials,
+                    train_loss=metric_value,
+                    val_loss=metric_value,
+                    metric_name=metric_name,
+                    metric_value=metric_value,
+                    best_score=self._best_val_metric,
+                )
             )
-            asyncio.ensure_future(self._publish_epoch_event(metric_name, metric_value))
+            asyncio.create_task(self._publish_epoch_event(metric_name, metric_value))
+            asyncio.create_task(
+                emit_subaction_progress(
+                    self.redis._client,
+                    self.job_id,
+                    "Furnace",
+                    f"Epoch {self._epoch_count} — {metric_name}: {metric_value:.4f}",
+                    progress=min(1.0, self._epoch_count / max(1, (self._total_trials or 50))),
+                )
+            )
+
         if progress_callback:
-            stripped = line.strip()
-            if stripped:
+            if stripped and not self._is_noisy_line(stripped):
                 progress_callback(stripped)
+
+    def _handle_json_progress(self, payload: dict) -> None:
+        epoch = int(payload.get("epoch", 0))
+        max_epochs = int(payload.get("max_epochs", 0))
+        metric = payload.get("metric", "")
+        value = payload.get("value", 0.0)
+        self._epoch_count = max(self._epoch_count, epoch)
+        if metric and value:
+            metric_key = metric.upper()
+            self._track_metric(metric_key, float(value))
+            FURNACE_EPOCHS.labels(job_id=self.job_id).inc()
+            FURNACE_BEST_VAL_METRIC.labels(job_id=self.job_id, metric_type=metric.lower()).set(
+                float(value)
+            )
+            # Emit structured detail for epoch
+            asyncio.create_task(
+                self._emit_epoch_detail(
+                    epoch=epoch,
+                    max_epochs=max_epochs,
+                    metric=metric,
+                    value=float(value),
+                    best_score=self._best_val_metric,
+                )
+            )
+            progress_ratio = min(1.0, epoch / max(1, max_epochs)) if max_epochs else 0.0
+            asyncio.create_task(
+                emit_subaction_progress(
+                    self.redis._client,
+                    self.job_id,
+                    "Furnace",
+                    f"Epoch {epoch}/{max_epochs} — {metric}: {float(value):.4f}",
+                    progress=progress_ratio,
+                )
+            )
+
+    async def _emit_epoch_detail(
+        self,
+        epoch: int,
+        total_epochs: int | None = None,
+        trial: int = 0,
+        total_trials: int | None = None,
+        train_loss: float | None = None,
+        val_loss: float | None = None,
+        metric_name: str | None = None,
+        metric_value: float | None = None,
+        best_score: float | None = None,
+        max_epochs: int = 100,
+    ) -> None:
+        """Emit structured detail for epoch progress."""
+        tracker = AgentEventTracker(self.redis._client, self.job_id, "Furnace")
+        await tracker.emit(
+            "acting",
+            f"Epoch {epoch}/{max_epochs}",
+            detail=FurnaceEpochDetail(
+                epoch=epoch,
+                total_epochs=total_epochs,
+                trial=trial,
+                total_trials=total_trials,
+                train_loss=train_loss,
+                val_loss=val_loss,
+                metric_name=metric_name,
+                metric_value=metric_value,
+                best_score=best_score,
+                elapsed_seconds=time.time() - self._start_time if self._start_time else 0,
+                remaining_seconds=0,
+            ).model_dump(),
+        )
+
+        # Also emit progress bar update
+        progress = epoch / max(total_epochs or 1, 1)
+        bar = create_training_bar(
+            progress=progress,
+            fold=trial,
+            total_folds=total_trials,
+            loss=val_loss,
+            metric_name=metric_name,
+            metric_value=metric_value,
+        )
+        await tracker.emit(
+            "acting", f"Training progress: {int(progress*100)}%", detail=bar.__dict__
+        )
+
+    def _track_metric(self, metric_name: str, metric_value: float) -> None:
+        upper = metric_name.upper()
+        if upper in ("AUC", "ROC AUC", "ACCURACY"):
+            self._best_val_metric = max(self._best_val_metric, metric_value)
+        elif upper == "RMSE":
+            self._best_val_metric = (
+                metric_value
+                if self._best_val_metric == 0.0
+                else min(self._best_val_metric, metric_value)
+            )
 
     def _metric_label(self) -> str:
         return "AUC"
@@ -695,17 +956,26 @@ class FurnaceAgent(BaseAgent):
             self.logger.info(f"[job={self.job_id}] Skipping WAIT state (wait_for_dissect=False)")
             return None
 
-        if progress_callback:
-            progress_callback("Waiting for Dissect...")
+        tracker = getattr(self, "_agent_tracker", None)
+        if tracker is not None:
+            asyncio.create_task(
+                tracker.emit("acting", f"Crash #{attempt_number}: [{crash_category}] {exc_type}")
+            )
 
         if attempt_number > 3:
             self.logger.error(f"[job={self.job_id}] Exceeded 3 crash attempts. Aborting.")
+            if tracker is not None:
+                asyncio.create_task(
+                    tracker.error("Exceeded crash limit", detail={"error": exc_msg})
+                )
             return None
 
         self.logger.info(
             f"[job={self.job_id}] Entering WAIT state for Dissect on "
             f"stream={STREAM_DISSECT_OUTPUT}"
         )
+
+        self.logger.debug(f"[job={self.job_id}] Waiting for Dissect (attempt {attempt_number})")
 
         results = await self.redis._client.xread(
             {STREAM_DISSECT_OUTPUT: "$"},
@@ -717,6 +987,14 @@ class FurnaceAgent(BaseAgent):
             self.logger.error(
                 f"[job={self.job_id}] WAIT timed out after 10 minutes with no response from Dissect."
             )
+            tracker = getattr(self, "_agent_tracker", None)
+            if tracker is not None:
+                asyncio.create_task(
+                    tracker.error(
+                        "Dissect timeout",
+                        detail={"error": "No response from Dissect within 10 minutes"},
+                    )
+                )
             return None
 
         stream, messages = results[0]

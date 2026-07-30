@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
 from prometheus.registry import Command
-from prometheus.ui.styles import Token
+from prometheus.ui.theme import Theme
 
 
 def SearchPanel(results: list[tuple[Command, float]], query: str) -> Panel:
@@ -16,13 +15,17 @@ def SearchPanel(results: list[tuple[Command, float]], query: str) -> Panel:
 
     for cmd, score in results:
         stars = _star_rating(score)
-        color = Token.command if score >= 0.8 else Token.white if score >= 0.6 else Token.secondary
+        color = (
+            str(Theme.command)
+            if score >= 0.8
+            else str(Theme.body) if score >= 0.6 else str(Theme.secondary)
+        )
 
         name_text = Text()
-        name_text.append(f"  {stars}  ", style="yellow")
+        name_text.append(f"  {stars}  ", style=str(Theme.warning))
         name_text.append(cmd.name, style=f"bold {color}")
 
-        desc = Text(cmd.description, style=Token.dim)
+        desc = Text(cmd.description, style=str(Theme.muted))
 
         extra = Text()
         parts = []
@@ -34,15 +37,15 @@ def SearchPanel(results: list[tuple[Command, float]], query: str) -> Panel:
             parts.append(f"Related: {', '.join(cmd.related)}")
         if parts:
             extra.append("\n       ")
-            extra.append("  \u2502  ".join(parts), style=Token.muted)
+            extra.append("  \u2502  ".join(parts), style=str(Theme.muted))
 
         inner.add_row(name_text, Text.assemble(desc, extra))
 
     panel = Panel(
         inner,
         title=f"[bold]Search: {query}[/]",
-        subtitle=f"[dim]{len(results)} matching command(s)[/dim]",
-        border_style="#525252",
+        subtitle=f"[{Theme.muted}]{len(results)} matching command(s)[/]",
+        border_style=str(Theme.border),
         padding=(1, 2),
     )
     return panel

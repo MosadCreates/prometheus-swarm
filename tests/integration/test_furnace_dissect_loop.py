@@ -45,8 +45,25 @@ async def _setup():
     os.makedirs("scripts", exist_ok=True)
     shutil.copy2(FIXTURE_SRC, SCRIPT_PATH)
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
-    with open(CHECKPOINT_PATH, "w") as f:
-        f.write("dummy-checkpoint")
+    import pickle
+
+    with open(CHECKPOINT_PATH, "wb") as f:
+        pickle.dump({"best_metric": 0.0, "epoch": 0, "best_val_metric": 0.0}, f)
+
+    import redis.asyncio as aioredis
+
+    r = aioredis.Redis(host="localhost", port=6379, decode_responses=True)
+    keys = await r.keys(f"job:{JOB_ID}:*")
+    for k in keys:
+        await r.delete(k)
+    for key in [
+        "furnace_crash_stream",
+        "dissect_output_stream",
+        "furnace_output_stream",
+        "patch_log_queue",
+    ]:
+        await r.delete(key)
+    await r.aclose()
 
 
 async def _cleanup():
@@ -75,35 +92,42 @@ async def test_furnace_dissect_crash_recovery():
     from agents.dissect.agent import DissectAgent
     from memory.redis_client import RedisClient
 
-    redis = aioredis.Redis(
+    test_redis = aioredis.Redis(
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+    )
+    furnace_redis = aioredis.Redis(
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+    )
+    dissect_redis = aioredis.Redis(
         host="localhost",
         port=6379,
         decode_responses=True,
     )
 
-    # Ensure consumer groups before any messages are published
     for stream, group in [
         (STREAM_FURNACE_CRASH, GROUP_DISSECT),
         (STREAM_DISSECT_OUTPUT, GROUP_FURNACE),
         (STREAM_FURNACE_OUTPUT, "arbiter_consumers"),
     ]:
-        await ensure_consumer_group(redis, stream, group)
+        await ensure_consumer_group(furnace_redis, stream, group)
 
     furnace_task = None
     try:
-        # --- Launch Furnace in background ---
         furnace = FurnaceAgent(job_id=JOB_ID)
         furnace.redis = RedisClient()
-        furnace.redis._client = redis
+        furnace.redis._client = furnace_redis
 
         furnace_task = asyncio.create_task(furnace.run(script_path=SCRIPT_PATH, use_docker=False))
 
         await asyncio.sleep(1)
 
-        # --- Consume CRASH_EVENT ---
         crash_event = None
         for _ in range(6):
-            results = await redis.xreadgroup(
+            results = await test_redis.xreadgroup(
                 GROUP_DISSECT,
                 "test-dissect",
                 {STREAM_FURNACE_CRASH: ">"},
@@ -127,23 +151,35 @@ async def test_furnace_dissect_crash_recovery():
         assert etype == "RuntimeError", f"Expected RuntimeError, got: {etype}"
         assert crash_event.get("crash_attempt_number") in ("1", 1)
 
-        await redis.xack(
+        await test_redis.xack(
             STREAM_FURNACE_CRASH,
             GROUP_DISSECT,
             crash_event["_msg_id"],
         )
 
-        # --- Have Dissect handle the crash ---
         dissect = DissectAgent(job_id=JOB_ID)
         dissect.redis = RedisClient()
-        dissect.redis._client = redis
+        dissect.redis._client = dissect_redis
 
         await dissect.handle_crash(crash_event)
 
-        # --- Verify RESUME_TRAINING was published ---
+        # Direct rpush test via dissect's resources
+        import json as _json
+
+        await dissect.redis.rpush("patch_log_queue", _json.dumps({"test": "direct"}))
+        _qlen = await dissect_redis.llen("patch_log_queue")
+        _qtype = await dissect_redis.type("patch_log_queue")
+        _items = await dissect_redis.lrange("patch_log_queue", 0, -1)
+        print(f"\n[POST_HANDLE] dissect_redis.llen={_qlen} type={_qtype} items={_items}")
+        _test_rpush = await dissect_redis.rpush("patch_log_queue", _json.dumps({"raw": True}))
+        _qlen2 = await dissect_redis.llen("patch_log_queue")
+        print(
+            f"[POST_HANDLE] raw rpush result={_test_rpush} llen={_qlen2} items={await dissect_redis.lrange('patch_log_queue', 0, -1)}"
+        )
+
         resume_event = None
         for _ in range(12):
-            results = await redis.xreadgroup(
+            results = await test_redis.xreadgroup(
                 GROUP_FURNACE,
                 "test-furnace",
                 {STREAM_DISSECT_OUTPUT: ">"},
@@ -163,7 +199,7 @@ async def test_furnace_dissect_crash_recovery():
                             decoded.get("event_type") == RESUME_TRAINING
                         ):
                             resume_event = decoded
-                            await redis.xack(
+                            await test_redis.xack(
                                 STREAM_DISSECT_OUTPUT,
                                 GROUP_FURNACE,
                                 msg_id,
@@ -181,7 +217,6 @@ async def test_furnace_dissect_crash_recovery():
         ), f"Expected {SCRIPT_PATH}, got {resume_event.get('patched_script_path')}"
         assert resume_event.get("patch_id"), "RESUME_TRAINING should include patch_id"
 
-        # --- Verify the bug was fixed in the script ---
         with open(SCRIPT_PATH) as f:
             content = f.read()
         assert "Age_log" in content, "Patched script should contain Age_log column derivation"
@@ -189,16 +224,14 @@ async def test_furnace_dissect_crash_recovery():
             "np.log" in content or "np.log10" in content or "np.log1p" in content
         ), "Patched script should use a log transform for Age_log"
 
-        # --- Wait for Furnace to complete ---
         try:
             await asyncio.wait_for(furnace_task, timeout=60)
         except asyncio.TimeoutError:
             pytest.fail("Furnace task did not complete within 60s after patch")
 
-        # --- Verify TRAINING_COMPLETE was published ---
         tc_event = None
         for _ in range(5):
-            results = await redis.xreadgroup(
+            results = await test_redis.xreadgroup(
                 "arbiter_consumers",
                 "test-arbiter",
                 {STREAM_FURNACE_OUTPUT: ">"},
@@ -210,7 +243,7 @@ async def test_furnace_dissect_crash_recovery():
                     for msg_id, data in messages:
                         if data.get("job_id") == JOB_ID:
                             tc_event = dict(data)
-                            await redis.xack(
+                            await test_redis.xack(
                                 STREAM_FURNACE_OUTPUT,
                                 "arbiter_consumers",
                                 msg_id,
@@ -224,14 +257,13 @@ async def test_furnace_dissect_crash_recovery():
         assert tc_event, "TRAINING_COMPLETE was not published"
         assert tc_event.get("event_type") == "TRAINING_COMPLETE"
 
-        # --- Verify patch_log_queue has a success entry for this patch ---
         patch_id_to_find = resume_event.get("patch_id", "")
         found_match = False
         patch_log_path = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "../../research/patch_log.jsonl")
         )
         for _ in range(10):
-            result = await redis.blpop("patch_log_queue", timeout=3)
+            result = await test_redis.blpop("patch_log_queue", timeout=3)
             if result is None:
                 break
             _list_key, log_entry_raw = result
@@ -247,9 +279,8 @@ async def test_furnace_dissect_crash_recovery():
                 break
         assert found_match, f"No patch_log entry found matching patch_id={patch_id_to_find}"
 
-        # Drain any remaining entries in the queue to patch_log.jsonl
         while True:
-            result = await redis.blpop("patch_log_queue", timeout=1)
+            result = await test_redis.blpop("patch_log_queue", timeout=1)
             if result is None:
                 break
             _list_key, log_entry_raw = result
@@ -263,20 +294,16 @@ async def test_furnace_dissect_crash_recovery():
                 await furnace_task
             except (asyncio.CancelledError, RuntimeError):
                 pass
-        await redis.delete("patch_log_queue")
-        for key in [
-            f"job:{JOB_ID}:mission_brief",
-            f"job:{JOB_ID}:script_path",
-            f"job:{JOB_ID}:checkpoint",
-            f"job:{JOB_ID}:file_path",
-            f"job:{JOB_ID}:problem_description",
-        ]:
-            await redis.delete(key)
-        for stream in [
-            STREAM_FURNACE_CRASH,
-            STREAM_DISSECT_OUTPUT,
-            STREAM_FURNACE_OUTPUT,
-        ]:
-            await redis.delete(stream)
-        await redis.aclose()
+        for r_client in [test_redis, furnace_redis, dissect_redis]:
+            keys = await r_client.keys(f"job:{JOB_ID}:*")
+            for key in keys:
+                await r_client.delete(key)
+            for stream_key in [
+                "patch_log_queue",
+                STREAM_FURNACE_CRASH,
+                STREAM_DISSECT_OUTPUT,
+                STREAM_FURNACE_OUTPUT,
+            ]:
+                await r_client.delete(stream_key)
+            await r_client.aclose()
         await _cleanup()

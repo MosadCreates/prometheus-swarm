@@ -4,7 +4,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from prometheus.ui.console import console
+from prometheus.ui.icons import CHECK
+from prometheus.ui.theme import Theme
 
 
 def SuccessPanel(
@@ -18,18 +19,18 @@ def SuccessPanel(
     inner.add_column()
 
     row = Text()
-    row.append("\n  \u2713 ", style="bold green")
-    row.append(message, style="green")
+    row.append(f"\n  {CHECK} ", style=f"bold {Theme.success}")
+    row.append(message, style=str(Theme.success))
     inner.add_row(row)
 
     if detail:
-        inner.add_row(Text(f"  {detail}", style="dim white"))
+        inner.add_row(Text(f"  {detail}", style=str(Theme.muted)))
     if hint:
-        inner.add_row(Text(f"  \u21d2 {hint}", style="cyan"))
+        inner.add_row(Text(f"  \u21d2 {hint}", style=str(Theme.info)))
 
     return Panel(
         inner,
-        title=f"[bold green]{title}[/]",
-        border_style="green",
+        title=f"[bold {Theme.success}]{title}[/]",
+        border_style=str(Theme.success),
         padding=(0, 1),
     )

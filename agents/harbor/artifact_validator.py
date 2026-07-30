@@ -17,17 +17,13 @@ immediately with a precise diagnostic.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-import numpy as np
-import pandas as pd
 
 from contracts.domain import PreprocessingContract
 
@@ -178,6 +174,15 @@ class FeatureContractValidator:
             self.report.checks.append(
                 ValidationCheck(
                     name="Contract Load", passed=False, detail=f"File not found: {path}"
+                )
+            )
+            return None
+        if not path.endswith(".json"):
+            self.report.checks.append(
+                ValidationCheck(
+                    name="Contract Load",
+                    passed=False,
+                    detail=f"Not a JSON file: {path} (expected _contract.json)",
                 )
             )
             return None
@@ -584,6 +589,7 @@ def run_self_test(
     endpoint_url: str,
     contract: PreprocessingContract,
     timeout_seconds: int = 30,
+    max_retries: int = 5,
 ) -> ValidationCheck:
     """Send a synthetic prediction request to the deployed endpoint.
 
@@ -591,84 +597,101 @@ def run_self_test(
     fills numeric columns with 0.0 and categorical columns with the first
     known category (or "UNKNOWN"), sends it to /predict, and verifies
     the response contains 'predictions'.
+
+    Retries with exponential backoff on transient connection errors to
+    accommodate container startup races.
     """
-    try:
-        import httpx
+    import httpx
+    import time as _time
 
-        # Build synthetic input
-        sample: dict[str, Any] = {}
-        for col in contract.feature_order:
-            if col in contract.numeric_columns:
-                sample[col] = 0.0
-            elif col in contract.categorical_columns:
-                cats = [clist for clist in contract.ordinal_categories]
-                if cats and len(cats) > 0:
-                    sample[col] = cats[0][0] if cats[0] else "UNKNOWN"
-                else:
-                    sample[col] = "UNKNOWN"
+    # Build synthetic input
+    sample: dict[str, Any] = {}
+    for col in contract.feature_order:
+        if col in contract.numeric_columns:
+            sample[col] = 0.0
+        elif col in contract.categorical_columns:
+            cats = [clist for clist in contract.ordinal_categories]
+            if cats and len(cats) > 0:
+                sample[col] = cats[0][0] if cats[0] else "UNKNOWN"
             else:
-                sample[col] = 0.0
+                sample[col] = "UNKNOWN"
+        else:
+            sample[col] = 0.0
 
-        # Health check
-        health_url = f"{endpoint_url}/health"
-        health_r = httpx.get(health_url, timeout=timeout_seconds)
-        if health_r.status_code != 200:
+    last_error: str = ""
+    for attempt in range(max_retries):
+        try:
+            # Health check
+            health_url = f"{endpoint_url}/health"
+            health_r = httpx.get(health_url, timeout=timeout_seconds)
+            if health_r.status_code != 200:
+                return ValidationCheck(
+                    name="Self-Test: Health Endpoint",
+                    passed=False,
+                    detail=f"Health check failed: status={health_r.status_code}",
+                )
+
+            # Prediction
+            predict_url = f"{endpoint_url}/predict"
+            predict_r = httpx.post(
+                predict_url,
+                json=sample,
+                timeout=timeout_seconds,
+            )
+            if predict_r.status_code != 200:
+                return ValidationCheck(
+                    name="Self-Test: Prediction Endpoint",
+                    passed=False,
+                    detail=f"Prediction failed: status={predict_r.status_code}, body={predict_r.text[:500]}",
+                    expected="200",
+                    actual=predict_r.status_code,
+                )
+
+            data = predict_r.json()
+            if "predictions" not in data:
+                return ValidationCheck(
+                    name="Self-Test: Has Predictions Field",
+                    passed=False,
+                    detail=f"Response missing 'predictions' key: {data}",
+                )
+
+            latency = data.get("latency_ms", 0)
             return ValidationCheck(
-                name="Self-Test: Health Endpoint",
-                passed=False,
-                detail=f"Health check failed: status={health_r.status_code}",
+                name="Self-Test: Synthetic Prediction",
+                passed=True,
+                detail=f"Prediction succeeded | latency={latency:.1f}ms",
+                actual=f"{latency:.1f}ms",
             )
 
-        # Prediction
-        predict_url = f"{endpoint_url}/predict"
-        predict_r = httpx.post(
-            predict_url,
-            json=sample,
-            timeout=timeout_seconds,
-        )
-        if predict_r.status_code != 200:
+        except (
+            httpx.ConnectError,
+            httpx.RemoteProtocolError,
+            httpx.ReadError,
+            httpx.ReadTimeout,
+        ) as e:
+            last_error = f"{type(e).__name__}: {e}"
+            if attempt < max_retries - 1:
+                delay = (2**attempt) * 1.0
+                _time.sleep(delay)
+                continue
+        except httpx.TimeoutException:
             return ValidationCheck(
-                name="Self-Test: Prediction Endpoint",
+                name="Self-Test: Timeout",
                 passed=False,
-                detail=f"Prediction failed: status={predict_r.status_code}, body={predict_r.text[:500]}",
-                expected="200",
-                actual=predict_r.status_code,
+                detail=f"Request timed out after {timeout_seconds}s",
+            )
+        except Exception as e:
+            return ValidationCheck(
+                name="Self-Test: Error",
+                passed=False,
+                detail=f"Self-test failed with exception: {e}",
             )
 
-        data = predict_r.json()
-        if "predictions" not in data:
-            return ValidationCheck(
-                name="Self-Test: Has Predictions Field",
-                passed=False,
-                detail=f"Response missing 'predictions' key: {data}",
-            )
-
-        latency = data.get("latency_ms", 0)
-        return ValidationCheck(
-            name="Self-Test: Synthetic Prediction",
-            passed=True,
-            detail=f"Prediction succeeded | latency={latency:.1f}ms",
-            actual=f"{latency:.1f}ms",
-        )
-
-    except httpx.ConnectError:
-        return ValidationCheck(
-            name="Self-Test: Connection",
-            passed=False,
-            detail=f"Could not connect to {endpoint_url} — is the container running?",
-        )
-    except httpx.TimeoutException:
-        return ValidationCheck(
-            name="Self-Test: Timeout",
-            passed=False,
-            detail=f"Request timed out after {timeout_seconds}s",
-        )
-    except Exception as e:
-        return ValidationCheck(
-            name="Self-Test: Error",
-            passed=False,
-            detail=f"Self-test failed with exception: {e}",
-        )
+    return ValidationCheck(
+        name="Self-Test: Connection (after retries)",
+        passed=False,
+        detail=f"Could not connect after {max_retries} attempts: {last_error}",
+    )
 
 
 # ── Convenience function ─────────────────────────────────────────────

@@ -24,7 +24,11 @@ from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import LabelEncoder
 from PIL import Image
 warnings.filterwarnings("ignore")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
+import json as _json
 import random
 random.seed(42)
 np.random.seed(42)
@@ -103,6 +107,7 @@ for epoch in range(10):
             all_labels.extend(batch["labels"].cpu().numpy())
     val_acc = accuracy_score(all_labels, all_preds)
     print(f"Accuracy: {val_acc:.4f}")
+    print(_json.dumps({"type":"progress","epoch":epoch+1,"max_epochs":10,"metric":"accuracy","value":round(val_acc,4)}))
 
 checkpoint_path = os.path.join(OUTPUT_DIR, "best.ckpt")
 torch.save({"model_state": model.state_dict(), "label_encoder": le}, checkpoint_path)

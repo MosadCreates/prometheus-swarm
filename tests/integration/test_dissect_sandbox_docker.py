@@ -6,6 +6,9 @@ Requires: Docker running, prometheus-training-base image built.
 import asyncio
 import os
 import pytest
+from dotenv import load_dotenv
+
+load_dotenv()
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.timeout(120)]
 

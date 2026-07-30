@@ -45,7 +45,31 @@ class RedisClient:
 
     async def close(self) -> None:
         if self._client:
-            await self._client.aclose()
+            try:
+                await self._client.aclose()
+            except RuntimeError:
+                pass  # Event loop already closed
+            self._client = None
+
+    def __del__(self) -> None:
+        """Safeguard: suppress redis-py's __del__ error if event loop is gone.
+
+        redis.asyncio's AbstractConnection.__del__ tries to close the
+        underlying transport via the event loop, which raises
+        ``RuntimeError: Event loop is closed`` when the connection is
+        garbage-collected after shutdown.  We close the transport
+        directly to prevent the error.
+        """
+        if self._client is None:
+            return
+        try:
+            conn = self._client.connection
+            if conn is not None:
+                transport = getattr(conn, "_transport", None)
+                if transport is not None:
+                    transport.close()
+        except Exception:
+            pass
 
     async def set_json(self, key: str, value: Any, ttl_seconds: int | None = None) -> None:
         serialized = json.dumps(value)

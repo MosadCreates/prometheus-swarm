@@ -163,15 +163,35 @@ def _fallback(description: str) -> ParsedMission:
 
 
 def _guess_dataset_path(description: str) -> str:
-    """Try to find a dataset path mentioned in the description."""
+    """Try to find a dataset path mentioned in the description.
+
+    Handles patterns like:
+      "dataset: data/churn.csv"
+      "dataset data/churn.csv"
+      "dataset is data/churn.csv"
+      "dataset called churn.csv"
+    """
     match = re.search(
-        r"(?:dataset|data|file)[:\s]+([^\s,.]+)",
+        r"(?:dataset|data|file)[:\s]+(?:is\s+|at\s+|called\s+|named\s+|located\s+(?:at\s+)?)?([^\s,:;!?)]+)",
+        description,
+        re.IGNORECASE,
+    )
+    if match:
+        return match.group(1)
+    # Fallback: look for bare .csv/.parquet/.tsv paths anywhere in the text
+    match = re.search(
+        r"([^\s,:;!?)]+\.(?:csv|parquet|tsv|jsonl|txt|jpg|png))",
         description,
         re.IGNORECASE,
     )
     if match:
         return match.group(1)
     return ""
+
+
+def guess_dataset_path(description: str) -> str:
+    """Public wrapper — extract dataset path from a mission description."""
+    return _guess_dataset_path(description)
 
 
 def _check_dataset(path: str) -> bool:

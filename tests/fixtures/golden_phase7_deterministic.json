@@ -1,0 +1,17 @@
+{
+  "header_template": "[#7C5CFC]sudden-bison-phas[/]  [#8E8E93]Titanic survival prediction \u2014 benchmark test \u00b7 0m 00s[/]",
+  "tracker": "[#3B82F6]Scout[/] [#767676]\u25cb[/]  [#6366F1]Forge[/] [#767676]\u25cb[/]  [#8B5CF6]Furnace[/] [#D7AF00]\u25b6[/]  [#A855F7]Dissect[/] [#5FD75F]\u25cf[/]  [#D946EF]Arbiter[/] [#767676]\u25cb[/]  [#EC4899]Harbor[/] [#767676]\u25cb[/]\n  [#767676]WAITING[/]  [#767676]WAITING[/]  [#D7AF00]ACTING[/]  [#5FD75F]DONE[/]  [#767676]WAITING[/]  [#767676]WAITING[/]",
+  "cascade": "  [bold]DISSECT[/] [#5FD75F]\u2713 seen this before \u2014 reapplying cached fix[/]\n  [#D75F5F]Error:[/] Cascade L0 HIT: Rule-based patch applied for name_error [#5FD75F]\u2713 done[/]\n  [#767676][d] show diff  [f] fingerprint history[/]",
+  "pane_keys": [
+    "Classifying error...",
+    "Error classified: name_error",
+    "Cascade L0: DETERMINISTIC_RULE...",
+    "Cascade L0 HIT: Rule-based patch applied for name_error",
+    "Applying patch (cascade level 0)...",
+    "Running sandbox test...",
+    "Patch successful (DETERMINISTIC_RULE)"
+  ],
+  "pane_last_line": "[#5FD75F]\u25cf DONE[/]",
+  "screens": 1,
+  "escalation": null
+}

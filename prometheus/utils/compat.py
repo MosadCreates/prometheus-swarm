@@ -35,6 +35,28 @@ def check_os() -> dict[str, Any]:
     }
 
 
+def check_disk_space() -> dict[str, Any]:
+    try:
+        import shutil
+
+        usage = shutil.disk_usage(".")
+        free_gb = usage.free / (1024**3)
+        ok = free_gb >= 5.0
+        return {
+            "name": "Disk space",
+            "current": f"{free_gb:.1f} GB free",
+            "required": ">= 5.0 GB",
+            "ok": ok,
+        }
+    except Exception as e:
+        return {
+            "name": "Disk space",
+            "current": str(e),
+            "required": ">= 5.0 GB",
+            "ok": False,
+        }
+
+
 def check_dependency(dep: dict[str, Any]) -> dict[str, Any]:
     name = dep["name"]
     required = dep["min"]
@@ -49,7 +71,7 @@ def check_dependency(dep: dict[str, Any]) -> dict[str, Any]:
 
 
 def check_all() -> list[dict[str, Any]]:
-    results: list[dict[str, Any]] = [check_python(), check_os()]
+    results: list[dict[str, Any]] = [check_python(), check_os(), check_disk_space()]
     for dep in _DEPS:
         results.append(check_dependency(dep))
     return results

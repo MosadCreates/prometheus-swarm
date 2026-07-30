@@ -28,7 +28,6 @@ prometheus_swarm_blueprint.pdf
 data/torchvision_data/
 data/images/
 data/*.tar.gz
-research/patch_log.jsonl
 orch_err.txt
 orch_out.txt
 uploads/
@@ -36,3 +35,24 @@ frontend-dev.log
 
 # Large design inspiration images
 UI/Inspiration/
+
+# Generated training scripts
+scripts/training_script_*.py
+scripts/__pycache__/
+
+# Experiment artifacts
+experiments/
+result.json
+tmp_test.py
+training_script_*.py
+
+# External / unrelated code
+src/
+
+# Generated deployment files
+Dockerfile
+Prometheus_CLI_*.md
+deploy_update_app.py
+
+# Reports
+reports/

@@ -55,7 +55,9 @@ def memory_search(ctx, query, limit):
     svc = _app(ctx).memory
     results = svc.search(query, limit=limit)
     if not results:
-        renderer.print(f"[dim]No results for '{query}'.[/dim]")
+        renderer.print(
+            f"[dim]No results for '{query}'. Use a broader search term or check the mission ID.[/dim]"
+        )
         return ExitCode.SUCCESS
     for r in results:
         if isinstance(r, dict):

@@ -36,6 +36,7 @@ from agents.dissect.routing import (
 from agents.dissect.repair_cache import cache_lookup
 from agents.dissect.knowledge_store import record_llm_interaction
 from agents.forge.quality_feedback import record_repair
+from bus.agent_events import emit_agent_event, emit_subaction_progress
 from bus.events import RESUME_TRAINING, ESCALATE, STREAM_DISSECT_OUTPUT
 from bus.publisher import publish
 from memory.collections.patch_memory import store_patch
@@ -106,6 +107,19 @@ class DissectAgent(BaseAgent):
         self.logger.info(f"[job={self.job_id}] Dissect handling crash")
         record_heartbeat("Dissect", self.job_id)
 
+        _dissect_event_id = ""
+        _dissect_event_id = await emit_agent_event(
+            self.redis._client,
+            self.job_id,
+            "Dissect",
+            "thinking",
+            "Classifying error...",
+            detail={
+                "exception_type": crash_event.get("exception_type"),
+                "attempt": crash_event.get("crash_attempt_number", 1),
+            },
+        )
+
         script_path = crash_event["script_path"]
         exception_type = crash_event["exception_type"]
         exception_message = crash_event["exception_message"]
@@ -149,12 +163,22 @@ class DissectAgent(BaseAgent):
             f"preferred={get_preferred_strategy(category)}"
         )
 
+        _dissect_event_id = await emit_agent_event(
+            self.redis._client,
+            self.job_id,
+            "Dissect",
+            "planning",
+            f"Error classified: {category}",
+            detail={"category": category, "confidence": confidence, "strategy": strategy},
+            parent_event_id=_dissect_event_id or None,
+        )
+
         if not os.path.exists(script_path):
             await self._escalate(crash_event, "script_not_found")
             return
 
         with open(script_path, encoding="utf-8") as f:
-            original_code = f.read()
+            original_code = f.read().replace("\r\n", "\n")
 
         # ── Compute fingerprint ─────────────────────────────────────────
         pipeline_stage = crash_event.get("pipeline_stage", "training")
@@ -275,6 +299,9 @@ class DissectAgent(BaseAgent):
             return
 
         # ── Cascade Routing: direct from taxonomy ──────────────────────
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Dissect", "Classifying error...", 0.1
+        )
         cascade_result = await run_cascade(
             category=category,
             script_content=original_code,
@@ -287,6 +314,7 @@ class DissectAgent(BaseAgent):
             governor=self._governor,
             fingerprint=fingerprint,
             fp_store=self._fp_store,
+            parent_event_id=_dissect_event_id or None,
         )
 
         # ── Terminal from cascade ──────────────────────────────────────
@@ -311,8 +339,21 @@ class DissectAgent(BaseAgent):
             await self._escalate(crash_event, "terminal_error")
             return
 
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Dissect", f"Cascade level {cascade_result.level}", 0.5
+        )
+
         # ── Deterministic cascade success (levels 0-3) ────────────────
         if cascade_result.resolved and cascade_result.level < 4:
+            _dissect_event_id = await emit_agent_event(
+                self.redis._client,
+                self.job_id,
+                "Dissect",
+                "acting",
+                f"Applying patch (cascade level {cascade_result.level})...",
+                detail={"category": category, "cascade_level": cascade_result.level},
+                parent_event_id=cascade_result.last_event_id or _dissect_event_id or None,
+            )
             DISSECT_CASCADE_LEVEL.labels(level=str(cascade_result.level), job_id=self.job_id).inc()
             patch_id = str(uuid.uuid4())
             diff = cascade_result.diff_applied or ""
@@ -366,6 +407,16 @@ class DissectAgent(BaseAgent):
                 await self._escalate(crash_event, f"pre_validation: {failed[0]['name']}")
                 return
 
+            _dissect_event_id = await emit_agent_event(
+                self.redis._client,
+                self.job_id,
+                "Dissect",
+                "verifying",
+                "Running sandbox test...",
+                detail={"cascade_level": cascade_result.level},
+                parent_event_id=_dissect_event_id or None,
+            )
+
             sandbox_passed, sandbox_output = await run_sandbox_test(script_path, self.job_id)
             lines_changed = sum(
                 1 for line in diff.split("\n") if line.startswith("+") or line.startswith("-")
@@ -416,6 +467,16 @@ class DissectAgent(BaseAgent):
                 )
                 from contracts.events import ResumeTrainingEvent
 
+                await emit_agent_event(
+                    self.redis._client,
+                    self.job_id,
+                    "Dissect",
+                    "done",
+                    f"Patch successful ({cascade_result.level_name})",
+                    detail={"category": category, "patch_id": patch_id},
+                    parent_event_id=_dissect_event_id or None,
+                )
+
                 await publish(
                     redis_client,
                     STREAM_DISSECT_OUTPUT,
@@ -439,6 +500,15 @@ class DissectAgent(BaseAgent):
 
         # ── Level 4: LLM Reasoning ─────────────────────────────────────
         self.logger.info(f"[job={self.job_id}] Generating patch via LLM (attempt {attempt_number})")
+        _dissect_event_id = await emit_agent_event(
+            self.redis._client,
+            self.job_id,
+            "Dissect",
+            "planning",
+            f"Generating patch via LLM (attempt {attempt_number})...",
+            detail={"category": category, "cascade_level": 4, "attempt": attempt_number},
+            parent_event_id=cascade_result.last_event_id or _dissect_event_id or None,
+        )
 
         # Final budget check before LLM call
         if self._governor is not None and not self._governor.can_call_llm(fingerprint):
@@ -470,6 +540,7 @@ class DissectAgent(BaseAgent):
 
         llm_response = await self.call_llm(
             user_message=self._build_prompt(crash_event, category, strategy, cascade_result),
+            stream=True,
         )
 
         llm_latency = (time.time() - t0) * 1000
@@ -522,6 +593,10 @@ class DissectAgent(BaseAgent):
             )
             return
 
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Dissect", "LLM patch generated", 0.7
+        )
+
         diff = compute_diff(original_code, patched_code)
 
         # ── Progress check: did the patch actually change anything? ────
@@ -565,6 +640,16 @@ class DissectAgent(BaseAgent):
                 attempt_number=attempt_number,
             )
             return
+
+        _dissect_event_id = await emit_agent_event(
+            self.redis._client,
+            self.job_id,
+            "Dissect",
+            "verifying",
+            "Running sandbox test...",
+            detail={"cascade_level": 4},
+            parent_event_id=_dissect_event_id or None,
+        )
 
         sandbox_passed, sandbox_output = await run_sandbox_test(script_path, self.job_id)
 
@@ -648,6 +733,16 @@ class DissectAgent(BaseAgent):
 
             from contracts.events import ResumeTrainingEvent
 
+            await emit_agent_event(
+                self.redis._client,
+                self.job_id,
+                "Dissect",
+                "done",
+                "LLM patch successful",
+                detail={"category": category, "patch_id": patch_id},
+                parent_event_id=_dissect_event_id or None,
+            )
+
             await publish(
                 redis_client,
                 STREAM_DISSECT_OUTPUT,
@@ -693,6 +788,14 @@ class DissectAgent(BaseAgent):
 
     async def _escalate(self, crash_event: dict, reason: str) -> None:
         self.logger.error(f"[job={self.job_id}] ESCALATING: {reason}")
+        await emit_agent_event(
+            self.redis._client,
+            self.job_id,
+            "Dissect",
+            "error",
+            f"Escalating: {reason}",
+            detail={"reason": reason},
+        )
         from contracts.events import EscalateEvent
 
         await publish(

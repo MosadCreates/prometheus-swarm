@@ -27,6 +27,9 @@ from sklearn.pipeline import Pipeline
 import lightgbm as lgb
 
 warnings.filterwarnings("ignore")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 import random
 
@@ -40,6 +43,7 @@ _use_optuna = bool(
 if _use_optuna:
     import optuna
 
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")

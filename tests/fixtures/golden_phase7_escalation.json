@@ -1,0 +1,34 @@
+{
+  "header_template": "[#7C5CFC]hard-seal-phas[/]  [#8E8E93]Titanic survival prediction \u2014 benchmark test \u00b7 0m 00s[/]",
+  "tracker": "[#3B82F6]Scout[/] [#767676]\u25cb[/]  [#6366F1]Forge[/] [#767676]\u25cb[/]  [#8B5CF6]Furnace[/] [#D7AF00]\u25b6[/]  [#A855F7]Dissect[/] [#D75F5F]\u2715[/]  [#D946EF]Arbiter[/] [#767676]\u25cb[/]  [#EC4899]Harbor[/] [#767676]\u25cb[/]\n  [#767676]WAITING[/]  [#767676]WAITING[/]  [#D7AF00]ACTING[/]  [#D75F5F]ERROR[/]  [#767676]WAITING[/]  [#767676]WAITING[/]",
+  "cascade_keys": [
+    "DETERMINISTIC_RULE",
+    "COMPILED_TEMPLATE",
+    "REPAIR_CACHE",
+    "PATCH_MEMORY",
+    "L4"
+  ],
+  "cascade_last_line": "  [#767676][d] show diff  [f] fingerprint history[/]",
+  "pane_keys": [
+    "Classifying error...",
+    "Error classified: checkpoint_corruption",
+    "Escalating: pre_validation: has_model_fit"
+  ],
+  "pane_last_line": "[#D75F5F]\u2715 ERROR[/]",
+  "screens": 2,
+  "escalation_keys": [
+    "JOB ESCALATED",
+    "Dissect",
+    "pre_validation: has_model_fit",
+    "Cascade path",
+    "L0: trying",
+    "L0: miss",
+    "L1: trying",
+    "L1: miss",
+    "L2: trying",
+    "L2: miss",
+    "L3: trying",
+    "L3: miss",
+    "L4: required"
+  ]
+}

@@ -54,6 +54,7 @@ class MissionBriefReadyEvent(EventPayload):
     mission_spec_redis_key: str = ""
     problem_description: str = ""
     dataset_path: str = ""
+    target_column: str | None = None
 
 
 class TrainingScriptReadyEvent(EventPayload):
@@ -199,6 +200,35 @@ class DriftAlertEvent(EventPayload):
     feature: str = ""
 
 
+class ThinkingDeltaEvent(EventPayload):
+    """Fine-grained thinking token chunk for live streaming UI.
+
+    Published token-by-token as the LLM generates response text.
+    The live tree renderer consumes these to animate the ∴ shimmer.
+    """
+
+    event_type: str = "THINKING_DELTA"
+    job_id: str
+    agent: str = ""
+    token: str = ""
+    seq: int = 0
+
+
+class SubactionProgressEvent(EventPayload):
+    """Progress update for a sub-action within an agent's execution.
+
+    Published during long-running operations (EDA, training, cascade)
+    so the live tree renderer can show detail lines and progress bars.
+    """
+
+    event_type: str = "SUBACTION_PROGRESS"
+    job_id: str
+    agent: str = ""
+    detail: str = ""
+    progress: float = 0.0
+    state: str = "running"
+
+
 class AgentEventPayload(EventPayload):
     """Agent state-transition event for the live Cockpit.
 
@@ -217,8 +247,14 @@ class AgentEventPayload(EventPayload):
     seq: int = 0
     state: str = "idle"
     summary: str = ""
-    detail: str = ""  # JSON-encoded dict; empty string for no detail
+    detail: dict = Field(default_factory=dict)
     duration_ms: int = 0
     parent_event_id: str = ""
+    ts: str = ""
 
     schema_version: str = "prometheus.agent_event.v1"
+
+    def to_redis_dict(self) -> dict[str, Any]:
+        flat = super().to_redis_dict()
+        flat["ts"] = flat.get("timestamp", "")
+        return flat

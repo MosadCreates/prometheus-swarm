@@ -30,6 +30,7 @@ async def _record_reproducibility(redis: RedisClient, job_id: str, dataset_path:
 async def submit_job(
     problem_description: str,
     dataset_path: str,
+    target_column: str | None = None,
     constraints: dict[str, Any] | None = None,
 ) -> str:
     """Submit a new ML problem to the swarm.
@@ -40,6 +41,7 @@ async def submit_job(
     Args:
         problem_description: Natural-language description of the ML problem
         dataset_path: Path to the dataset file
+        target_column: Name of the target column in the dataset
         constraints: Optional constraints (max latency, max model size, etc.)
 
     Returns:
@@ -54,6 +56,7 @@ async def submit_job(
         "job_id": job_id,
         "problem_description": problem_description,
         "dataset_path": dataset_path,
+        "target_column": target_column,
         "constraints": constraints or {},
         "status": "QUEUED",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -79,6 +82,7 @@ async def submit_job(
             job_id=job_id,
             problem_description=problem_description,
             dataset_path=dataset_path,
+            target_column=target_column,
         ),
     )
 

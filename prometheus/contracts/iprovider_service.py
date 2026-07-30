@@ -7,6 +7,9 @@ from prometheus.dto.provider_dto import ProviderInfo
 
 class IProviderService(ABC):
     @abstractmethod
+    def add_provider(self, name: str, api_key_env: str | None = None) -> ProviderInfo: ...
+
+    @abstractmethod
     def list_providers(self) -> list[ProviderInfo]: ...
 
     @abstractmethod

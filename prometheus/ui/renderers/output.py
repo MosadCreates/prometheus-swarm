@@ -33,6 +33,9 @@ class Renderer(ABC):
     def error(self, message: str, *, title: str | None = None, hint: str | None = None) -> None: ...
 
     @abstractmethod
+    def empty(self, title: str, *, hint: str | None = None) -> None: ...
+
+    @abstractmethod
     def status(self, items: list[tuple[str, str]], *, title: str | None = None) -> None: ...
 
     @abstractmethod
@@ -57,8 +60,15 @@ class Renderer(ABC):
 
 
 class RichRenderer(Renderer):
-    def __init__(self) -> None:
+    def __init__(self, *, no_color: bool = False) -> None:
         self.console = rich_console
+        if no_color:
+            from rich.console import Console
+            from prometheus.ui.theme import Theme
+
+            self.console = Console(
+                theme=Theme.rich_theme(), emoji=False, safe_box=True, no_color=True, log_time=False
+            )
 
     def print(self, text: str = "", *, style: str | None = None, end: str = "\n") -> None:
         self.console.print(text, style=style, end=end)
@@ -69,13 +79,20 @@ class RichRenderer(Renderer):
     def error(self, message: str, *, title: str | None = None, hint: str | None = None) -> None:
         self.console.print(ErrorPanel(title or "Error", message, hint))
 
+    def empty(self, title: str, *, hint: str | None = None) -> None:
+        self.console.print(f"  [dim]{title}[/dim]")
+        if hint:
+            self.console.print(f"  {hint}")
+
     def status(self, items: list[tuple[str, str]], *, title: str | None = None) -> None:
         self.console.print(StatusPanel(items, title=title))
 
     def table(self, headers: list[str], rows: list[list[str]], *, title: str | None = None) -> None:
         from rich.table import Table
 
-        table = Table(title=title, title_style="bold", border_style="#525252")
+        from prometheus.ui.theme import Theme as _Theme
+
+        table = Table(title=title, title_style="bold", border_style=str(_Theme.border))
         for h in headers:
             table.add_column(h)
         for row in rows:
@@ -114,6 +131,12 @@ class JsonRenderer(Renderer):
         obj: dict[str, Any] = {"error": message}
         if title:
             obj["title"] = title
+        if hint:
+            obj["hint"] = hint
+        self._emit(obj)
+
+    def empty(self, title: str, *, hint: str | None = None) -> None:
+        obj: dict[str, Any] = {"schema": "prometheus.empty.v1", "title": title}
         if hint:
             obj["hint"] = hint
         self._emit(obj)
@@ -170,6 +193,12 @@ class JsonRenderer(Renderer):
 
 
 class PlainRenderer(Renderer):
+    @property
+    def console(self):
+        from prometheus.ui.console import console as _console
+
+        return _console
+
     def print(self, text: str = "", *, style: str | None = None, end: str = "\n") -> None:
         clean = _strip_markup(text)
         rich_console.print(clean, end=end)
@@ -183,6 +212,12 @@ class PlainRenderer(Renderer):
         msg = f"ERROR: {label}{message}"
         if hint:
             msg += f" (hint: {hint})"
+        rich_console.print(msg)
+
+    def empty(self, title: str, *, hint: str | None = None) -> None:
+        msg = f"INFO: {title}"
+        if hint:
+            msg += f"  -> {hint}"
         rich_console.print(msg)
 
     def status(self, items: list[tuple[str, str]], *, title: str | None = None) -> None:
@@ -254,6 +289,12 @@ class YamlRenderer(Renderer):
             obj["hint"] = hint
         self._emit(obj)
 
+    def empty(self, title: str, *, hint: str | None = None) -> None:
+        obj: dict[str, Any] = {"schema": "prometheus.empty.v1", "title": title}
+        if hint:
+            obj["hint"] = hint
+        self._emit(obj)
+
     def status(self, items: list[tuple[str, str]], *, title: str | None = None) -> None:
         obj = {label: value for label, value in items}
         if title:
@@ -302,7 +343,7 @@ class YamlRenderer(Renderer):
         )
 
 
-def get_renderer(fmt: str) -> Renderer:
+def get_renderer(fmt: str, *, no_color: bool = False) -> Renderer:
     match fmt:
         case "json":
             return JsonRenderer()
@@ -310,10 +351,12 @@ def get_renderer(fmt: str) -> Renderer:
             return YamlRenderer()
         case "plain":
             return PlainRenderer()
-        case _:
-            return RichRenderer()
+        case "interactive" | "rich" | _:
+            return RichRenderer(no_color=no_color)
 
 
 def renderer_from_ctx(ctx: Any) -> Renderer:
-    fmt = ctx.find_root().obj.get("format", "rich")
-    return get_renderer(fmt)
+    root = ctx.find_root()
+    fmt = root.obj.get("format", "rich")
+    no_color = root.obj.get("no_color", False)
+    return get_renderer(fmt, no_color=no_color)

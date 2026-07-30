@@ -20,6 +20,9 @@ from sklearn.pipeline import Pipeline
 import lightgbm as lgb
 
 warnings.filterwarnings("ignore")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 import random
 
@@ -33,6 +36,7 @@ _use_optuna = bool(
 if _use_optuna:
     import optuna
 
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")
@@ -87,6 +91,10 @@ preprocessor = ColumnTransformer(
     ]
 )
 
+# Pre-transform data to avoid LightGBM pandas dtype check on raw DataFrame columns
+X_train_t = preprocessor.fit_transform(X_train)
+X_test_t = preprocessor.transform(X_test)
+
 if _use_optuna:
 
     def _objective(trial):
@@ -98,9 +106,7 @@ if _use_optuna:
                 params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
         params["random_state"] = 42
         params["verbose"] = -1
-        _model = Pipeline(
-            [("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))]
-        )
+        _model = lgb.LGBMClassifier(**params)
         # FAILSAFE: column validation -- verify expected features exist
         _expected_cols = list(dict.fromkeys(numeric_cols + categorical_cols))
         _missing_cols = [c for c in _expected_cols if c not in X_train.columns]
@@ -116,8 +122,8 @@ if _use_optuna:
                 "FAILSAFE: X_train has 0 rows -- all data was dropped during NaN filtering"
             )
 
-        _model.fit(X_train, y_train)
-        _y_pred = _model.predict_proba(X_test)[:, 1]
+        _model.fit(X_train_t, y_train)
+        _y_pred = _model.predict_proba(X_test_t)[:, 1]
         return roc_auc_score(y_test, _y_pred)
 
     study = optuna.create_study(direction="maximize")
@@ -129,13 +135,19 @@ else:
     best_params = {"n_estimators": 100, "random_state": 42, "verbose": -1}
 
 estimator = lgb.LGBMClassifier(**best_params)
+estimator.fit(
+    X_train_t,
+    y_train,
+    eval_set=[(X_test_t, y_test)],
+    eval_metric="auc",
+    callbacks=[lgb.log_evaluation(period=1)],
+)
 model = Pipeline(
     [
         ("preprocessor", preprocessor),
         ("estimator", estimator),
     ]
 )
-model.fit(X_train, y_train)
 
 y_pred = model.predict(X_test)
 y_proba = model.predict_proba(X_test)[:, 1]
@@ -149,8 +161,6 @@ print(f"Accuracy: {acc:.4f}")
 print(f"AUC: {auc:.4f}")
 
 _outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
-# OUTPUTS_DIR is already job-scoped by the Furnace volume mount,
-# so we write directly to "checkpoints/" without nesting job_id.
 output_dir = os.path.join(_outputs_dir, "checkpoints")
 os.makedirs(output_dir, exist_ok=True)
 checkpoint_path = os.path.join(output_dir, "best.ckpt")

@@ -38,6 +38,54 @@ def plugin_list(ctx):
     return ExitCode.SUCCESS
 
 
+@plugin.command(name="install")
+@click.argument("name")
+@click.pass_context
+def plugin_install(ctx, name: str):
+    """Install a plugin by import path or package name."""
+    renderer = renderer_from_ctx(ctx)
+    registry = _app(ctx).plugins
+    try:
+        import importlib
+
+        mod = importlib.import_module(name)
+        if hasattr(mod, "create_plugin"):
+            plugin = mod.create_plugin()
+            registry.register(plugin)
+            renderer.success(f"Plugin '{plugin.name}' installed")
+        else:
+            found = [
+                attr
+                for attr in dir(mod)
+                if not attr.startswith("_") and isinstance(getattr(mod, attr), type)
+            ]
+            renderer.error(
+                f"Module '{name}' has no create_plugin() function",
+                hint=f"Choose from: {', '.join(found) if found else '--'}" if found else None,
+            )
+            return ExitCode.ERROR
+    except ImportError as e:
+        renderer.error(f"Could not import plugin '{name}': {e}", hint="pip install <package>")
+        return ExitCode.ERROR
+    return ExitCode.SUCCESS
+
+
+@plugin.command(name="remove")
+@click.argument("name")
+@click.pass_context
+def plugin_remove(ctx, name: str):
+    """Remove (unregister) a previously installed plugin."""
+    renderer = renderer_from_ctx(ctx)
+    registry = _app(ctx).plugins
+    p = registry.get(name)
+    if p is None:
+        renderer.error(f"Plugin '{name}' not found", hint="prometheus plugin list")
+        return ExitCode.ERROR
+    registry.unregister(name)
+    renderer.success(f"Plugin '{name}' removed")
+    return ExitCode.SUCCESS
+
+
 @plugin.command(name="inspect")
 @click.argument("name")
 @click.pass_context

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
+from pathlib import Path
 
 import click
 
-from prometheus.ui.components import Spinner
 from prometheus.ui.renderers import renderer_from_ctx
 from prometheus.ui.styles import Token
 from prometheus.utils.commands import AliasedGroup
@@ -17,114 +16,101 @@ def _app(ctx: click.Context):
     return ctx.find_root().obj["app"]
 
 
+_WORKSPACE_DIR = ".prometheus"
+
+
 @click.group(
     cls=AliasedGroup,
     name="workspace",
-    aliases={"ws": "workspace", "ls": "list"},
+    aliases={"ws": "workspace"},
     context_settings=dict(help_option_names=["--help", "-h"]),
 )
 def workspace():
-    """Manage workspace and project files."""
+    """Manage workspace directories and project environments."""
 
 
-@workspace.command(name="info")
+@workspace.command(name="init")
+@click.argument("path", default=".")
+@click.option("--reset", is_flag=True, default=False, help="Re-initialize an existing workspace")
 @click.pass_context
-def workspace_info(ctx):
-    """Show workspace metadata and structure."""
+def workspace_init(ctx, path: str, reset: bool):
+    """Mark a directory as a Prometheus workspace.
+
+    Creates the .prometheus/ skeleton and configures the project root.
+    """
     renderer = renderer_from_ctx(ctx)
-    svc = _app(ctx).workspace
-    info = svc.get_info()
-    items = [
-        ("Name", info.name),
-        ("Root", info.root),
-        ("Version", info.version or "\u2014"),
-        (".env", "\u2713" if info.has_env else "\u2717"),
-        ("Docker", "\u2713" if info.has_docker else "\u2717"),
-        ("Files", str(info.files)),
-        ("Agents", str(info.agents)),
-    ]
-    renderer.status(items)
+    target = Path(path).resolve()
+
+    if not target.exists():
+        renderer.print(f"Creating directory [bold]{target}[/]...")
+        target.mkdir(parents=True, exist_ok=True)
+
+    ws_dir = target / _WORKSPACE_DIR
+    if ws_dir.exists():
+        if not reset:
+            renderer.error(
+                f"Workspace already exists at {target}",
+                hint="Use --reset to re-initialize",
+            )
+            return ExitCode.ERROR
+        renderer.print(f"Re-initializing workspace at [bold]{target}[/]...")
+    else:
+        renderer.print(f"Initializing workspace at [bold]{target}[/]...")
+
+    ws_dir.mkdir(parents=True, exist_ok=True)
+    (ws_dir / "config.toml").write_text("# Prometheus workspace configuration\n")
+    (ws_dir / "missions").mkdir(exist_ok=True)
+    (ws_dir / "models").mkdir(exist_ok=True)
+
+    os.chdir(str(target))
+    renderer.success(f"Workspace initialized at {target}")
     return ExitCode.SUCCESS
 
 
-@workspace.command(name="status")
+@workspace.command(name="list")
 @click.pass_context
-def workspace_status(ctx):
-    """Show workspace health checks."""
+def workspace_list(ctx):
+    """List known workspace directories."""
     renderer = renderer_from_ctx(ctx)
-    svc = _app(ctx).workspace
-    msg = svc.status()
-    renderer.status([("Workspace", msg)])
+    cfg = _app(ctx).config
+
+    known = cfg.get("workspaces", [])
+    if not known:
+        renderer.empty('No workspaces configured. Use "prometheus workspace init" to create one.')
+        return ExitCode.SUCCESS
+
+    current = cfg.get("current_workspace")
+    rows = []
+    for w in known:
+        label = w
+        if w == current:
+            label = f"{w}  [{Token.accent}active[/]"
+        rows.append([label])
+
+    renderer.table(["Workspace"], rows)
     return ExitCode.SUCCESS
 
 
-@workspace.command(name="scan")
+@workspace.command(name="use")
+@click.argument("name")
 @click.pass_context
-def workspace_scan(ctx):
-    """Scan workspace files and structure."""
+def workspace_use(ctx, name: str):
+    """Switch the active workspace by name or path."""
     renderer = renderer_from_ctx(ctx)
-    svc = _app(ctx).workspace
-    with Spinner("Scanning workspace..."):
-        result = svc.scan()
-    items = [
-        ("Total files", str(result.total_files)),
-        ("Directories", str(result.directories)),
-        ("Supported files", str(result.supported_files)),
-        ("Size", f"{result.size_kb} KB"),
-    ]
-    renderer.status(items)
-    return ExitCode.SUCCESS
+    cfg = _app(ctx).config
 
+    known = cfg.get("workspaces", [])
+    target = Path(name).resolve()
+    target_str = str(target)
 
-@workspace.command(name="tree")
-@click.option("--depth", "-d", default=2, type=int, help="Directory depth")
-@click.pass_context
-def workspace_tree(ctx, depth):
-    """Show workspace directory tree."""
-    renderer = renderer_from_ctx(ctx)
-    from pathlib import Path
-
-    root = _app(ctx).workspace.root
-    lines = _build_tree(Path(root), depth=depth, prefix="")
-    for line in lines:
-        renderer.print(f"  [dim]{line}[/dim]")
-    return ExitCode.SUCCESS
-
-
-@workspace.command(name="open")
-@click.pass_context
-def workspace_open(ctx):
-    """Open workspace in file manager."""
-    renderer = renderer_from_ctx(ctx)
-    root = _app(ctx).workspace.root
-    try:
-        if os.name == "nt":
-            os.startfile(root)
-        elif sys.platform == "darwin":
-            subprocess.run(["open", root], check=True)
-        else:
-            subprocess.run(["xdg-open", root], check=True)
-        renderer.success(f"Workspace at {root}")
-    except Exception as e:
-        renderer.error(str(e), hint=f"cd {root}")
+    if target_str not in known:
+        renderer.error(
+            f"Workspace '{name}' not in known list",
+            hint="prometheus workspace list",
+        )
         return ExitCode.ERROR
+
+    cfg.set("current_workspace", target_str)
+    os.chdir(target_str)
+    renderer.success(f"Switched to workspace {target_str}")
     return ExitCode.SUCCESS
-
-
-def _build_tree(path, depth, prefix):
-    if depth <= 0:
-        return [f"{prefix}\u2514\u2500\u2500 ..."]
-    entries = sorted(
-        [p for p in path.iterdir() if not p.name.startswith(".")],
-        key=lambda p: (not p.is_dir(), p.name.lower()),
-    )
-    lines = []
-    for i, entry in enumerate(entries):
-        is_last = i == len(entries) - 1
-        connector = "\u2514\u2500\u2500 " if is_last else "\u251c\u2500\u2500 "
-        next_prefix = prefix + ("    " if is_last else "\u2502   ")
-        label = f"{entry.name}/" if entry.is_dir() else entry.name
-        lines.append(f"{prefix}{connector}{label}")
-        if entry.is_dir():
-            lines.extend(_build_tree(entry, depth=depth - 1, prefix=next_prefix))
-    return lines

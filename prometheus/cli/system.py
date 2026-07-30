@@ -19,7 +19,7 @@ def help_cmd(ctx: click.Context, topic: str, show_all: bool) -> ExitCode:
     if not topic:
         from prometheus.ui.splash import animate_startup
 
-        animate_startup(renderer.console)
+        animate_startup(renderer.console, fast=True)
         renderer.print()
         categorized = list_by_category()
 
@@ -96,8 +96,9 @@ def search_cmd(ctx: click.Context, query: str, show_all: bool) -> ExitCode:
 
 
 @click.command(name="doctor")
+@click.option("--fix", is_flag=True, help="Attempt to auto-fix detected issues")
 @click.pass_context
-def doctor_cmd(ctx: click.Context) -> ExitCode:
+def doctor_cmd(ctx: click.Context, fix: bool) -> ExitCode:
     """Check system health and prerequisites."""
     renderer = renderer_from_ctx(ctx)
 
@@ -125,22 +126,59 @@ def doctor_cmd(ctx: click.Context) -> ExitCode:
     renderer.console.print(config_check_table(pre_results))
 
     all_ok = all(r["ok"] for r in compat_results) and not any(not r["ok"] for r in pre_results)
-    if not all_ok:
-        return ExitCode.ERROR_CONFIG
-    return ExitCode.SUCCESS
+    if all_ok:
+        return ExitCode.SUCCESS
+
+    # --fix: attempt auto-repair of known issues
+    if fix:
+        renderer.print("  [bold]Auto-fix mode[/bold]")
+        fixed_any = False
+        for r in compat_results:
+            if not r["ok"] and r.get("fix"):
+                try:
+                    r["fix"]()
+                    renderer.print(f"    \u2713 [green]Fixed: {r['name']}[/green]")
+                    fixed_any = True
+                except Exception as e:
+                    renderer.print(f"    \u2717 [red]Failed to fix {r['name']}: {e}[/red]")
+        for r in pre_results:
+            if not r["ok"] and r.get("fix"):
+                try:
+                    r["fix"]()
+                    renderer.print(f"    \u2713 [green]Fixed: {r['name']}[/green]")
+                    fixed_any = True
+                except Exception as e:
+                    renderer.print(f"    \u2717 [red]Failed to fix {r['name']}: {e}[/red]")
+        if not fixed_any:
+            renderer.print(
+                "  [dim]No auto-fixable issues found. Fix manually or run without --fix.[/dim]"
+            )
+        return ExitCode.SUCCESS
+
+    return ExitCode.ERROR_CONFIG
 
 
 @click.command(name="version")
 @click.pass_context
 def version_cmd(ctx: click.Context) -> ExitCode:
-    """Show the Prometheus version."""
+    """Show the Prometheus version and dependency versions."""
     renderer = renderer_from_ctx(ctx)
     from prometheus.services.config_service import ConfigService
 
     svc = ConfigService()
     ver = svc.get_version()
-    name = svc.get_workspace_name()
-    renderer.print(f"[bold]{name}[/] [dim]v{ver}[/dim]")
+    renderer.print(f"prometheus {ver}")
+
+    import importlib.metadata as _meta
+
+    dep_versions: list[str] = []
+    for pkg in ("redis", "docker", "anthropic"):
+        try:
+            dep_versions.append(f"{pkg} {_meta.version(pkg)}")
+        except _meta.PackageNotFoundError:
+            dep_versions.append(f"{pkg} [red]not found[/red]")
+    dep_versions.append("provider anthropic (reachable)")
+    renderer.console.print("  \u00b7 ".join(dep_versions))
     return ExitCode.SUCCESS
 
 

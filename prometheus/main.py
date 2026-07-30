@@ -15,6 +15,10 @@ try:
 except (AttributeError, ValueError):
     pass
 
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv()
+
 import click  # noqa: E402
 
 from prometheus.utils.commands import AliasedGroup  # noqa: E402
@@ -25,28 +29,28 @@ VERSION = "0.1.0"
 _COMMANDS_REGISTERED = False
 
 
-def _print_splash():
+def _print_splash(fast: bool = False):
     import shutil
 
     from prometheus.ui.splash import animate_startup
+    from prometheus.ui.theme import detect_color_system
     from rich.console import Console
 
     w = shutil.get_terminal_size().columns
-    c = Console(emoji=False, force_terminal=True, width=w)
-    animate_startup(c, version=VERSION)
+    c = Console(emoji=False, force_terminal=True, width=w, color_system=detect_color_system())
+    animate_startup(c, fast=fast)
 
 
 def _show_splash_and_help(ctx, param, value):
     if value and not ctx.resilient_parsing:
-        _print_splash()
+        _print_splash(fast=True)
         click.echo(ctx.get_help(), color=ctx.color)
         ctx.exit()
 
 
 def _global_exception_handler(exc_type, exc_value, exc_tb):
     if issubclass(exc_type, KeyboardInterrupt):
-        sys.__excepthook__(exc_type, exc_value, exc_tb)
-        return
+        sys.exit(130)
     from rich.panel import Panel
     from rich.text import Text
 
@@ -69,6 +73,23 @@ def _global_exception_handler(exc_type, exc_value, exc_tb):
 sys.excepthook = _global_exception_handler
 
 
+def _redirect_cmd(old_path: str, new_usage: str) -> click.Command:
+    """Create a stub command that prints a redirect and exits."""
+
+    @click.command(name=old_path, hidden=True)
+    def _stub() -> None:
+        import click as _click
+
+        _click.echo(
+            f"  `prometheus {old_path}` has been reorganized.\n"
+            f"  Use instead: prometheus {new_usage}",
+            err=True,
+        )
+        raise SystemExit(2)
+
+    return _stub
+
+
 def _register_commands():
     global _COMMANDS_REGISTERED
     if _COMMANDS_REGISTERED:
@@ -76,67 +97,52 @@ def _register_commands():
     _COMMANDS_REGISTERED = True
 
     from prometheus.cli import (
+        init_cmd,
         help_cmd,
-        commands_cmd,
-        search_cmd,
         doctor_cmd,
         version_cmd,
-        cheatsheet_cmd,
-        docs_cmd,
-        diagnostics_cmd,
+        daemon_cmd,
         workspace,
         agent,
-        job,
-        config,
-        provider,
-        swarm,
-        deploy,
-        logs,
-        memory,
-        tool,
-        profile,
-        plugin,
-        solve,
-        explain,
-        replay,
-        report,
-        planner,
-        benchmark,
-        reproduce,
-        evaluate,
         mission,
+        model,
+        provider,
+        config,
+        plugin,
     )
 
-    cli.add_command(workspace)
-    cli.add_command(agent)
-    cli.add_command(job)
-    cli.add_command(config)
-    cli.add_command(provider)
-    cli.add_command(swarm)
-    cli.add_command(deploy)
-    cli.add_command(logs)
-    cli.add_command(memory)
-    cli.add_command(tool)
-    cli.add_command(profile)
-    cli.add_command(plugin)
-    cli.add_command(solve)
-    cli.add_command(explain)
-    cli.add_command(replay)
-    cli.add_command(report)
-    cli.add_command(planner)
-    cli.add_command(benchmark)
-    cli.add_command(reproduce)
-    cli.add_command(evaluate)
+    # ── 8 noun groups ──────────────────────────────────────────────
     cli.add_command(mission)
+    cli.add_command(agent)
+    cli.add_command(workspace)
+    cli.add_command(model)
+    cli.add_command(provider)
+    cli.add_command(config)
+    cli.add_command(plugin)
 
-    cli.add_command(help_cmd)
-    cli.add_command(commands_cmd)
-    cli.add_command(search_cmd)
+    # ── System-level commands ──────────────────────────────────────
+    cli.add_command(init_cmd)
     cli.add_command(doctor_cmd)
     cli.add_command(version_cmd)
-    cli.add_command(cheatsheet_cmd)
-    cli.add_command(docs_cmd)
-    cli.add_command(diagnostics_cmd)
+    cli.add_command(help_cmd)
+    cli.add_command(daemon_cmd)
+
+    # ── Backward-compat redirect stubs ─────────────────────────────
+    cli.add_command(_redirect_cmd("logs", "mission logs"))
+    cli.add_command(_redirect_cmd("replay", "mission replay"))
+    cli.add_command(_redirect_cmd("report", "mission report"))
+    cli.add_command(_redirect_cmd("solve", "mission new"))
+    cli.add_command(_redirect_cmd("job", "mission"))
+    cli.add_command(_redirect_cmd("swarm", "agent list"))
+    cli.add_command(_redirect_cmd("deploy", "model export"))
+    cli.add_command(_redirect_cmd("explain", "doctor"))
+    cli.add_command(_redirect_cmd("planner", "mission status"))
+    cli.add_command(_redirect_cmd("memory", "agent inspect"))
+    cli.add_command(_redirect_cmd("tool", "config list"))
+    cli.add_command(_redirect_cmd("profile", "config set"))
+    cli.add_command(_redirect_cmd("benchmark", "mission new --auto"))
+    cli.add_command(_redirect_cmd("reproduce", "mission new"))
+    cli.add_command(_redirect_cmd("evaluate", "model show"))
 
 
 @click.group(
@@ -144,29 +150,64 @@ def _register_commands():
     register_fn=_register_commands,
     invoke_without_command=True,
     aliases={
+        # Noun-level short forms
         "ws": "workspace",
         "ag": "agent",
         "cfg": "config",
         "prov": "provider",
-        "mem": "memory",
+        "mdl": "model",
+        "plug": "plugin",
+        "miss": "mission",
+        # Old noun names that were renamed or absorbed
         "jb": "job",
         "sv": "solve",
         "ex": "explain",
         "rp": "replay",
         "rpt": "report",
-        "mission": "new-mission",
-        "new": "new-mission",
-        "start": "new-mission",
+        # Convenience shortcuts
+        "new": "mission new",
+        "start": "mission new",
     },
     context_settings=dict(help_option_names=[]),
 )
 @click.option("-C", "--project-dir", default=None, help="Project root directory")
+@click.option(
+    "-w",
+    "--workspace",
+    default=None,
+    help="Workspace directory path (overrides nearest .prometheus/ auto-detection)",
+)
+@click.option(
+    "--no-color",
+    is_flag=True,
+    default=False,
+    help="Disable ANSI color output",
+)
+@click.option(
+    "--high-contrast",
+    is_flag=True,
+    default=False,
+    help="Enable high-contrast color theme (accessibility)",
+)
+@click.option(
+    "--font-size",
+    type=click.Choice(["small", "medium", "large"]),
+    default=None,
+    help="Set terminal font size for Cockpit TUI (accessibility)",
+)
 @click.option("--debug", is_flag=True, default=False, help="Enable debug logging and tracebacks")
 @click.option(
     "--format",
-    type=click.Choice(["rich", "json", "yaml", "plain"]),
-    default="rich",
-    help="Output format",
+    type=click.Choice(["interactive", "plain", "json"]),
+    default=None,
+    help="Output format (interactive=ANSI, plain=key=value, json=structured)",
+)
+@click.option(
+    "--shell",
+    is_flag=True,
+    default=False,
+    hidden=True,
+    help="Force interactive shell mode (for testing with subprocess pipes).",
 )
 @click.version_option(version=VERSION)
 @click.option(
@@ -179,7 +220,7 @@ def _register_commands():
     help="Show this message and exit.",
 )
 @click.pass_context
-def cli(ctx, project_dir, debug, format):
+def cli(ctx, project_dir, workspace, no_color, high_contrast, font_size, debug, format, shell):
     """Prometheus Swarm — Autonomous AI Engineering System."""
     from prometheus.utils.log import setup_logging
     from prometheus.services import AppContext
@@ -190,7 +231,18 @@ def cli(ctx, project_dir, debug, format):
         os.environ["PROMETHEUS_DEBUG"] = "1"
     ctx.ensure_object(dict)
     ctx.obj["debug"] = debug
-    ctx.obj["format"] = format
+    ctx.obj["shell"] = shell
+    ctx.obj["no_color"] = no_color
+    if no_color:
+        os.environ["NO_COLOR"] = "1"
+    ctx.obj["high_contrast"] = high_contrast
+    ctx.obj["font_size"] = font_size
+    if high_contrast:
+        os.environ["PROMETHEUS_HIGH_CONTRAST"] = "1"
+    if font_size:
+        os.environ["PROMETHEUS_FONT_SIZE"] = font_size
+    fmt = format if format else ("interactive" if sys.stdout.isatty() else "plain")
+    ctx.obj["format"] = fmt
     ctx.obj["renderer_from_ctx"] = renderer_from_ctx
     ctx.obj["_start"] = time.perf_counter()
     if "app" not in ctx.obj:
@@ -201,7 +253,14 @@ def cli(ctx, project_dir, debug, format):
         app.plugins.dispatch_command(cmd_name, [])
     except Exception:
         pass
-    if project_dir:
+    if workspace:
+        root = Path(workspace).resolve()
+        root_str = str(root)
+        if root_str not in sys.path:
+            sys.path.insert(0, root_str)
+        ctx.obj["project_root"] = root
+        os.chdir(str(root))
+    elif project_dir:
         root = Path(project_dir).resolve()
         root_str = str(root)
         if root_str not in sys.path:
@@ -211,7 +270,32 @@ def cli(ctx, project_dir, debug, format):
         ctx.obj["project_root"] = _project_root
 
     if ctx.invoked_subcommand is None:
-        _print_splash()
+        is_tty = sys.stdin.isatty()
+        if not is_tty and not shell:
+            click.echo(ctx.get_help(), color=ctx.color)
+            ctx.exit(0)
+
+        from prometheus.cli.init import _config_is_configured
+
+        if not _config_is_configured():
+            from prometheus.cli.init import _run_interactive_wizard
+
+            try:
+                _run_interactive_wizard()
+            except SystemExit:
+                pass
+            ctx.exit(0)
+
+        # Clear screen to hide shell prompt before splash
+        import shutil
+
+        shutil.os.system("cls" if shutil.os.name == "nt" else "clear")
+
+        from prometheus.ui.console import console as shared_console
+        from prometheus.ui.claude.splash import splash as claude_splash
+
+        claude_splash(shared_console)
+
         from prometheus.repl import run_repl
 
         run_repl()

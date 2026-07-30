@@ -141,6 +141,11 @@ class DockerManager:
 
         if environment is None:
             environment = {}
+        environment.setdefault("TRANSFORMERS_VERBOSITY", "error")
+        environment.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+        environment.setdefault("TOKENIZERS_PARALLELISM", "false")
+        environment.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+        environment.setdefault("OPTUNA_LOG_LEVEL", "WARNING")
 
         if run_cmd is None and script_path:
             script_name = os.path.basename(script_path)

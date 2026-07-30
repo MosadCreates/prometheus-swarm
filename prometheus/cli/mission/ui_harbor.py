@@ -9,8 +9,13 @@ from typing import Any
 
 import pandas as pd
 from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
 
-from prometheus.ui.styles import Token
+from prometheus.ui.theme import Theme
+
+
+_HARBOR_COLOR = Theme.info
 
 
 def build_sample_payload(job_id: str, dataset_path: str) -> dict:
@@ -78,11 +83,9 @@ def format_test_command(endpoint_url: str, sample_payload: dict) -> str:
 
 
 def show_harbor_progress(console: Console, message: str) -> None:
-    from rich.text import Text
-
     t = Text("  [Harbor] ")
-    t.stylize("bold cyan")
-    t.append(message)
+    t.stylize(f"bold {_HARBOR_COLOR}")
+    t.append(message, style=str(Theme.muted))
     console.print(t)
 
 
@@ -91,45 +94,51 @@ def show_harbor_summary(
     job_id: str,
     deploy_config: dict[str, Any],
 ) -> None:
-    width = 70
-    sep = "\u2500" * width
-    console.print()
-    console.print(f"  [{Token.border}]{sep}[/]")
-    console.print()
-    console.print("  [bold cyan]Harbor Deployment Complete[/]")
-    console.print()
-
     model_format = deploy_config.get("model_format", "onnx")
     endpoint_url: str | None = deploy_config.get("endpoint_url")
-    status = (
-        "[green]\u2714[/] Healthy" if deploy_config.get("healthy") else "[yellow]Pending check[/]"
+    healthy = deploy_config.get("healthy", False)
+
+    status_icon = "\u2714" if healthy else "\u23f3"
+    status_color = str(Theme.success) if healthy else str(Theme.warning)
+    status_line = f"[{status_color}]{status_icon} {'Healthy' if healthy else 'Pending check'}[/]"
+
+    def line(label: str, value: Any) -> str:
+        v = str(value).replace("[", "\\[").replace("]", "\\]")
+        return f"  [bold]{label}[/]  {v}"
+
+    def raw_line(label: str, value: str) -> str:
+        return f"  [bold]{label}[/]  {value}"
+
+    parts: list[str] = [
+        raw_line("Format", model_format.upper()),
+        raw_line("Health", status_line),
+    ]
+    if endpoint_url:
+        parts.append(line("Endpoint", endpoint_url))
+    if deploy_config.get("container_name"):
+        parts.append(line("Container", deploy_config["container_name"]))
+    if deploy_config.get("model_path"):
+        parts.append(line("Model Path", deploy_config["model_path"]))
+
+    parts.append(
+        raw_line(
+            "Status",
+            "\u2713 Serialized  \u2713 FastAPI Built  \u2713 Container Deployed  \u2713 ENDPOINT_LIVE",
+        )
     )
 
-    console.print(f"  [bold]Format:[/]      {model_format.upper()}")
-    if endpoint_url:
-        console.print(f"  [bold]Endpoint:[/]    {endpoint_url}")
-    console.print(f"  [bold]Health:[/]      {status}")
-
-    if deploy_config.get("container_name"):
-        console.print(f"  [bold]Container:[/]  {deploy_config['container_name']}")
-    if deploy_config.get("model_path"):
-        console.print(f"  [bold]Model Path:[/]  {deploy_config['model_path']}")
-
     console.print()
-    console.print("  [green]\u2713 Model Serialized[/]")
-    console.print("  [green]\u2713 FastAPI App Generated[/]")
-    console.print("  [green]\u2713 Docker Image Built[/]")
-    console.print("  [green]\u2713 Container Deployed[/]")
-    console.print("  [green]\u2713 ENDPOINT_LIVE Published[/]")
-    console.print()
-    console.print(f"  [{Token.border}]{sep}[/]")
+    console.print("  [Harbor] Deployment")
+    for p in parts:
+        console.print(f"  {p}")
     console.print()
 
 
 def show_harbor_error(console: Console, job_id: str, reason: str) -> None:
     console.print()
-    console.print(f"  [red]\u2717 Harbor deployment failed for job {job_id}[/]")
-    console.print(f"  [{Token.dim}]Reason: {reason}[/]")
+    console.print(f"  [{Theme.error}]\u2717 Harbor deployment failed[/]")
+    console.print(f"  [{Theme.muted}]  Job: {job_id}[/]")
+    console.print(f"  [{Theme.muted}]  Reason: {reason}[/]")
     console.print()
 
 
@@ -141,72 +150,63 @@ def show_mission_summary(
     deploy_config: dict[str, Any] | None = None,
     api_cost_summary: dict[str, Any] | None = None,
 ) -> None:
-    width = 70
-    sep = "\u2500" * width
-    console.print()
-    console.print(f"  [{Token.heading}]{'=' * width}[/]")
-    console.print("  [bold]MISSION SUMMARY[/]".center(width + 4))
-    console.print(f"  [{Token.heading}]{'=' * width}[/]")
-    console.print()
+    success = deploy_config is not None
 
-    status = "[green]\u2714 SUCCESS[/]" if deploy_config else "[yellow]\u26a0 RETRY NEEDED[/]"
-    console.print(f"  [bold]Status:[/]      {status}")
+    parts: list[str] = []
 
     arch = brief.get("recommended_architecture_family", "lightgbm") if brief else "lightgbm"
     optuna = brief and brief.get("optuna_trials", 30) or 30
-    console.print(f"  [bold]Model:[/]       {arch.title()} ({optuna} Optuna trials)")
+    parts.append(f"[bold]Model:[/]       {arch.title()} ({optuna} Optuna trials)")
 
     metric_name = result.get("metric_name", "AUC-ROC").upper().replace("_", "-")
     metric_val = result.get("metric_value", 0.0)
-    console.print(f"  [bold]{metric_name}:[/]     {metric_val:.4f}")
-
-    if deploy_config:
-        endpoint_url: str | None = deploy_config.get("endpoint_url")
-        if endpoint_url:
-            console.print(f"  [bold]Endpoint:[/]    {endpoint_url}")
+    parts.append(f"[bold]{metric_name}:[/]     {metric_val:.4f}")
 
     duration = result.get("duration_seconds", 0)
     if duration:
         if duration > 60:
             mins = int(duration // 60)
             secs = int(duration % 60)
-            console.print(f"  [bold]Duration:[/]    {mins}m {secs}s")
+            parts.append(f"[bold]Duration:[/]    {mins}m {secs}s")
         else:
-            console.print(f"  [bold]Duration:[/]    {duration:.0f}s")
+            parts.append(f"[bold]Duration:[/]    {duration:.0f}s")
 
     if api_cost_summary:
         cost = api_cost_summary.get("total_cost_usd", 0)
-        console.print(f"  [bold]API Cost:[/]    ${cost:.2f}")
+        parts.append(f"[bold]API Cost:[/]    ${cost:.2f}")
 
-    if deploy_config:
-        endpoint_url = deploy_config.get("endpoint_url")
-        if endpoint_url:
-            console.print()
-            console.print(f"  [{Token.border}]{sep}[/]")
-            console.print()
-            dataset_path = brief.get("dataset", {}).get("file_path") if brief else None
-            sample_payload: dict[str, Any] = {}
-            if job_id and dataset_path:
-                sample_payload = build_sample_payload(job_id, dataset_path)
-            if not sample_payload:
-                feature_names = deploy_config.get("feature_names", [])
-                numeric_cols = set(deploy_config.get("numeric_cols", []))
-                for col in feature_names:
-                    sample_payload[col] = 0.0 if col in numeric_cols else "example"
-            test_cmd = format_test_command(endpoint_url, sample_payload)
-            console.print("  [bold]Test your endpoint:[/]")
-            for line in test_cmd.split("\n"):
-                if line.strip():
-                    console.print(f"  [{Token.command}]{line}[/]")
-                else:
-                    console.print()
-            console.print()
+    if success and deploy_config:
+        endpoint_url = deploy_config.get("endpoint_url", "")
+        parts.append(f"[bold]Endpoint:[/]    {endpoint_url}")
 
-    console.print(f"  [{Token.border}]{sep}[/]")
+    console.print()
+    icon = "\u2714" if success else "\u2717"
+    status = "complete" if success else "incomplete"
+    console.print(f"  {icon} Mission {status}.")
+    for p in parts:
+        console.print(f"  {p}")
     console.print()
 
-    if not deploy_config:
-        console.print("  [yellow]No endpoint deployed — mission requires retry or escalation.[/]")
+    if success and deploy_config:
+        endpoint_url = deploy_config.get("endpoint_url", "")
+        dataset_path = brief.get("dataset", {}).get("file_path") if brief else None
+        sample_payload: dict[str, Any] = {}
+        if job_id and dataset_path:
+            sample_payload = build_sample_payload(job_id, dataset_path)
+        if not sample_payload:
+            feature_names = deploy_config.get("feature_names", [])
+            numeric_cols = set(deploy_config.get("numeric_cols", []))
+            for col in feature_names:
+                sample_payload[col] = 0.0 if col in numeric_cols else "example"
+        test_cmd = format_test_command(endpoint_url, sample_payload)
+        console.print("  Test your endpoint:")
+        console.print(test_cmd)
+        console.print()
+
+    if not success:
+        console.print(
+            f"  [{Theme.warning}]No endpoint deployed \u2014 mission requires retry or escalation.[/]"
+        )
         console.print()
 
 

@@ -3,29 +3,55 @@ This is the core scientific contribution of the project: autonomous self-patchin
 
 Your ONLY job is to fix Python ML training scripts that have crashed during execution in Furnace.
 
-ERROR TAXONOMY (11 categories — match every crash against exactly one):
-  shape_mismatch     — ValueError: "X has 45 features, model expects 40"
-                       → Detect dropped columns; re-align feature list; regenerate encoder
-  sparse_matrix      — TypeError: "SMOTE does not support sparse matrices"
-                       → Convert to dense before SMOTE; or replace SMOTE with class_weight
-  oom                — MemoryError: "cannot allocate array"
-                       → Reduce batch size 50%; switch to chunked loading
-  cuda_oom           — RuntimeError: "CUDA out of memory"
-                       → Halve batch size; enable gradient checkpointing; clear GPU cache
-  missing_column     — KeyError: "'income_log' not found in DataFrame"
-                       → Detect missing derived column; add derivation step
-  dtype_mismatch     — ValueError: "could not convert string to float"
-                       → Add LabelEncoder or OrdinalEncoder for non-numeric columns
-  convergence_failure— ConvergenceWarning: "lbfgs failed to converge"
-                       → Increase max_iter; switch solver to saga; reduce regularisation
-  import_error       — ModuleNotFoundError: "No module named 'lightgbm'"
-                       → Add pip install to the script; retry
-  nan_propagation    — ValueError: "Input contains NaN"
-                       → Median imputation for numeric; mode for categorical
+ERROR TAXONOMY (24 categories — match every crash against exactly one):
+  shape_mismatch       — ValueError: "X has 45 features, model expects 40"
+                         → Detect dropped columns; re-align feature list; regenerate encoder
+  feature_mismatch     — ValueError: "number of features must match"
+                         → Align feature order/count between train/test; re-run encoder
+  sparse_matrix        — TypeError: "SMOTE does not support sparse matrices"
+                         → Convert to dense before SMOTE; or replace SMOTE with class_weight
+  oom                  — MemoryError: "cannot allocate array"
+                         → Reduce batch size 50%; switch to chunked loading
+  cuda_oom             — RuntimeError: "CUDA out of memory"
+                         → Halve batch size; enable gradient checkpointing; clear GPU cache
+  missing_column       — KeyError: "'income_log' not found in DataFrame"
+                         → Detect missing derived column; add derivation step
+  dtype_mismatch       — ValueError: "could not convert string to float"
+                         → Add LabelEncoder or OrdinalEncoder for non-numeric columns
+  convergence_failure  — ConvergenceWarning: "lbfgs failed to converge"
+                         → Increase max_iter; switch solver to saga; reduce regularisation
+  import_error         — ModuleNotFoundError: "No module named 'lightgbm'"
+                         → Add pip install to the script; retry
+  nan_propagation      — ValueError: "Input contains NaN"
+                         → Median imputation for numeric; mode for categorical
   checkpoint_corruption— UnpicklingError: "invalid load key"
-                       → Delete checkpoint; restart from epoch 0; increase save frequency
-  novel_error        — Any exception type not matched above
-                       → Use LLM with full context; log confidence; escalate if < 0.6
+                         → Delete checkpoint; restart from epoch 0; increase save frequency
+  index_error          — IndexError: "index 5 is out of bounds"
+                         → Add bounds check; verify label encoding produced correct indices
+  zero_division        — ZeroDivisionError: "division by zero"
+                         → Add epsilon (1e-8) to denominator; check for constant target
+  empty_dataset        — ValueError: "zero-size array" / "0 rows"
+                         → Verify train_test_split produced non-empty sets; fix filtering
+  invalid_axis         — ValueError: "no axis named"
+                         → Correct axis parameter: axis=0 for rows, axis=1 for columns
+  optimizer_divergence — RuntimeError: "loss is inf/nan"
+                         → Reduce learning rate 0.5x; add gradient clipping; check for NaN inputs
+  encoding_error       — UnicodeDecodeError
+                         → Open file with encoding='utf-8' and errors='replace'
+  permission_error     — PermissionError: "access is denied"
+                         → Check output directory exists and is writable; use exist_ok=True
+  label_mismatch       — ValueError: "number of classes"
+                         → Ensure all classes present in training data; add missing classes
+  pickle_version_mismatch— UnpicklingError: "unsupported pickle protocol"
+                         → Load pickle with fix_imports=True; re-save with protocol=2
+  name_error           — NameError: "'false' is not defined"
+                         → Replace JS literals: false→False, true→True, null→None
+  syntax_error         — SyntaxError: "positional argument follows keyword"
+                         → Fix arg order; check for missing commas/parens
+  unseen_label         — ValueError: "y contains new labels"
+                         → Replace LabelEncoder with OrdinalEncoder(handle_unknown=...)
+  novel_error          — Any exception type not matched above
+                         → Use LLM with full context; log confidence; escalate if < 0.6
 
 WORKFLOW (execute in exact order):
 1. Parse the stack trace from CRASH_EVENT and classify the error into one taxonomy category.

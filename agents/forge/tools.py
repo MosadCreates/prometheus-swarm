@@ -325,7 +325,7 @@ def _write_xgboost_script(
             f"    y_tr, y_val = y_train.iloc[train_idx], y_train.iloc[val_idx]\n"
             f"    estimator = xgb.XGBClassifier(**best_params) if {is_classification} else xgb.XGBRegressor(**best_params)\n"
             f"    model = Pipeline([('preprocessor', preprocessor), ('estimator', estimator)])\n"
-            f"    model.fit(X_tr, y_tr)\n"
+            f"    model.fit(X_tr, y_tr, estimator__eval_set=[(X_val, y_val)], estimator__verbose=True)\n"
             f"    cv_scores.append(model.score(X_val, y_val))\n"
             f"print(f'CV scores: {{cv_scores}} | mean: {{np.mean(cv_scores):.4f}}')\n"
             f"estimator = xgb.XGBClassifier(**best_params) if {is_classification} else xgb.XGBRegressor(**best_params)\n"
@@ -361,11 +361,15 @@ from sklearn.pipeline import Pipeline
 import xgboost as xgb
 
 warnings.filterwarnings("ignore")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 _search_space_json = os.getenv("SEARCH_SPACE_JSON")
 _use_optuna = bool(_search_space_json)
 if _use_optuna:
     import optuna
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")
@@ -458,7 +462,11 @@ else:
         ("preprocessor", preprocessor),
         ("estimator", estimator),
     ])
-    model.fit(X_train, y_train)
+    model.fit(
+        X_train, y_train,
+        estimator__eval_set=[(X_test, y_test)],
+        estimator__verbose=True,
+    )
 
     y_pred = model.predict(X_test)
     {eval_metrics}
@@ -552,6 +560,9 @@ from pytorch_tabnet.tab_model import TabNetClassifier, TabNetRegressor
 import torch
 
 warnings.filterwarnings("ignore")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 _data_dir = os.getenv("DATA_DIR", "./data")
 df = pd.read_csv(os.path.join(_data_dir, "{data_filename}"), sep="{data_delimiter}", encoding="utf-8", errors="replace")
@@ -724,7 +735,9 @@ def _write_lightgbm_script(
     class_weight_objective_line = ""
     if imbalance_method == "smote":
         smote_import = "from imblearn.over_sampling import SMOTE\nfrom imblearn.pipeline import Pipeline as ImbPipeline\n"
-        smote_step = "model = ImbPipeline([('preprocessor', preprocessor), ('smote', SMOTE(random_state=42)), ('estimator', estimator)])\n"
+        smote_step = (
+            "model = ImbPipeline([('smote', SMOTE(random_state=42)), ('estimator', estimator)])\n"
+        )
     elif imbalance_method == "class_weight" and is_classification:
         class_weight_param = ', class_weight="balanced"'
         class_weight_objective_line = '            params["class_weight"] = "balanced"\n'
@@ -755,14 +768,19 @@ for fold_idx, (train_idx, val_idx) in enumerate(cv.split(X_train, y_train)):
     X_tr, X_val = X_train.iloc[train_idx], X_train.iloc[val_idx]
     y_tr, y_val = y_train.iloc[train_idx], y_train.iloc[val_idx]
     estimator = lgb.LGBMClassifier(**best_params{class_weight_param}) if {is_classification} else lgb.LGBMRegressor(**best_params)
-    model = Pipeline([("preprocessor", preprocessor), ("estimator", estimator)])
-    model.fit(X_tr, y_tr)
+    model = Pipeline([("estimator", estimator)])
+    model.fit(
+        X_tr, y_tr,
+        estimator__eval_set=[(X_val, y_val)],
+        estimator__eval_metric='auc' if {is_classification} else 'rmse',
+        estimator__callbacks=[lgb.log_evaluation(period=1)],
+    )
     _score = model.score(X_val, y_val)
     cv_scores.append(_score)
 print(f"CV scores: {{cv_scores}} | mean: {{np.mean(cv_scores):.4f}}")
 # Refit on full training set
 estimator = lgb.LGBMClassifier(**best_params{class_weight_param}) if {is_classification} else lgb.LGBMRegressor(**best_params)
-model = Pipeline([("preprocessor", preprocessor), ("estimator", estimator)])
+model = Pipeline([("estimator", estimator)])
 model.fit(X_train, y_train)
 """
     else:
@@ -787,7 +805,6 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from sklearn.compose import ColumnTransformer
 from sklearn.metrics import accuracy_score, mean_squared_error, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder as _TargetLabelEncoder, OrdinalEncoder
@@ -795,11 +812,15 @@ from sklearn.pipeline import Pipeline
 import lightgbm as lgb
 {smote_import}
 warnings.filterwarnings("ignore")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 _search_space_json = os.getenv("SEARCH_SPACE_JSON")
 _use_optuna = bool(_search_space_json)
 if _use_optuna:
     import optuna
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")
@@ -819,11 +840,11 @@ for _c in df.select_dtypes(include=["int64", "float64"]).columns:
 for _c in df.select_dtypes(include=["object"]).columns:
     df[_c] = df[_c].fillna(df[_c].mode().iloc[0] if not df[_c].mode().empty else "MISSING")
 
-# Coerce string columns that look numeric to prevent dtype errors
-for _c in df.select_dtypes(include=["object"]).columns:
-    _converted = pd.to_numeric(df[_c], errors="ignore")
-    if _converted.dtype in ("int64", "float64"):
-        df[_c] = _converted
+# Encode categorical columns in-place (LightGBM requires numeric dtypes)
+_cat_encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+_cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
+if _cat_cols:
+    df[_cat_cols] = _cat_encoder.fit_transform(df[_cat_cols])
 
 # --- Target encoding: handles string labels like 'Yes'/'No', 'True'/'False' ---
 _target_encoder = _TargetLabelEncoder()
@@ -835,13 +856,7 @@ else:
     _target_classes = _target_encoder.classes_.tolist()
 
 {split_and_cv}
-numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolist()
-categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
-
-preprocessor = ColumnTransformer([
-    ("num", "passthrough", numeric_cols),
-    ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), categorical_cols),
-])
+_col_names = X_train.columns.tolist()
 
 if _use_optuna:
     if {is_classification}:
@@ -854,7 +869,7 @@ if _use_optuna:
                     params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
             params["random_state"] = 42
             params["verbosity"] = -1
-            {class_weight_objective_line}            _model = Pipeline([("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))])
+            {class_weight_objective_line}            _model = lgb.LGBMClassifier(**params)
             _model.fit(X_train, y_train)
             _y_prob = _model.predict_proba(X_test)[:, 1]
             return roc_auc_score(y_test, _y_prob)
@@ -868,7 +883,7 @@ if _use_optuna:
                     params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
             params["random_state"] = 42
             params["verbosity"] = -1
-            _model = Pipeline([("preprocessor", preprocessor), ("estimator", lgb.LGBMRegressor(**params))])
+            _model = lgb.LGBMRegressor(**params)
             _model.fit(X_train, y_train)
             _y_pred = _model.predict(X_test)
             return float(mean_squared_error(y_test, _y_pred))
@@ -887,11 +902,15 @@ else:
         estimator = lgb.LGBMClassifier(**best_params{class_weight_param})
     else:
         estimator = lgb.LGBMRegressor(**best_params)
-    {smote_step}model = Pipeline([
-        ("preprocessor", preprocessor),
+    {smote_step}    model = Pipeline([
         ("estimator", estimator),
     ])
-    model.fit(X_train, y_train)
+    model.fit(
+        X_train, y_train,
+        estimator__eval_set=[(X_test, y_test)],
+        estimator__eval_metric='auc' if {is_classification} else 'rmse',
+        estimator__callbacks=[lgb.log_evaluation(period=1)],
+    )
 
     y_pred = model.predict(X_test)
     {eval_metrics}
@@ -903,8 +922,9 @@ checkpoint_path = os.path.join(output_dir, "best.ckpt")
 _checkpoint = {{
     "model": model,
     "target_encoder": _target_encoder,
+    "cat_encoder": _cat_encoder,
     "target_classes": _target_classes,
-    "feature_names": list(X_train.columns) if hasattr(X_train, 'columns') else [],
+    "column_names": _col_names if hasattr(_col_names, '__iter__') else [],
 }}
 with open(checkpoint_path, "wb") as f:
     pickle.dump(_checkpoint, f)
@@ -963,6 +983,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import LabelEncoder
 warnings.filterwarnings("ignore")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 DATA_PATH = os.path.join(os.getenv("DATA_DIR", "./data"), "{data_filename}")
 TARGET_COL = "{target}"
@@ -1089,6 +1112,9 @@ from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import LabelEncoder
 from PIL import Image
 warnings.filterwarnings("ignore")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 DATA_PATH = os.path.join(os.getenv("DATA_DIR", "./data"), "{data_filename}")
 _outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")

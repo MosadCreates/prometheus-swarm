@@ -153,7 +153,18 @@ def test_build_variables_with_smote():
 def test_build_variables_no_target_column():
     brief_no_target = {**TITANIC_BRIEF, "target_column": None}
     vars = _build_variables(brief_no_target, "test")
-    assert vars["target_column"] == "target"
+    assert vars["target_column"] == "Survived"
+
+
+def test_build_variables_no_target_unknown_columns():
+    brief_no_target_no_cols = {**TITANIC_BRIEF, "target_column": None}
+    brief_no_target_no_cols["dataset"]["column_types"] = {
+        "A": "numeric",
+        "B": "numeric",
+        "C": "numeric",
+    }
+    vars = _build_variables(brief_no_target_no_cols, "test")
+    assert vars["target_column"] == "A"
 
 
 def test_build_variables_with_design_summary():

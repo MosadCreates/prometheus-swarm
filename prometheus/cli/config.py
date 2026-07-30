@@ -25,16 +25,16 @@ def config():
     """Manage .env configuration."""
 
 
-@config.command(name="show")
+@config.command(name="list")
 @click.pass_context
-def config_show(ctx):
+def config_list(ctx):
     """Show current .env configuration."""
     renderer = renderer_from_ctx(ctx)
     svc = _app(ctx).config
     env = svc.show()
     if not env:
         renderer.print(
-            "[dim]No .env configuration found. Run [cyan]prometheus config set KEY=VALUE[/cyan] to add variables.[/dim]"
+            "[dim]No .env configuration found. Run [cyan]prometheus config set KEY VALUE[/cyan] to add variables.[/dim]"
         )
         return ExitCode.SUCCESS
 
@@ -47,22 +47,35 @@ def config_show(ctx):
 
 
 @config.command(name="set")
-@click.argument("pairs", nargs=-1)
+@click.argument("key")
+@click.argument("value")
 @click.pass_context
-def config_set(ctx, pairs):
-    """Set one or more KEY=VALUE pairs in .env."""
+def config_set(ctx, key, value):
+    """Set a KEY VALUE pair in .env."""
     renderer = renderer_from_ctx(ctx)
     svc = _app(ctx).config
-    for pair in pairs:
-        if "=" not in pair:
-            renderer.error(f"'{pair}' has no '=' separator.", hint="KEY=VALUE")
-            continue
-        key, _, value = pair.partition("=")
-        svc.set_key(key, value)
-        display = "***" if "KEY" in key.upper() or "PASSWORD" in key.upper() else value
-        detail = f"{key}={display}"
-        renderer.success("Configuration updated.", detail=detail, hint="prometheus config show")
+    svc.set_key(key, value)
+    display = "***" if "KEY" in key.upper() or "PASSWORD" in key.upper() else value
+    detail = f"{key}={display}"
+    renderer.success("Configuration updated.", detail=detail, hint="prometheus config list")
     return ExitCode.SUCCESS
+
+
+@config.command(name="get")
+@click.argument("key")
+@click.pass_context
+def config_get(ctx, key):
+    """Get a single configuration value by key."""
+    renderer = renderer_from_ctx(ctx)
+    svc = _app(ctx).config
+    env = svc.show()
+    if key in env:
+        display = "***" if "KEY" in key.upper() or "PASSWORD" in key.upper() else env[key]
+        renderer.print(f"  {key}={display}")
+        return ExitCode.SUCCESS
+    else:
+        renderer.error(f"Key '{key}' not found in configuration.", hint="prometheus config list")
+        return ExitCode.ERROR_NOT_FOUND
 
 
 @config.command(name="check")

@@ -6,7 +6,7 @@ from rich.table import Table
 from rich.text import Text
 
 from prometheus.registry import Command
-from prometheus.ui.styles import Token
+from prometheus.ui.theme import Theme
 
 
 _CATEGORY_ORDER = [
@@ -25,18 +25,18 @@ _CATEGORY_ORDER = [
 ]
 
 _CATEGORY_STYLES = {
-    "System": Token.heading,
-    "Config": Token.heading,
-    "Workspace": Token.heading,
-    "Project": Token.heading,
-    "Agents": Token.success,
-    "Swarm": Token.success,
-    "Jobs": Token.warning,
-    "Provider": Token.command,
-    "Memory": Token.command,
-    "Deploy": Token.warning,
-    "Tools": Token.secondary,
-    "Logs": Token.secondary,
+    "System": str(Theme.heading),
+    "Config": str(Theme.heading),
+    "Workspace": str(Theme.heading),
+    "Project": str(Theme.heading),
+    "Agents": str(Theme.success),
+    "Swarm": str(Theme.success),
+    "Jobs": str(Theme.warning),
+    "Provider": str(Theme.command),
+    "Memory": str(Theme.command),
+    "Deploy": str(Theme.warning),
+    "Tools": str(Theme.secondary),
+    "Logs": str(Theme.secondary),
 }
 
 
@@ -53,19 +53,19 @@ def CategoryPanels(categorized: dict[str, list[Command]]) -> Group:
         table.add_column()
 
         for cmd in sorted_cmds:
-            name_style = "bold white" if cmd.implemented else Token.muted
+            name_style = f"bold {Theme.title}" if cmd.implemented else str(Theme.muted)
             name = Text(cmd.name, style=name_style)
 
             if cmd.implemented is False:
-                desc = Text(f"  Coming in {cmd.since}", style=Token.muted)
+                desc = Text(f"  Coming in {cmd.since}", style=str(Theme.muted))
             elif cmd.experimental:
-                desc = Text(cmd.description, style=Token.dim)
+                desc = Text(cmd.description, style=str(Theme.muted))
             else:
-                desc = Text(cmd.description, style=Token.dim)
+                desc = Text(cmd.description, style=str(Theme.muted))
 
             table.add_row(name, desc)
 
-        cat_color = _CATEGORY_STYLES.get(cat, Token.white)
+        cat_color = _CATEGORY_STYLES.get(cat, str(Theme.body))
         panel = Panel(
             table,
             title=f"[bold {cat_color}]{cat}[/]",

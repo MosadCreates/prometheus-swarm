@@ -29,6 +29,7 @@ from agents.arbiter.report import (
 )
 from agents.arbiter.tools import compute_classification_metrics, compute_regression_metrics
 from agents.base import BaseAgent
+from bus.agent_events import emit_agent_event, emit_subaction_progress
 from bus.events import (
     EVALUATION_PASS,
     EVALUATION_RETRY,
@@ -38,6 +39,13 @@ from bus.events import (
 from bus.publisher import publish
 from memory.schemas import ExperienceRecord
 from shared.metrics import ARBITER_DECISIONS, record_heartbeat
+from prometheus.ui.detail_types import (
+    ArbiterMetricsDetail,
+    ArbiterDecisionDetail,
+    ArbiterThresholdDetail,
+    ArbiterLeaderboardDetail,
+    ArbiterReportDetail,
+)
 
 
 class ArbiterAgent(BaseAgent):
@@ -59,6 +67,16 @@ class ArbiterAgent(BaseAgent):
         self.job_id = event["job_id"]
         self.logger.info(f"[job={self.job_id}] Arbiter evaluating model")
         record_heartbeat("Arbiter", self.job_id)
+
+        _arbiter_event_id = ""
+        _arbiter_event_id = await emit_agent_event(
+            self.redis._client,
+            self.job_id,
+            "Arbiter",
+            "thinking",
+            "Evaluating model...",
+            detail={"checkpoint_path": event.get("checkpoint_path", "")},
+        )
 
         checkpoint_path = event.get("checkpoint_path", "")
         task_type = await self._get_task_type()
@@ -86,6 +104,10 @@ class ArbiterAgent(BaseAgent):
             await self._publish_decision(ESCALATE, str(e), 0.0, "auc_roc")
             return
 
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Arbiter", "Loading checkpoint data...", 0.2
+        )
+
         y_true = checkpoint_data["y_true"]
         y_pred = checkpoint_data["y_pred"]
         y_prob = checkpoint_data.get("y_prob")
@@ -96,6 +118,10 @@ class ArbiterAgent(BaseAgent):
         else:
             metrics = compute_regression_metrics(y_true, y_pred)
 
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Arbiter", "Computing metrics...", 0.6
+        )
+
         evaluation_result = EvaluationResult.from_metrics_dict(
             metrics=metrics,
             task_type=task_type,
@@ -103,8 +129,101 @@ class ArbiterAgent(BaseAgent):
             num_samples=checkpoint_data.get("num_samples", 0),
         )
 
+        _arbiter_event_id = await emit_agent_event(
+            self.redis._client,
+            self.job_id,
+            "Arbiter",
+            "planning",
+            f"Reasoning over metrics: {evaluation_result.metric}={evaluation_result.metric_value:.4f}",
+            detail={
+                "metric": evaluation_result.metric,
+                "value": evaluation_result.metric_value,
+                "threshold": constraints.threshold,
+            },
+            parent_event_id=_arbiter_event_id or None,
+        )
+
+        _arbiter_event_id = await emit_agent_event(
+            self.redis._client,
+            self.job_id,
+            "Arbiter",
+            "acting",
+            "Deciding pass/retry/escalate...",
+            detail={
+                "threshold": constraints.threshold,
+                "operator": constraints.operator,
+                "crash_count": crash_count,
+            },
+            parent_event_id=_arbiter_event_id or None,
+        )
+
         # Step 4: Make decision using user-specified constraints (not data-derived thresholds)
         decision = make_decision(evaluation_result, constraints)
+
+        # Emit structured detail events
+        await emit_agent_event(
+            self.redis._client,
+            self.job_id,
+            "Arbiter",
+            "acting",
+            "Evaluation complete",
+            detail=ArbiterMetricsDetail(
+                task_type=task_type,
+                primary_metric=evaluation_result.metric,
+                primary_value=evaluation_result.metric_value,
+                all_metrics=evaluation_result.all_metrics or {},
+                num_samples=evaluation_result.num_samples,
+            ).model_dump(),
+        )
+
+        await emit_agent_event(
+            self.redis._client,
+            self.job_id,
+            "Arbiter",
+            "verifying",
+            "Making decision",
+            detail=ArbiterDecisionDetail(
+                decision=decision.decision,
+                explanation=decision.explanation,
+                metric_value=evaluation_result.metric_value,
+                threshold=constraints.threshold,
+                operator=constraints.operator,
+            ).model_dump(),
+        )
+
+        # Step 7: Publish decision event
+        event_type_map = {
+            "PASS": EVALUATION_PASS,
+            "RETRY": EVALUATION_RETRY,
+            "FAIL": ESCALATE,
+        }
+        event_type = event_type_map.get(decision.decision, ESCALATE)
+        primary_name = evaluation_result.metric
+        primary_val = evaluation_result.metric_value
+
+        # Emit leaderboard
+        all_metrics = evaluation_result.all_metrics or {}
+        await emit_agent_event(
+            self.redis._client,
+            self.job_id,
+            "Arbiter",
+            "verifying",
+            "Leaderboard",
+            detail=ArbiterLeaderboardDetail(
+                candidates=[
+                    {
+                        "metric": k,
+                        "value": v,
+                        "status": "primary" if k == primary_name else "secondary",
+                    }
+                    for k, v in all_metrics.items()
+                ],
+            ).model_dump(),
+        )
+
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Arbiter", "Decision made", 1.0, "done"
+        )
 
         # Map decision strings: PASS/RETRY/FAIL → pass/retry/escalate
         decision_str = decision.decision.lower()
@@ -152,15 +271,48 @@ class ArbiterAgent(BaseAgent):
         except Exception as exc:
             self.logger.warning(f"[job={self.job_id}] Failed to record experience: {exc}")
 
-        # Step 7: Publish decision event
-        event_type_map = {
-            "PASS": EVALUATION_PASS,
-            "RETRY": EVALUATION_RETRY,
-            "FAIL": ESCALATE,
-        }
-        event_type = event_type_map.get(decision.decision, ESCALATE)
-        primary_name = evaluation_result.metric
-        primary_val = evaluation_result.metric_value
+        all_metrics = evaluation_result.all_metrics or {}
+        _arbiter_event_id = await emit_agent_event(
+            self.redis._client,
+            self.job_id,
+            "Arbiter",
+            "verifying",
+            f"{decision.decision}: {evaluation_result.metric}={evaluation_result.metric_value:.4f}",
+            detail={
+                "decision": decision.decision,
+                "metric": primary_name,
+                "value": primary_val,
+                "threshold": constraints.threshold,
+                "num_samples": evaluation_result.num_samples,
+                **{k: v for k, v in all_metrics.items() if k != primary_name},
+            },
+            parent_event_id=_arbiter_event_id or None,
+        )
+
+        state_label = {"PASS": "done", "RETRY": "done", "FAIL": "error"}.get(
+            decision.decision, "done"
+        )
+        summary = {
+            "PASS": "Evaluation passed",
+            "RETRY": "Evaluation retry needed",
+            "FAIL": "Evaluation failed",
+        }.get(decision.decision, "Evaluation complete")
+        await emit_agent_event(
+            self.redis._client,
+            self.job_id,
+            "Arbiter",
+            state_label,
+            summary,
+            detail={
+                "decision": decision.decision,
+                "metric": primary_name,
+                "value": primary_val,
+                "threshold": constraints.threshold,
+                "num_samples": evaluation_result.num_samples,
+                **{k: v for k, v in all_metrics.items() if k != primary_name},
+            },
+            parent_event_id=_arbiter_event_id or None,
+        )
 
         await self._publish_decision(event_type, decision.explanation, primary_val, primary_name)
 

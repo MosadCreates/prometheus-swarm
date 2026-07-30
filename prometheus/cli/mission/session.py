@@ -16,6 +16,7 @@ class SessionStatus(Enum):
 class MissionSession:
     mission_text: str = ""
     job_id: str = ""
+    slug: str = ""
     created_at: datetime | None = None
     status: SessionStatus = SessionStatus.IDLE
 

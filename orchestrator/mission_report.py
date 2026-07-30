@@ -14,6 +14,16 @@ from runtime.paths import get_job_paths, get_paths
 logger = logging.getLogger(__name__)
 
 
+def _to_float(v: Any) -> float | None:
+    """Safely convert a value to float, returning None on failure."""
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 async def generate_mission_report(
     job_id: str,
     redis_client: Any,
@@ -322,7 +332,7 @@ async def _compile_report_data(
         ),
         "total_crashes": crash_count,
         "crashes_recovered": training.get("total_crashes_recovered", 0),
-        "actual_training_minutes": _compute_training_duration(job_id, redis_client),
+        "actual_training_minutes": await _compute_training_duration(job_id, redis_client),
     }
 
     # ── Epoch timeline ───────────────────────────────────────────────────
@@ -469,12 +479,12 @@ def _build_overview(
     }
 
 
-def _compute_training_duration(job_id: str, redis_client: Any) -> float | None:
+async def _compute_training_duration(job_id: str, redis_client: Any) -> float | None:
     try:
-        raw = redis_client.get(f"job:{job_id}:training_started_at")
+        raw = await redis_client.get(f"job:{job_id}:training_started_at")
         if not raw:
             return None
-        started_at = float(raw.decode() if isinstance(raw, bytes) else raw)
+        started_at = float(raw)
         now = datetime.now(timezone.utc).timestamp()
         return round((now - started_at) / 60.0, 1)
     except Exception:
@@ -493,31 +503,41 @@ def _compute_prediction_vs_actual(data: dict[str, Any]) -> dict[str, Any]:
     expected_range = arch.get("expected_metric_range")
     actual_metric = eval_data.get("primary_metric_value") or training.get("best_val_metric")
     if expected_range and len(expected_range) == 2 and actual_metric is not None:
-        mid = (expected_range[0] + expected_range[1]) / 2.0
-        error_pct = round(abs(actual_metric - mid) / max(abs(mid), 0.001) * 100, 1)
-        comparisons.append(
-            {
-                "estimate": "metric_range",
-                "predicted": f"[{expected_range[0]:.2f}, {expected_range[1]:.2f}]",
-                "actual": round(actual_metric, 4),
-                "error_pct": error_pct,
-                "within_range": expected_range[0] <= actual_metric <= expected_range[1],
-            }
-        )
+        try:
+            lo, hi = float(expected_range[0]), float(expected_range[1])
+            am = float(actual_metric)
+            mid = (lo + hi) / 2.0
+            error_pct = round(abs(am - mid) / max(abs(mid), 0.001) * 100, 1)
+            comparisons.append(
+                {
+                    "estimate": "metric_range",
+                    "predicted": f"[{lo:.2f}, {hi:.2f}]",
+                    "actual": round(am, 4),
+                    "error_pct": error_pct,
+                    "within_range": lo <= am <= hi,
+                }
+            )
+        except (TypeError, ValueError):
+            pass
 
     # Training time vs expected
     expected_min = arch.get("expected_training_minutes")
     actual_min = training.get("actual_training_minutes")
-    if expected_min and actual_min is not None:
-        error_pct = round(abs(actual_min - expected_min) / max(expected_min, 1) * 100, 1)
-        comparisons.append(
-            {
-                "estimate": "training_time",
-                "predicted": f"{expected_min} min",
-                "actual": round(actual_min, 1),
-                "error_pct": error_pct,
-            }
-        )
+    if expected_min is not None and actual_min is not None:
+        try:
+            expected_min_f = float(expected_min)
+            actual_min_f = float(actual_min)
+            error_pct = round(abs(actual_min_f - expected_min_f) / max(expected_min_f, 1) * 100, 1)
+            comparisons.append(
+                {
+                    "estimate": "training_time",
+                    "predicted": f"{expected_min} min",
+                    "actual": round(actual_min_f, 1),
+                    "error_pct": error_pct,
+                }
+            )
+        except (TypeError, ValueError):
+            pass
 
     # Confidence calibration
     overall_conf = data.get("scout_analysis", {}).get("overall_confidence")
@@ -595,8 +615,8 @@ def _generate_lessons_learned(data: dict[str, Any]) -> dict[str, Any]:
 
     # Crashes
     training = data.get("training_outcome", {})
-    crashes = training.get("total_crashes", 0)
-    recovered = training.get("crashes_recovered", 0)
+    crashes = int(training.get("total_crashes", 0) or 0)
+    recovered = int(training.get("crashes_recovered", 0) or 0)
     if crashes == 0:
         lessons.append("No training crashes occurred")
     elif crashes == recovered:
@@ -642,8 +662,8 @@ def _generate_lessons_learned(data: dict[str, Any]) -> dict[str, Any]:
     # Experience comparison insights
     exp = data.get("experience_comparison", {})
     if exp and exp.get("completed", 0) > 0:
-        this_metric = training.get("best_val_metric")
-        avg_metric = exp.get("avg_metric")
+        this_metric = _to_float(training.get("best_val_metric"))
+        avg_metric = _to_float(exp.get("avg_metric"))
         if this_metric is not None and avg_metric is not None:
             diff = this_metric - avg_metric
             if diff > 0.02:
@@ -658,8 +678,8 @@ def _generate_lessons_learned(data: dict[str, Any]) -> dict[str, Any]:
                 lessons.append(
                     f"This job is in line with similar past jobs ({avg_metric:.3f} avg vs {this_metric:.3f})"
                 )
-        avg_crashes = exp.get("avg_crashes", 0)
-        job_crashes = training.get("total_crashes", 0)
+        avg_crashes = _to_float(exp.get("avg_crashes", 0)) or 0.0
+        job_crashes = int(training.get("total_crashes", 0) or 0)
         if avg_crashes > 0 and job_crashes < avg_crashes / 2:
             lessons.append(
                 f"Fewer crashes than average ({job_crashes} vs {avg_crashes:.1f} avg across similar jobs)"
@@ -812,7 +832,9 @@ def _render_markdown(data: dict[str, Any]) -> str:
             lines.append(f"- Expected peak memory: ~{arch.get('expected_ram_mb', '?')} MB")
             mr = arch.get("expected_metric_range")
             if mr:
-                lines.append(f"- Expected metric range: [{mr[0]:.2f}, {mr[1]:.2f}]")
+                mr_lo, mr_hi = _to_float(mr[0]), _to_float(mr[1])
+                if mr_lo is not None and mr_hi is not None:
+                    lines.append(f"- Expected metric range: [{mr_lo:.2f}, {mr_hi:.2f}]")
             lines.append(f"- {arch.get('reason_for_selection', '')}")
             lines.append("")
 
@@ -821,7 +843,12 @@ def _render_markdown(data: dict[str, Any]) -> str:
             lines.append("**Alternatives Considered:**")
             for a in alts:
                 amr = a.get("expected_metric_range")
-                amr_str = f" [{amr[0]:.2f}, {amr[1]:.2f}]" if amr else ""
+                amr_lo, amr_hi = _to_float(amr[0]), _to_float(amr[1])
+                amr_str = (
+                    f" [{amr_lo:.2f}, {amr_hi:.2f}]"
+                    if (amr and amr_lo is not None and amr_hi is not None)
+                    else ""
+                )
                 lines.append(
                     f"- {a.get('name', '?')}: ~{a.get('expected_training_minutes', '?')} min, {a.get('expected_ram_mb', '?')} MB{amr_str}"
                 )
@@ -971,8 +998,12 @@ def _render_markdown(data: dict[str, Any]) -> str:
                 lines.append(f"| Completed | {exp['completed']} |")
                 lines.append(f"| Avg achieved metric | {exp.get('avg_metric', 'N/A')} |")
                 lines.append(f"| Best metric | {exp.get('best_metric', 'N/A')} |")
-                lines.append(f"| Avg crashes per job | {exp.get('avg_crashes', 0):.1f} |")
-                lines.append(f"| Historical pass ratio | {exp.get('pass_ratio', 0):.0%} |")
+                lines.append(
+                    f"| Avg crashes per job | {(_to_float(exp.get('avg_crashes', 0)) or 0.0):.1f} |"
+                )
+                lines.append(
+                    f"| Historical pass ratio | {(_to_float(exp.get('pass_ratio', 0)) or 0.0):.0%} |"
+                )
                 lines.append(
                     f"| Most common architecture | {exp.get('most_common_architecture', 'N/A')} |"
                 )

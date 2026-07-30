@@ -359,9 +359,15 @@ class MissionState:
 
     Every agent reads this at start and writes at end.
     No agent invents or duplicates state.
+
+    NOTE: This is a local in-memory representation.  The canonical
+    Pydantic model is ``contracts.state.MissionState``.  Keep these
+    fields in sync — any new field added here must also be added there
+    (and vice versa).
     """
 
     job_id: str
+    schema_version: str = "1.0"
     phase: str = "MISSION_CREATED"
     retry_number: int = 0
     max_retries: int = 3
@@ -370,6 +376,7 @@ class MissionState:
     optuna_trials: int = 30
     metric_name: str = "auc_roc"
     metric_value: float = 0.0
+    metric_direction: str = "maximize"
     deployment_threshold: float | None = None
     best_metric: float = 0.0
     best_architecture: str = ""
@@ -430,6 +437,7 @@ class MissionState:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "schema_version": self.schema_version,
             "job_id": self.job_id,
             "phase": self.phase,
             "retry_number": self.retry_number,
@@ -439,6 +447,7 @@ class MissionState:
             "optuna_trials": self.optuna_trials,
             "metric_name": self.metric_name,
             "metric_value": self.metric_value,
+            "metric_direction": self.metric_direction,
             "deployment_threshold": self.deployment_threshold,
             "best_metric": self.best_metric,
             "best_architecture": self.best_architecture,
@@ -481,6 +490,7 @@ class MissionState:
         ]
         return cls(
             job_id=data["job_id"],
+            schema_version=data.get("schema_version", "1.0"),
             phase=data.get("phase", "MISSION_CREATED"),
             retry_number=data.get("retry_number", 0),
             max_retries=data.get("max_retries", 3),
@@ -489,6 +499,7 @@ class MissionState:
             optuna_trials=data.get("optuna_trials", 30),
             metric_name=data.get("metric_name", "auc_roc"),
             metric_value=data.get("metric_value", 0.0),
+            metric_direction=data.get("metric_direction", "maximize"),
             deployment_threshold=data.get("deployment_threshold"),
             best_metric=data.get("best_metric", 0.0),
             best_architecture=data.get("best_architecture", ""),

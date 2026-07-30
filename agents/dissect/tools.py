@@ -85,6 +85,8 @@ def rollback_patch(script_path: str) -> bool:
 
 def compute_diff(original: str, patched: str) -> str:
     """Compute unified diff between original and patched code."""
+    original = original.replace("\r\n", "\n")
+    patched = patched.replace("\r\n", "\n")
     original_lines = original.splitlines(keepends=True)
     patched_lines = patched.splitlines(keepends=True)
 
@@ -193,10 +195,14 @@ def _validate_sandbox_env(job_id: str) -> None:
     if not expected_image:
         raise RuntimeError("Missing TRAINING_IMAGE_NAME env var for sandbox")
 
-    required_vars = ["SCRIPTS_DIR", "OUTPUTS_DIR", "DATA_DIR"]
-    for var in required_vars:
+    # Allow RuntimePaths-compatible defaults (same as runtime/paths.py _resolve_dir)
+    for var, default in [
+        ("SCRIPTS_DIR", "./scripts"),
+        ("OUTPUTS_DIR", "./outputs"),
+        ("DATA_DIR", "./data"),
+    ]:
         if not os.getenv(var):
-            raise RuntimeError(f"Missing required env var for sandbox: {var}")
+            os.environ[var] = default
 
     scripts_parent = jp.script_path.parent
     if not os.path.exists(str(scripts_parent)):
@@ -239,7 +245,7 @@ async def run_sandbox_test(script_path: str, job_id: str, max_epochs: int = 3) -
             None,
             lambda: client.containers.run(
                 image=image,
-                command=[f"/app/{script_name}"],
+                command=["python", f"/app/{script_name}"],
                 name=container_name,
                 detach=True,
                 volumes=volumes,

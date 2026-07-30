@@ -27,11 +27,7 @@ def solve(ctx, dataset, description, target_column, watch):
     async def _submit():
         from orchestrator.job_queue import submit_job
 
-        constraints = {}
-        if target_column:
-            constraints["target_column"] = target_column
-
-        job_id = await submit_job(description, dataset_path, constraints)
+        job_id = await submit_job(description, dataset_path, target_column=target_column)
         return job_id
 
     with Spinner("Submitting to swarm..."):

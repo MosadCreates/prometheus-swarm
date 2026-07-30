@@ -133,6 +133,10 @@ class JobPaths:
         return self.job_dir / "trace.jsonl"
 
     @property
+    def mission_brief_path(self) -> Path:
+        return self.job_dir / "mission_brief.json"
+
+    @property
     def deploy_config_path(self) -> Path:
         return self.serving_dir / self._base.deploy_config_filename
 

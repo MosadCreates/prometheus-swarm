@@ -41,12 +41,14 @@ from memory.redis_client import RedisClient
 from orchestrator.mission_report import generate_mission_report
 from evaluation import config as eval_config
 from evaluation.perf_logger import record_stage
+from bus.agent_events import emit_agent_event
 from bus.events import (
     MISSION_BRIEF_READY,
     CRASH_EVENT,
     EVALUATION_PASS,
     EVALUATION_RETRY,
     ESCALATE,
+    RESUME_TRAINING,
     JOB_FAILED,
     ENDPOINT_LIVE,
     DRIFT_ALERT,
@@ -198,6 +200,11 @@ class OrchestratorRuntime:
         self._running = False
         if self.health_monitor:
             await self.health_monitor.stop()
+        if self.redis:
+            try:
+                await self.redis.aclose()
+            except RuntimeError:
+                pass  # Event loop already closed
         logger.info("Orchestrator stopping...")
 
     # ------------------------------------------------------------------
@@ -313,7 +320,29 @@ class OrchestratorRuntime:
                     for _stream, messages in results:
                         for msg_id, data in messages:
                             event_type = data.get("event_type", "")
-                            if event_type == ESCALATE:
+                            if event_type == RESUME_TRAINING:
+                                job_id = data.get("job_id", "?")
+                                logger.info(
+                                    f"[job={job_id}] Dissect RESUME_TRAINING. Transitioning state back to FURNACE_RUNNING."
+                                )
+                                # Two-step transition: DISSECT_RUNNING → DISSECT_COMPLETED → FURNACE_RUNNING
+                                current = await MissionState.load_from_redis(self.redis, job_id)
+                                if current and current.phase == "DISSECT_RUNNING":
+                                    await transition_and_save(
+                                        self.redis,
+                                        job_id,
+                                        "DISSECT_COMPLETED",
+                                        agent="Dissect",
+                                        message="Dissect patch successful, ready to resume",
+                                    )
+                                await transition_and_save(
+                                    self.redis,
+                                    job_id,
+                                    "FURNACE_RUNNING",
+                                    agent="Furnace",
+                                    message="Resuming training after Dissect patch",
+                                )
+                            elif event_type == ESCALATE:
                                 await self._on_escalate(data)
                             await self.redis.xack(
                                 STREAM_DISSECT_OUTPUT,
@@ -371,6 +400,12 @@ class OrchestratorRuntime:
                                 await self._on_endpoint_live(data)
                             elif event_type == DRIFT_ALERT:
                                 await self._on_drift_alert(data)
+                            elif event_type == JOB_FAILED:
+                                await self._handle_escalate(
+                                    data.get("job_id", "?"),
+                                    data.get("source_agent", "Harbor"),
+                                    data.get("reason", "Deployment failed"),
+                                )
                             await self.redis.xack(
                                 STREAM_HARBOR_OUTPUT,
                                 GROUP_ORCHESTRATOR,
@@ -398,12 +433,19 @@ class OrchestratorRuntime:
         scout.redis = self._make_redis_client()
         scout.job_data = {
             "problem_description": data.get("problem_description", ""),
-            "file_path": data.get("file_path", ""),
+            "file_path": data.get("dataset_path", ""),
             "target_column": data.get("target_column"),
             "constraints": None,
         }
         try:
             await scout.run()
+            await transition_and_save(
+                self.redis,
+                job_id,
+                "SCOUT_COMPLETED",
+                agent="Scout",
+                message="Scout completed",
+            )
         except Exception as e:
             logger.error(f"[job={job_id}] Scout failed: {e}")
             await self._handle_escalate(job_id, "Scout", f"Scout execution failed: {e}")
@@ -674,6 +716,14 @@ class OrchestratorRuntime:
             record_stage(job_id, "scout", "end")
         await self._run_scout_if_needed(data)
 
+        # Guard against re-entry: if Forge is already running or past, skip
+        current = await MissionState.load_from_redis(self.redis, job_id)
+        if current and current.phase not in ("SCOUT_COMPLETED", "SCOUT_RUNNING", "MISSION_CREATED"):
+            logger.info(
+                f"[job={job_id}] Already past Scout phase (state={current.phase}). Skipping Forge launch."
+            )
+            return
+
         # Compile ExecutionPlan from MissionSpecification
         await self._compile_and_store_plan(job_id)
 
@@ -686,12 +736,46 @@ class OrchestratorRuntime:
         forge.redis = self._make_redis_client()
         try:
             await forge.run()
+            # Avoid race with event-driven _on_training_script_ready
+            # (TOCTOU is inherent — catch harmless double-transition)
+            try:
+                current = await MissionState.load_from_redis(self.redis, job_id)
+                if current and current.phase in ("FORGE_RUNNING",):
+                    await transition_and_save(
+                        self.redis,
+                        job_id,
+                        "FORGE_COMPLETED",
+                        agent="Forge",
+                        message="Forge completed",
+                    )
+            except ValueError:
+                pass
         except Exception as e:
             logger.error(f"[job={job_id}] Forge failed: {e}")
             await self._handle_escalate(job_id, "Forge", f"Forge execution failed: {e}")
 
     async def _on_training_script_ready(self, data: dict) -> None:
         job_id = data.get("job_id", "?")
+
+        # Guard against re-entry: if Furnace is already running or past, skip
+        current = await MissionState.load_from_redis(self.redis, job_id)
+        if current and current.phase not in ("FORGE_COMPLETED", "FORGE_RUNNING"):
+            logger.info(
+                f"[job={job_id}] Already past Forge phase (state={current.phase}). Skipping Furnace launch."
+            )
+            return
+
+        # If Forge is still running (inline path hasn't reached FORGE_COMPLETED yet),
+        # advance the state so the FURNACE_RUNNING transition is valid
+        if current and current.phase == "FORGE_RUNNING":
+            await transition_and_save(
+                self.redis,
+                job_id,
+                "FORGE_COMPLETED",
+                agent="Forge",
+                message="Forge completed (via training script ready)",
+            )
+
         script_path = data.get("script_path", "")
         # Mark forge_generate as completed in plan state
         await self._update_plan_state(job_id, "forge_generate", "completed")
@@ -717,6 +801,19 @@ class OrchestratorRuntime:
         )
         try:
             await furnace.run(script_path=script_path, search_space_json=search_space_json)
+            try:
+                # Avoid race with event-driven _on_training_complete or _consume_dissect RESUME_TRAINING
+                current = await MissionState.load_from_redis(self.redis, job_id)
+                if current and current.phase in ("FURNACE_RUNNING",):
+                    await transition_and_save(
+                        self.redis,
+                        job_id,
+                        "FURNACE_COMPLETED",
+                        agent="Furnace",
+                        message="Furnace completed",
+                    )
+            except ValueError:
+                pass
         except Exception as e:
             logger.error(f"[job={job_id}] Furnace failed: {e}")
             await self._handle_escalate(
@@ -727,10 +824,35 @@ class OrchestratorRuntime:
 
     async def _on_training_complete(self, data: dict) -> None:
         job_id = data.get("job_id", "?")
+
+        # Guard against re-entry: if Arbiter is already running or past, skip
+        current = await MissionState.load_from_redis(self.redis, job_id)
+        if current and current.phase not in ("FURNACE_COMPLETED", "FURNACE_RUNNING"):
+            logger.info(
+                f"[job={job_id}] Already past Furnace phase (state={current.phase}). Skipping Arbiter launch."
+            )
+            return
+
         # Mark furnace_train as completed in plan state
         await self._update_plan_state(job_id, "furnace_train", "completed")
         logger.info(f"[job={job_id}] Training complete. Launching Arbiter.")
-        await transition_and_save(self.redis, job_id, "ARBITER_RUNNING", agent="Arbiter")
+        # Advance from FURNACE_RUNNING → FURNACE_COMPLETED first if needed
+        # (state machine allows FURNACE_COMPLETED → ARBITER_RUNNING, not direct)
+        if current and current.phase == "FURNACE_RUNNING":
+            try:
+                await transition_and_save(
+                    self.redis,
+                    job_id,
+                    "FURNACE_COMPLETED",
+                    agent="Furnace",
+                    message="Furnace completed (via training complete event)",
+                )
+            except ValueError:
+                pass
+        try:
+            await transition_and_save(self.redis, job_id, "ARBITER_RUNNING", agent="Arbiter")
+        except ValueError:
+            pass
         if eval_config.PROFILE_MODE:
             record_stage(job_id, "furnace", "end")
             record_stage(job_id, "arbiter", "start")
@@ -768,6 +890,13 @@ class OrchestratorRuntime:
             )
             return
         logger.info(f"[job={job_id}] Crash event received. Launching Dissect.")
+        await transition_and_save(
+            self.redis,
+            job_id,
+            "TRAINING_FAILED",
+            agent="Furnace",
+            message=f"Crash: {data.get('exception_type', '?')}: {data.get('exception_message', '?')}",
+        )
         await transition_and_save(self.redis, job_id, "DISSECT_RUNNING", agent="Dissect")
         if eval_config.PROFILE_MODE:
             record_stage(job_id, "dissect", "start")
@@ -839,6 +968,15 @@ class OrchestratorRuntime:
             logger.warning(f"[job={job_id}] Failed to store architecture outcome: {e}")
 
         if decision == "pass":
+            # Advance via ARBITER_RUNNING → ARBITER_COMPLETED → MISSION_PASSED → HARBOR_DEPLOYING
+            try:
+                await transition_and_save(self.redis, job_id, "ARBITER_COMPLETED", agent="Arbiter")
+            except ValueError:
+                pass
+            try:
+                await transition_and_save(self.redis, job_id, "MISSION_PASSED", agent="Arbiter")
+            except ValueError:
+                pass
             await transition_and_save(self.redis, job_id, "HARBOR_DEPLOYING", agent="Harbor")
             harbor = HarborAgent(job_id=job_id)
             harbor.redis = self._make_redis_client()
@@ -888,6 +1026,19 @@ class OrchestratorRuntime:
         await transition_and_save(
             self.redis, job_id, "MISSION_FAILED", agent=source, message=f"Escalated: {reason}"
         )
+
+        # Publish agent error event so transcript consumer renders the failure
+        try:
+            await emit_agent_event(
+                client=self.redis,
+                mission_id=job_id,
+                agent=source,
+                state="error",
+                summary=f"Escalated: {reason}",
+                detail={"reason": reason},
+            )
+        except Exception as e:
+            logger.warning(f"[job={job_id}] Failed to emit agent error event: {e}")
 
         # Mark plan as failed
         await self._handle_plan_terminal(job_id, "__plan_failed__")
@@ -985,10 +1136,14 @@ class OrchestratorRuntime:
 
         scout = ScoutAgent(job_id=job_id)
         scout.redis = self._make_redis_client()
+        brief_key = f"job:{job_id}:mission_brief"
+        brief = await self.redis.get_json(brief_key)
+        target_col = (brief or {}).get("target_column")
+
         scout.job_data = {
             "problem_description": problem_description or "",
             "file_path": file_path,
-            "target_column": None,
+            "target_column": target_col,
             "constraints": None,
         }
         try:
@@ -1029,6 +1184,8 @@ async def main() -> None:
         await runtime.run()
     except asyncio.CancelledError:
         pass
+    except Exception as e:
+        logger.critical(f"Orchestrator runtime crashed: {e}", exc_info=True)
     finally:
         writer_task.cancel()
         try:

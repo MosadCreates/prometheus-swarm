@@ -128,6 +128,12 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
             brief["evaluation_metric"] = config.evaluation_metric
         await rc.set_json(f"job:{job_id}:mission_brief", brief)
 
+        # Persist mission brief to disk alongside trace.jsonl
+        brief_path = get_job_paths(job_id).mission_brief_path
+        brief_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(brief_path, "w", encoding="utf-8") as f:
+            json.dump(brief, f, indent=2, ensure_ascii=False, sort_keys=True)
+
         logger.info(
             f"[job={job_id}] Scout done: " f"modality={brief['modality']} task={brief['task_type']}"
         )

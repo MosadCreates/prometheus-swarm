@@ -30,9 +30,21 @@ def job():
 @click.argument("dataset", type=click.Path(exists=True))
 @click.option("--description", "-d", required=True, help="Natural-language problem description")
 @click.option("--target-column", "-t", default=None, help="Name of the target column")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["interactive", "plain", "json"]),
+    default=None,
+    help="Output format (default: auto-detect)",
+)
 @click.pass_context
-def job_submit(ctx, dataset, description, target_column):
+def job_submit(ctx, dataset, description, target_column, output_format):
     """Submit a dataset + problem description to the swarm."""
+    from prometheus.cli.output import detect_format, emit_dict, Format
+
+    if output_format:
+        ctx.find_root().obj["format"] = output_format
+    fmt = detect_format(ctx)
     renderer = renderer_from_ctx(ctx)
     svc = _app(ctx).jobs
     with Spinner("Submitting job..."):
@@ -40,57 +52,76 @@ def job_submit(ctx, dataset, description, target_column):
     if result.status == "failed":
         renderer.error(result.reason or "Pipeline error", title="Job failed")
         return ExitCode.ERROR
-    renderer.console.print(
-        job_result_panel(
-            {
-                "job_id": result.id,
-                "status": result.status,
-                "decision": result.decision,
-                "reason": result.reason,
-                "metrics": result.metrics,
-                "endpoint_url": result.endpoint_url,
-                "checkpoint_path": result.checkpoint_path,
-            }
-        )
-    )
+
+    data = {
+        "job_id": result.id,
+        "status": result.status,
+        "decision": result.decision,
+        "reason": result.reason,
+        "metrics": result.metrics,
+        "endpoint_url": result.endpoint_url,
+        "checkpoint_path": result.checkpoint_path,
+    }
+    if fmt in (Format.JSON, Format.PLAIN):
+        emit_dict(ctx, fmt, data, schema="prometheus.job_submit.v1")
+    else:
+        renderer.console.print(job_result_panel(data))
     return ExitCode.SUCCESS
 
 
 @job.command(name="list")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["interactive", "plain", "json"]),
+    default=None,
+    help="Output format (default: auto-detect)",
+)
 @click.pass_context
-def job_list(ctx):
+def job_list(ctx, output_format):
     """List all known jobs."""
+    from prometheus.cli.output import detect_format, emit_str_table, Format
+
+    if output_format:
+        ctx.find_root().obj["format"] = output_format
+    fmt = detect_format(ctx)
     renderer = renderer_from_ctx(ctx)
     svc = _app(ctx).jobs
     jobs = svc.list_jobs()
     if not jobs:
-        renderer.print("[dim]No jobs found.[/dim]")
-        renderer.print(
-            "  [cyan]prometheus job submit data.csv[/cyan]  [dim]to submit your first job[/dim]"
-        )
+        if fmt != Format.JSON:
+            renderer.print("[dim]No jobs found.[/dim]")
+            renderer.print(
+                "  [cyan]prometheus job submit data.csv[/cyan]  [dim]to submit your first job[/dim]"
+            )
+        else:
+            emit_str_table(ctx, fmt, headers=[], rows=[], json_schema="prometheus.job_list.v1")
         return ExitCode.SUCCESS
-    renderer.console.print(
-        job_list_table(
-            [
-                {
-                    "job_id": j.id,
-                    "status": j.status,
-                    "current_agent": j.agent,
-                    "crash_count": j.crashes,
-                }
-                for j in jobs
-            ]
-        )
-    )
+
+    rows = [[j.id[:8], j.status, j.agent or "", str(j.crashes)] for j in jobs]
+    headers = ["Job ID", "Status", "Agent", "Crashes"]
+    emit_str_table(ctx, fmt, headers=headers, rows=rows, json_schema="prometheus.job_list.v1")
     return ExitCode.SUCCESS
 
 
 @job.command(name="status")
 @click.argument("job_id")
 @click.option("--watch", is_flag=True, help="Refresh every second until the job finishes")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["interactive", "plain", "json"]),
+    default=None,
+    help="Output format (default: auto-detect)",
+)
 @click.pass_context
-def job_status(ctx, job_id, watch):
+def job_status(ctx, job_id, watch, output_format):
     """Show the status of a single job."""
+    from prometheus.cli.output import detect_format, emit_dict, Format
+
+    if output_format:
+        ctx.find_root().obj["format"] = output_format
+    fmt = detect_format(ctx)
     renderer = renderer_from_ctx(ctx)
     svc = _app(ctx).jobs
     if not watch:
@@ -98,9 +129,13 @@ def job_status(ctx, job_id, watch):
         if s is None:
             renderer.error(f"Job '{job_id}' not found.", hint="prometheus job list")
             return ExitCode.ERROR_NOT_FOUND
-        renderer.print(
-            f"  Job [bold]{s.id}[/]  [{status_color(s.status)}]{s.status}[/]  agent={s.agent}  crashes={s.crashes}"
-        )
+        data = {"job_id": s.id, "status": s.status, "agent": s.agent, "crashes": s.crashes}
+        if fmt in (Format.JSON, Format.PLAIN):
+            emit_dict(ctx, fmt, data, schema="prometheus.job_status.v1")
+        else:
+            renderer.print(
+                f"  Job [bold]{s.id}[/]  [{status_color(s.status)}]{s.status}[/]  agent={s.agent}  crashes={s.crashes}"
+            )
         return ExitCode.SUCCESS
 
     renderer.print(f"[dim]Watching job {job_id[:8]}... Ctrl+C to stop[/dim]")

@@ -36,6 +36,8 @@ jinja2==3.1.4
 
 # CLI
 click>=8.1
+pyreadline3>=3.5.6          # readline shim for Windows — enables Ctrl+Backspace word-delete
+textual>=0.52.0             # Cockpit TUI (Mission Cockpit, replay viewer)
 
 # Figures
 matplotlib>=3.8.0

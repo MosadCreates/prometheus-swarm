@@ -22,6 +22,26 @@ def provider():
     """Manage AI providers."""
 
 
+@provider.command(name="add")
+@click.argument("name", type=click.Choice(["anthropic", "openai", "local"], case_sensitive=False))
+@click.option("--api-key-env", default=None, help="Name of env var holding the API key")
+@click.pass_context
+def provider_add(ctx, name: str, api_key_env: str | None):
+    """Add and verify a model provider's credentials.
+
+    Always performs a live test call before saving (coming soon).
+    """
+    renderer = renderer_from_ctx(ctx)
+    svc = _app(ctx).providers
+    try:
+        info = svc.add_provider(name, api_key_env=api_key_env)
+        renderer.success(f"Provider '{info.name}' configured")
+        return ExitCode.SUCCESS
+    except ValueError as e:
+        renderer.error(str(e))
+        return ExitCode.ERROR
+
+
 @provider.command(name="list")
 @click.pass_context
 def provider_list(ctx):

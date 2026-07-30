@@ -83,10 +83,11 @@ class TracePersister:
                 for msg_id, raw_fields in messages:
                     msg: dict[str, Any] = {}
                     for k, v in raw_fields.items():
+                        key = k.decode() if isinstance(k, bytes) else k
                         try:
-                            msg[k] = json.loads(v)
+                            msg[key] = json.loads(v)
                         except (json.JSONDecodeError, TypeError):
-                            msg[k] = v
+                            msg[key] = v
 
                     await self._persist_one(msg)
                     await self._redis.xack(STREAM_AGENT_EVENTS, GROUP_TRACE, msg_id)

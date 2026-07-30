@@ -3,29 +3,29 @@
     "unknown::shape_mismatch": {
       "architecture": "unknown",
       "category": "shape_mismatch",
-      "count": 405,
-      "last_seen": "2026-07-13T22:23:26.068305+00:00",
+      "count": 689,
+      "last_seen": "2026-07-30T12:41:09.101556+00:00",
       "recommendation": "Avoid errors of type shape_mismatch in unknown scripts"
     },
     "lightgbm::dtype_mismatch": {
       "architecture": "lightgbm",
       "category": "dtype_mismatch",
-      "count": 392,
-      "last_seen": "2026-07-12T15:21:42.116319+00:00",
+      "count": 643,
+      "last_seen": "2026-07-30T12:41:19.247706+00:00",
       "recommendation": "Add LabelEncoder/OrdinalEncoder for categorical columns during preprocessing; use pd.to_numeric with errors='coerce' for mixed-type columns"
     },
     "unknown::missing_column": {
       "architecture": "unknown",
       "category": "missing_column",
-      "count": 40,
-      "last_seen": "2026-07-10T14:30:37.814210+00:00",
+      "count": 52,
+      "last_seen": "2026-07-27T12:11:02.188254+00:00",
       "recommendation": "Verify all column names used in script match actual dataset columns; use df.columns to list available columns before referencing them"
     },
     "unknown::name_error": {
       "architecture": "unknown",
       "category": "name_error",
-      "count": 6,
-      "last_seen": "2026-07-12T16:46:40.604414+00:00",
+      "count": 13,
+      "last_seen": "2026-07-20T12:59:22.944486+00:00",
       "recommendation": "Never generate JS-style literals (false, true, null); use Python literals"
     },
     "unknown::syntax_error": {
@@ -55,41 +55,54 @@
       "count": 1,
       "last_seen": "2026-07-11T18:40:32.422093+00:00",
       "recommendation": "Delete corrupt checkpoint; increase save frequency"
+    },
+    "lightgbm::missing_column": {
+      "architecture": "lightgbm",
+      "category": "missing_column",
+      "count": 25,
+      "last_seen": "2026-07-27T10:09:51.689977+00:00",
+      "recommendation": "Verify all column names used in script match actual dataset columns; use df.columns to list available columns before referencing them"
     }
   },
   "category_by_architecture": {
     "unknown": {
-      "shape_mismatch": 405,
-      "missing_column": 40,
-      "name_error": 6,
+      "shape_mismatch": 689,
+      "missing_column": 52,
+      "name_error": 13,
       "syntax_error": 1,
       "feature_mismatch": 2,
       "unseen_label": 1,
       "checkpoint_corruption": 1
     },
     "lightgbm": {
-      "dtype_mismatch": 392
+      "dtype_mismatch": 643,
+      "missing_column": 25
     }
   },
   "top_failures": [
     {
       "key": "unknown::shape_mismatch",
-      "count": 405,
+      "count": 689,
       "recommendation": "Avoid errors of type shape_mismatch in unknown scripts"
     },
     {
       "key": "lightgbm::dtype_mismatch",
-      "count": 392,
+      "count": 643,
       "recommendation": "Add LabelEncoder/OrdinalEncoder for categorical columns during preprocessing; use pd.to_numeric with errors='coerce' for mixed-type columns"
     },
     {
       "key": "unknown::missing_column",
-      "count": 40,
+      "count": 52,
+      "recommendation": "Verify all column names used in script match actual dataset columns; use df.columns to list available columns before referencing them"
+    },
+    {
+      "key": "lightgbm::missing_column",
+      "count": 25,
       "recommendation": "Verify all column names used in script match actual dataset columns; use df.columns to list available columns before referencing them"
     },
     {
       "key": "unknown::name_error",
-      "count": 6,
+      "count": 13,
       "recommendation": "Never generate JS-style literals (false, true, null); use Python literals"
     },
     {
@@ -113,6 +126,6 @@
       "recommendation": "Delete corrupt checkpoint; increase save frequency"
     }
   ],
-  "total_jobs_tracked": 848,
-  "total_repairs_needed": 477
+  "total_jobs_tracked": 1427,
+  "total_repairs_needed": 775
 }

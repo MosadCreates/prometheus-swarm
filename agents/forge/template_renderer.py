@@ -120,7 +120,27 @@ def _build_variables(
 
     target_column = mission_brief.get("target_column")
     if not target_column:
+        candidates = [
+            "target",
+            "label",
+            "y",
+            "Survived",
+            "survived",
+            "class",
+            "outcome",
+            "result",
+            "answer",
+            "class_label",
+        ]
         target_column = "target"
+        for col in column_types:
+            if col in candidates:
+                target_column = col
+                break
+        if target_column == "target" and column_types:
+            numeric_cols_inferred = [c for c in column_types if column_types[c] == "numeric"]
+            if numeric_cols_inferred:
+                target_column = numeric_cols_inferred[0]
 
     config = {
         "job_id": job_id,

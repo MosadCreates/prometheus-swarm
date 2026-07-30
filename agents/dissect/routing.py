@@ -23,6 +23,7 @@ from typing import Any
 from agents.dissect.rules import apply_rule
 from agents.dissect.repair_templates import find_matching_templates
 from agents.dissect.repair_cache import cache_lookup, cache_store, cache_increment
+from bus.agent_events import emit_agent_event
 from agents.dissect.taxonomy import (
     get_cascade_level,
     is_deterministic,
@@ -63,6 +64,14 @@ CASCADE_LEVEL_NAMES = {
     5: "ESCALATION",
 }
 
+CASCADE_LEVEL_FRIENDLY = {
+    0: "cached fingerprint",
+    1: "deterministic rule",
+    2: "compiled template",
+    3: "repair cache",
+    4: "LLM",
+}
+
 
 class RoutingResult:
     def __init__(
@@ -74,6 +83,7 @@ class RoutingResult:
         should_continue: bool = True,
         message: str = "",
         cascade_path: list[dict[str, Any]] | None = None,
+        last_event_id: str = "",
     ):
         self.level = level
         self.level_name = CASCADE_LEVEL_NAMES.get(level, f"LEVEL_{level}")
@@ -83,6 +93,7 @@ class RoutingResult:
         self.should_continue = should_continue
         self.message = message
         self.cascade_path = cascade_path if cascade_path is not None else []
+        self.last_event_id = last_event_id
 
     @property
     def resolved(self) -> bool:
@@ -411,6 +422,7 @@ async def run_cascade(
     governor: BudgetGovernor | None = None,
     fingerprint: str | None = None,
     fp_store=None,
+    parent_event_id: str | None = None,
 ) -> RoutingResult:
     """Run the repair cascade using direct routing from taxonomy.
 
@@ -433,6 +445,7 @@ async def run_cascade(
     level_order = PREFERRED_STRATEGY_ORDER.get(preferred, [0, 1, 2, 3, 4])
 
     cascade_path: list[dict[str, Any]] = []
+    cascade_parent_id = parent_event_id
     start_level = max(
         get_cascade_level(category),
         budget.get_cascade_level_bias(),
@@ -446,7 +459,7 @@ async def run_cascade(
 
     # ── Try levels in preferred order ────────────────────────────────
     for target_level in level_order:
-        # Skip levels below the start floor
+        # Skip levels below the start floor — no event emitted, skipped is implicit
         if target_level >= 0 and target_level < start_level:
             cascade_path.append(
                 {
@@ -462,14 +475,39 @@ async def run_cascade(
             cascade_path.append(
                 {"level": 4, "outcome": "required", "message": "deterministic levels exhausted"}
             )
-            path_str = " -> ".join(f'L{e["outcome"][0].upper()}{e["level"]}' for e in cascade_path)
+            path_str = " -> ".join(
+                CASCADE_LEVEL_FRIENDLY.get(e["level"], f"level{e['level']}")
+                for e in cascade_path
+                if e.get("outcome") != "skipped"
+            )
             logger.info(f"Cascade telemetry | job={job_id} category={category} path={path_str}")
+            cascade_parent_id = await emit_agent_event(
+                redis_client,
+                job_id,
+                "Dissect",
+                "thinking",
+                "Deterministic levels exhausted — using LLM",
+                detail={"cascade_level": 4, "outcome": "required", "path": path_str},
+                parent_event_id=cascade_parent_id,
+            )
             return RoutingResult(
                 level=4,
                 should_continue=True,
                 message="Deterministic levels exhausted, LLM required",
                 cascade_path=cascade_path,
+                last_event_id=cascade_parent_id,
             )
+
+        level_name = CASCADE_LEVEL_NAMES.get(target_level, f"LEVEL_{target_level}")
+        cascade_parent_id = await emit_agent_event(
+            redis_client,
+            job_id,
+            "Dissect",
+            "acting",
+            f"Trying {level_name.lower()}...",
+            detail={"cascade_level": target_level, "strategy": level_name, "outcome": "trying"},
+            parent_event_id=cascade_parent_id,
+        )
 
         result = await _run_level_safe(
             target_level,
@@ -494,17 +532,51 @@ async def run_cascade(
         )
         if result.resolved:
             result.cascade_path = cascade_path
+            cascade_parent_id = await emit_agent_event(
+                redis_client,
+                job_id,
+                "Dissect",
+                "acting",
+                f"{CASCADE_LEVEL_FRIENDLY.get(target_level, level_name.lower())} matched: {result.message}",
+                detail={"cascade_level": target_level, "outcome": "hit", "message": result.message},
+                parent_event_id=cascade_parent_id,
+            )
+            result.last_event_id = cascade_parent_id
             return result
+
+        cascade_parent_id = await emit_agent_event(
+            redis_client,
+            job_id,
+            "Dissect",
+            "thinking",
+            f"{CASCADE_LEVEL_FRIENDLY.get(target_level, level_name.lower())} no match — {result.message}",
+            detail={"cascade_level": target_level, "outcome": "miss", "message": result.message},
+            parent_event_id=cascade_parent_id,
+        )
 
     # All levels exhausted
     cascade_path.append({"level": 4, "outcome": "required", "message": "all levels exhausted"})
-    path_str = " -> ".join(f'L{e["outcome"][0].upper()}{e["level"]}' for e in cascade_path)
+    path_str = " -> ".join(
+        CASCADE_LEVEL_FRIENDLY.get(e["level"], f"level{e['level']}")
+        for e in cascade_path
+        if e.get("outcome") != "skipped"
+    )
     logger.info(f"Cascade telemetry | job={job_id} category={category} path={path_str}")
+    cascade_parent_id = await emit_agent_event(
+        redis_client,
+        job_id,
+        "Dissect",
+        "thinking",
+        "All levels exhausted — using LLM",
+        detail={"cascade_level": 4, "outcome": "required", "path": path_str},
+        parent_event_id=cascade_parent_id,
+    )
     return RoutingResult(
         level=4,
         should_continue=True,
         message="All repair levels exhausted, LLM required",
         cascade_path=cascade_path,
+        last_event_id=cascade_parent_id,
     )
 
 
@@ -528,7 +600,11 @@ async def on_llm_success(
     initial repair so that future identical failures can skip the LLM.
     """
     if cascade_path:
-        path_str = " -> ".join(f"L{e['level']}/{e['outcome'][:4]}" for e in cascade_path)
+        path_str = " -> ".join(
+            CASCADE_LEVEL_FRIENDLY.get(e["level"], f"level{e['level']}")
+            for e in cascade_path
+            if e.get("outcome") != "skipped"
+        )
         logger.info(
             f"[job={job_id}] LLM resolved after cascade path: {path_str} " f"category={category}"
         )

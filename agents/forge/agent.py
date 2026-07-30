@@ -13,6 +13,7 @@ from agents.forge.decision_tree import select_architecture, select_imbalance_str
 from agents.forge.planner import create_plan, format_plan_summary
 from agents.forge.prompts import FORGE_SYSTEM_PROMPT
 from agents.forge.tools import write_training_script, define_optuna_space
+from bus.agent_events import AgentEventTracker, emit_subaction_progress
 from bus.events import TRAINING_SCRIPT_READY, STREAM_FORGE_OUTPUT
 from bus.publisher import publish
 from prometheus.cli.mission.state_logger import log_mission_state
@@ -26,6 +27,15 @@ from shared.metrics import (
     AGENT_RUNS,
     record_heartbeat,
     record_agent_error,
+)
+from prometheus.ui.detail_types import (
+    ForgeArchitectureDetail,
+    ForgeCandidatesDetail,
+    ForgeRationaleDetail,
+    ForgeScriptDetail,
+    ForgeSearchSpaceDetail,
+    ForgeValidationDetail,
+    ForgeImbalanceDetail,
 )
 
 
@@ -248,6 +258,11 @@ class ForgeAgent(BaseAgent):
         AGENT_RUNS.labels(agent="Forge", job_id=self.job_id).inc()
         record_heartbeat("Forge", self.job_id)
 
+        tracker = AgentEventTracker(self.redis._client, self.job_id, "Forge")
+        await tracker.emit(
+            "acting", "Reading mission brief...", detail={"is_retry": retry_context is not None}
+        )
+
         self._validate_retry_contract(retry_context, caller="ForgeAgent.run")
         self.logger.debug(
             f"[job={self.job_id}] RetryPlan received: "
@@ -337,8 +352,34 @@ class ForgeAgent(BaseAgent):
                 architecture=architecture, job_id=self.job_id
             ).inc()
 
-            if progress_callback:
-                progress_callback(f"Architecture selected: {architecture}")
+        if progress_callback:
+            progress_callback(f"Architecture selected: {architecture}")
+
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Forge", "Architecture selected", 0.25
+        )
+
+        # Emit structured detail for architecture selection
+        tracker = AgentEventTracker(self.redis._client, self.job_id, "Forge")
+        await tracker.emit(
+            "acting",
+            f"Architecture selected: {architecture}",
+            detail=ForgeArchitectureDetail(
+                selected=architecture,
+                confidence=0.9,
+                rationale=f"Selected for {modality} {task_type} with {num_rows} rows",
+                alternatives=[],
+                modality=modality,
+                task_type=task_type,
+                num_rows=num_rows,
+            ).model_dump(),
+        )
+
+        await tracker.emit(
+            "planning",
+            f"Architecture selected: {architecture}",
+            detail={"architecture": architecture, "imbalance_strategy": imbalance_strategy},
+        )
 
         # ═══════════════════════════════════════════════════════════════════
         # RETRYPLAN OVERRIDE GUARD — NEVER OVERRIDE RetryPlan architecture
@@ -416,6 +457,10 @@ class ForgeAgent(BaseAgent):
         if progress_callback:
             progress_callback("Generating training script...")
 
+        await tracker.emit(
+            "acting", "Generating training script...", detail={"architecture": architecture}
+        )
+
         _start = asyncio.get_event_loop().time()
         jp = get_job_paths(self.job_id)
         script_path = write_training_script(
@@ -435,6 +480,14 @@ class ForgeAgent(BaseAgent):
         ).observe(_elapsed)
         record_heartbeat("Forge", self.job_id)
 
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Forge", "Script rendering complete", 0.5
+        )
+
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Forge", "Error prevention applied", 0.7
+        )
+
         if progress_callback:
             progress_callback("Validating generated script...")
 
@@ -443,6 +496,14 @@ class ForgeAgent(BaseAgent):
             self.job_id,
             self.logger,
             mission_brief=brief_raw,
+        )
+
+        await emit_subaction_progress(
+            self.redis._client, self.job_id, "Forge", "Script validated", 1.0, "done"
+        )
+
+        await tracker.emit(
+            "verifying", "Script validation passed", detail={"script_path": script_path}
         )
 
         if progress_callback:
@@ -472,6 +533,32 @@ class ForgeAgent(BaseAgent):
         except Exception:
             self.logger.warning(f"[job={self.job_id}] Failed to store architecture decision")
 
+        # Emit structured detail for candidates and search space
+        await tracker.emit(
+            "acting",
+            "Search space configured",
+            detail=ForgeCandidatesDetail(
+                primary={
+                    "name": architecture,
+                    "confidence": 0.9,
+                    "rationale": f"Selected for {modality} {task_type}",
+                },
+                alternatives=[
+                    {"name": a} for a in ["lightgbm", "xgboost", "tabnet"] if a != architecture
+                ],
+            ).model_dump(),
+        )
+
+        await tracker.emit(
+            "acting",
+            "Search space defined",
+            detail=ForgeSearchSpaceDetail(
+                architecture=architecture,
+                dimensions=len(search_space),
+                parameters=search_space,
+            ).model_dump(),
+        )
+
         if progress_callback:
             progress_callback("Publishing TRAINING_SCRIPT_READY...")
 
@@ -490,6 +577,11 @@ class ForgeAgent(BaseAgent):
 
         if progress_callback:
             progress_callback("Complete.")
+
+        await tracker.done(
+            "Training script ready",
+            detail={"architecture": architecture, "script_path": script_path},
+        )
 
         log_mission_state(
             "FORGE_COMPLETE",

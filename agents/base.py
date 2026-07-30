@@ -10,7 +10,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from agents.llm_client import get_llm_response
+from agents.llm_client import get_llm_response, get_llm_response_stream
 from memory.redis_client import RedisClient
 from shared.metrics import record_agent_llm
 
@@ -51,19 +51,35 @@ class BaseAgent(ABC):
     async def run(self) -> None:
         """Main agent loop"""
 
+    @property
+    def _async_redis(self):
+        return self.redis._client if hasattr(self.redis, "_client") else None
+
     async def call_llm(
         self,
         user_message: str,
         tools: list[dict] | None = None,
+        stream: bool = False,
     ) -> dict[str, Any]:
-        self.logger.info(f"[job={self.job_id}] LLM call")
-        response = await get_llm_response(
-            system_prompt=self.system_prompt,
-            user_message=user_message,
-            tools=tools,
-            job_id=self.job_id,
-            agent_name=self.agent_name,
-        )
+        if stream:
+            self.logger.info(f"[job={self.job_id}] LLM call (streaming)")
+            response = await get_llm_response_stream(
+                system_prompt=self.system_prompt,
+                user_message=user_message,
+                tools=tools,
+                job_id=self.job_id,
+                agent_name=self.agent_name,
+                redis_client=self._async_redis,
+            )
+        else:
+            self.logger.info(f"[job={self.job_id}] LLM call")
+            response = await get_llm_response(
+                system_prompt=self.system_prompt,
+                user_message=user_message,
+                tools=tools,
+                job_id=self.job_id,
+                agent_name=self.agent_name,
+            )
         await self._log_api_cost(response)
         return response
 

@@ -132,8 +132,15 @@ def fix_missing_column(script: str, message: str) -> str | None:
     if "not found in" not in message and "not in index" not in message:
         return None
 
-    m = re.search(r"'([^']+)' not found in|['\"](\w+)['\"] not in index", message)
-    col_name = m.group(1) if m and m.group(1) else (m.group(2) if m else None)
+    m = re.search(
+        r"'([^']+)' not found in|['\"](\w+)['\"] not in index|\[['\"](\w+)['\"]\] not in index",
+        message,
+    )
+    col_name = (
+        m.group(1)
+        if m and m.group(1)
+        else (m.group(2) if m and m.group(2) else (m.group(3) if m else None))
+    )
     if not col_name:
         return None
 
@@ -143,6 +150,7 @@ def fix_missing_column(script: str, message: str) -> str | None:
     # Try to derive the column from existing columns
     rule_suffixes = [
         ("age", ""),
+        ("_log", f"np.log1p({df_var}['{col_name.removesuffix('_log')}'] + 1e-8)"),
         ("log_", f"np.log1p({df_var}['{col_name.replace('log_', '')}'] + 1e-8)"),
         (
             "_ratio",
@@ -158,13 +166,19 @@ def fix_missing_column(script: str, message: str) -> str | None:
     for suffix, fix_expr in rule_suffixes:
         if suffix in col_name.lower() and fix_expr:
             insertion = f"\n{df_var}['{col_name}'] = {fix_expr}\n"
-            if f"'{col_name}'" not in script:
+            assign_pattern = rf"{re.escape(df_var)}\s*\[\s*['\"]{re.escape(col_name)}['\"]\]\s*="
+            if not re.search(assign_pattern, script):
                 lines = script.split("\n")
-                last_df_ref = 0
+                # Find the first line that references the missing column
+                insert_pos = None
+                col_ref_pattern = re.compile(rf"['\"]{re.escape(col_name)}['\"]")
                 for i, line in enumerate(lines):
-                    if df_var in line and not line.strip().startswith("#"):
-                        last_df_ref = i
-                lines.insert(last_df_ref + 1, insertion.rstrip())
+                    if col_ref_pattern.search(line) and not line.strip().startswith("#"):
+                        insert_pos = i
+                        break
+                if insert_pos is None:
+                    return None
+                lines.insert(insert_pos, insertion.rstrip())
                 return "\n".join(lines)
 
     # If it's the target column, it's critical - skip for now
@@ -326,9 +340,13 @@ def fix_empty_dataset(script: str, message: str) -> str | None:
 LINE_FIXES = [
     lambda line: line.replace("= =", "==").replace("= ==", "==").replace("! =", "!="),
     lambda line: line.rstrip(",").rstrip(";") if not line.endswith(":") else line,
-    lambda line: re.sub(r"(\w+)\s*=\s*(\d+)\s+and\s+", r"\1 == \2 and ", line) if "and" in line else line,
+    lambda line: (
+        re.sub(r"(\w+)\s*=\s*(\d+)\s+and\s+", r"\1 == \2 and ", line) if "and" in line else line
+    ),
     lambda line: line.replace("NoneType", "type(None)"),
-    lambda line: re.sub(r"'([^']*)'\)\s*{", r"'\1'): {", line) if line.strip().endswith("{") else line,
+    lambda line: (
+        re.sub(r"'([^']*)'\)\s*{", r"'\1'): {", line) if line.strip().endswith("{") else line
+    ),
 ]
 
 # ---- checkpoint_corruption ----

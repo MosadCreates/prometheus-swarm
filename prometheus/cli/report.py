@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -8,6 +9,7 @@ from pathlib import Path
 
 import click
 
+from prometheus.cli.output import detect_format, Format
 from prometheus.ui.components import Spinner
 from prometheus.ui.renderers import renderer_from_ctx
 from prometheus.utils.exit_codes import ExitCode
@@ -27,14 +29,24 @@ from prometheus.utils.exit_codes import ExitCode
     default="md",
     help="Report format to show",
 )
+@click.option(
+    "--output-format",
+    "out_fmt",
+    type=click.Choice(["interactive", "plain", "json"]),
+    default=None,
+    help="CLI output format (default: auto-detect)",
+)
 @click.pass_context
-def report(ctx, job_id, view, open_browser, fmt):
+def report(ctx, job_id, view, open_browser, fmt, out_fmt):
     """Generate and view a mission report for a completed job.
 
     JOB_ID is the job UUID or its 8-character prefix.
     Generates a JSON report at outputs/{job_id}/mission_report_{job_id}.json
     and a Markdown version alongside it.
     """
+    if out_fmt:
+        ctx.find_root().obj["format"] = out_fmt
+    cli_fmt = detect_format(ctx)
     renderer = renderer_from_ctx(ctx)
 
     async def _generate():
@@ -63,9 +75,21 @@ def report(ctx, job_id, view, open_browser, fmt):
         renderer.error(f"Report not found at {json_path}")
         return ExitCode.ERROR_NOT_FOUND
 
-    renderer.print("  [green]\u2713 Mission report generated[/green]")
-    renderer.print(f"  [dim]File:[/dim] {json_path.resolve()}")
-    renderer.print(f"  [dim]View:[/dim] [bold]prometheus report {job_id[:8]} --view[/bold]")
+    data = {
+        "job_id": job_id,
+        "json_path": str(json_path.resolve()),
+        "md_path": str(md_path.resolve()),
+    }
+
+    match cli_fmt:
+        case Format.JSON:
+            print(json.dumps({"schema": "prometheus.report.v1", **data}, indent=2))
+        case Format.PLAIN:
+            print(f"report_generated={json_path.resolve()}")
+        case Format.INTERACTIVE:
+            renderer.print("  [green]\u2713 Mission report generated[/green]")
+            renderer.print(f"  [dim]File:[/dim] {json_path.resolve()}")
+            renderer.print(f"  [dim]View:[/dim] [bold]prometheus report {job_id[:8]} --view[/bold]")
 
     if view:
         _view_report(renderer, md_path if fmt == "md" else json_path, fmt)
