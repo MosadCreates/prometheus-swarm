@@ -94,12 +94,21 @@ def _check_redis_heartbeat_sync() -> bool:
 def _resolve_python() -> Path:
     """Return the Python executable to use for the daemon subprocess.
 
-    Prefers a project-local .venv, then the current interpreter, then PATH.
+    On Windows, prefers pythonw.exe (window-less) to avoid any console window.
+    Falls back to python.exe, then PATH.
     """
-    candidates = [
-        Path.cwd() / ".venv" / "Scripts" / "python.exe",
-        Path(sys.executable),
-    ]
+    if sys.platform == "win32":
+        candidates = [
+            Path.cwd() / ".venv" / "Scripts" / "pythonw.exe",
+            Path(sys.executable).with_name("pythonw.exe"),
+            Path.cwd() / ".venv" / "Scripts" / "python.exe",
+            Path(sys.executable),
+        ]
+    else:
+        candidates = [
+            Path.cwd() / ".venv" / "bin" / "python",
+            Path(sys.executable),
+        ]
     for p in candidates:
         if p.is_file():
             return p

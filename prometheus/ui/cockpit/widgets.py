@@ -1536,6 +1536,71 @@ class ReplayController(Static):
         return "  ".join(p for p in parts if p)
 
 
+# ── Mission completion card ─────────────────────────────────────────
+
+
+class MissionCompletionCard(Static):
+    """Bottom card shown when Harbor finishes, summarizing mission results.
+
+    Displays the final metric, endpoint URL, elapsed time, and event count.
+    Hidden by default; call ``show(data)`` to reveal.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._data: dict[str, Any] = {}
+        self.visible = False
+
+    def show(self, data: dict[str, Any]) -> None:
+        self._data = data
+        self.visible = True
+        self.refresh()
+
+    def hide(self) -> None:
+        self.visible = False
+        self._data = {}
+        self.refresh()
+
+    def render(self) -> str:
+        if not self.visible or not self._data:
+            return ""
+        d = self._data
+
+        slug = d.get("slug", "Mission")
+        elapsed = d.get("elapsed_s", 0.0)
+        elapsed_str = f"{elapsed:.1f}s" if elapsed else ""
+        metric_name = d.get("metric_name", "")
+        metric_value = d.get("metric_value", 0.0)
+        threshold = d.get("threshold", 0.0)
+        decision = d.get("decision", "")
+        endpoint_url = d.get("endpoint_url", "")
+        model_format = d.get("model_format", "")
+        total_events = d.get("total_events", 0)
+
+        decision_color = Theme.success if "pass" in decision.lower() else Theme.error
+        metric_str = (
+            f"[{Theme.info}]{metric_name}:[/] [{Theme.accent}]{metric_value:.4f}[/]"
+            f"  [{Theme.muted}]threshold: {threshold:.4f}[/]"
+            if metric_name
+            else ""
+        )
+        endpoint_str = (
+            f"[{Theme.info}]endpoint:[/] [{Theme.accent}]{endpoint_url}[/]"
+            f"  [{Theme.muted}]({model_format})[/]"
+            if endpoint_url
+            else ""
+        )
+
+        parts = [
+            f"[bold]{Theme.success}Mission Complete![/]  [{Theme.muted}]{slug}[/]",
+            metric_str,
+            endpoint_str,
+            f"[{Theme.muted}]elapsed: {elapsed_str}  events: {total_events}[/]",
+            f"[bold {decision_color}]decision: {decision}[/]",
+        ]
+        return f"[{Theme.success}]\u2500[/]" * 40 + "\n" + "\n".join(f"  {p}" for p in parts if p)
+
+
 # ── Event log overlay screen ─────────────────────────────────────────
 
 

@@ -33,6 +33,7 @@ from prometheus.ui.cockpit.widgets import (
     EscalationModalScreen,
     HelpScreen,
     LogScreen,
+    MissionCompletionCard,
     MissionHeader,
     ModelPickerScreen,
     PhaseTracker,
@@ -84,6 +85,15 @@ class CockpitApp(App[None]):
         height: 1;
         padding: 0 1;
         background: {Theme.background};
+    }}
+
+    MissionCompletionCard {{
+        dock: bottom;
+        height: auto;
+        max-height: 6;
+        padding: 0 1;
+        background: {Theme.surface};
+        border: solid {Theme.success};
     }}
 
     ActiveAgentPane {{
@@ -143,6 +153,7 @@ class CockpitApp(App[None]):
         yield PhaseTracker()
         yield ActiveAgentPane()
         yield CascadeAttempt()
+        yield MissionCompletionCard()
         yield CockpitFooter()
         yield ReplayController()
 
@@ -452,6 +463,65 @@ class CockpitApp(App[None]):
                     ),
                     callback=self._on_escalation_result,
                 )
+
+        # ── Mission completion card ───────────────────────────────────
+        if agent == "Harbor" and state == "done":
+            data = self._build_completion_data()
+            self.query_one(MissionCompletionCard).show(data)
+
+    def _build_completion_data(self) -> dict[str, Any]:
+        """Aggregate final results from all agents into a summary dict."""
+        data: dict[str, Any] = {
+            "slug": "",
+            "elapsed_s": 0.0,
+            "metric_name": "",
+            "metric_value": 0.0,
+            "threshold": 0.0,
+            "decision": "",
+            "endpoint_url": "",
+            "model_format": "",
+            "total_events": 0,
+        }
+        header = self.query_one(MissionHeader)
+        data["slug"] = getattr(header, "_slug", "")
+        data["elapsed_s"] = getattr(header, "_elapsed", 0.0)
+
+        for ev in self._all_events.get("Arbiter", []):
+            detail = ev.get("detail", "")
+            if isinstance(detail, str):
+                try:
+                    detail = json.loads(detail)
+                except (json.JSONDecodeError, TypeError):
+                    detail = {}
+            if isinstance(detail, dict):
+                data["metric_name"] = detail.get("metric_name") or detail.get("primary_metric", "")
+                raw = detail.get("metric_value") or detail.get("primary_metric_value", 0.0)
+                try:
+                    data["metric_value"] = float(raw)
+                except (ValueError, TypeError):
+                    data["metric_value"] = 0.0
+                try:
+                    data["threshold"] = float(detail.get("threshold", 0.0))
+                except (ValueError, TypeError):
+                    data["threshold"] = 0.0
+                data["decision"] = detail.get("decision") or ev.get("summary", "")
+
+        for ev in self._all_events.get("Harbor", []):
+            detail = ev.get("detail", "")
+            if isinstance(detail, str):
+                try:
+                    detail = json.loads(detail)
+                except (json.JSONDecodeError, TypeError):
+                    detail = {}
+            if isinstance(detail, dict):
+                data["endpoint_url"] = (
+                    detail.get("endpoint_url") or detail.get("url") or detail.get("endpoint") or ""
+                )
+                data["model_format"] = detail.get("model_format", "")
+
+        total = sum(len(evs) for evs in self._all_events.values())
+        data["total_events"] = total
+        return data
 
     async def _on_thinking_token(self, msg: dict[str, Any]) -> None:
         """Accumulate streaming thinking tokens for display.

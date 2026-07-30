@@ -5,16 +5,16 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 import traceback as tb_module
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from agents.base import BaseAgent
 from agents.furnace.prompts import FURNACE_SYSTEM_PROMPT
-from bus.agent_events import AgentEventTracker, emit_subaction_progress, emit_agent_event
+from bus.agent_events import AgentEventTracker, emit_subaction_progress
 from bus.events import (
     CRASH_EVENT,
     EPOCH_COMPLETE,
@@ -43,10 +43,6 @@ from training.docker_manager import DockerManager
 from prometheus.ui.detail_types import (
     FurnaceEpochDetail,
     FurnaceTrialDetail,
-    FurnaceMetricDetail,
-    FurnaceTimeDetail,
-    FurnaceContainerDetail,
-    FurnaceCheckpointDetail,
 )
 from prometheus.ui.components.streaming.progress_bar import create_training_bar
 
@@ -728,6 +724,7 @@ class FurnaceAgent(BaseAgent):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=subprocess_env,
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
         stdout_lines: list[str] = []
         stderr_lines: list[str] = []

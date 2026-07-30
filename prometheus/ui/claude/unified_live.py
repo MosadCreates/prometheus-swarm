@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 import json
 import logging
 import os
+import threading
 import time
-from collections import deque
-from dataclasses import dataclass, field
 from typing import Any
 
 import redis.asyncio as aioredis
+from pynput import keyboard
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
@@ -23,23 +24,20 @@ from bus.events import (
 )
 from prometheus.ui.claude.agent_colors import AGENT_COLORS
 from prometheus.ui.components.streaming.agent_block import AgentBlock, SubactionNode
-from prometheus.ui.components.streaming.header_banner import HeaderBanner
+from prometheus.ui.components.streaming.header_banner import HeaderBanner, AGENT_ORDER
 from prometheus.ui.components.streaming.mission_summary import MissionSummaryCard
-from prometheus.ui.components.streaming.pipeline_tracker import PipelineTracker, AGENT_ORDER
 from prometheus.ui.components.streaming.transition_banner import render_transition
 from prometheus.ui.detail_types import (
     dict_to_detail,
     ScoutDatasetDetail,
     ScoutDataQualityDetail,
     ScoutTaskDetail,
-    ScoutConfidenceDetail,
     ForgeArchitectureDetail,
     ForgeCandidatesDetail,
     ForgeRationaleDetail,
     FurnaceEpochDetail,
     ArbiterMetricsDetail,
     ArbiterDecisionDetail,
-    ArbiterLeaderboardDetail,
     HarborEndpointDetail,
 )
 from prometheus.ui.theme import Theme
@@ -48,6 +46,9 @@ logger = logging.getLogger(__name__)
 
 _PAD_LEFT = 3
 _INDENT = " " * _PAD_LEFT
+
+# Duration to show ephemeral transition banners (seconds)
+_TRANSITION_DURATION = 2.0
 
 
 class UnifiedLiveRenderer:
@@ -64,6 +65,12 @@ class UnifiedLiveRenderer:
         self._dataset_name = kwargs.get("dataset_name", "")
         self._num_rows = kwargs.get("num_rows", 0)
 
+        # ── Single source of truth ───────────────────────────────────────
+        self._lock = threading.Lock()
+        self._agent_states: dict[str, str] = {a: "pending" for a in AGENT_ORDER}
+        self._mission_status: str = "starting"
+        # "starting" | "running" | "complete" | "error" | "cancelled"
+
         self._running = False
         self._stop_requested = False
         self._tick: float = 0.0
@@ -74,17 +81,25 @@ class UnifiedLiveRenderer:
         self._last_seq: dict[str, int] = {}
         self._seen_subactions: set[str] = set()
 
-        # Agent blocks
+        # Agent blocks — owned by the renderer, mutated only on main event loop
         self._agent_blocks: dict[str, AgentBlock] = {
             name: AgentBlock(name=name) for name in AGENT_ORDER
         }
-        self._active_agent: str | None = None
-        self._previous_agent: str | None = None
-        self._scrollback: list[Text] = []
+        self._last_active_agent: str | None = None
+
+        # Ephemeral transition (shown briefly between agent handoffs)
+        self._current_transition: str | None = None
+        self._transition_expires: float = 0.0
+
+        # Keyboard expand/collapse
+        self._key_queue: deque[str] = deque()
+        self._focused_idx: int = -1
+        self._keyboard_listener: keyboard.Listener | None = None
 
         # Summary data
         self._summary_data: dict[str, Any] = {}
         self._mission_summary: MissionSummaryCard | None = None
+        self._summary_pushed = False
         self._harbor_probed = False
 
         self._console = Console(emoji=False, safe_box=True, no_color=False, color_system="auto")
@@ -99,9 +114,28 @@ class UnifiedLiveRenderer:
             dataset_name=self._dataset_name,
             num_rows=self._num_rows,
         )
-        self._pipeline_tracker = PipelineTracker()
+        self._ready = False
+
+    async def setup(self) -> None:
+        """Create consumer groups before job starts.
+
+        Must be called before run(). Prevents race where events
+        are published before the renderer begins consuming.
+        """
+        await ensure_consumer_group(self._redis, STREAM_AGENT_EVENTS, GROUP_COCKPIT, start_id="$")
+        try:
+            await ensure_consumer_group(
+                self._redis, STREAM_AGENT_THINKING, GROUP_COCKPIT, start_id="$"
+            )
+            await ensure_consumer_group(self._redis, STREAM_SUBACTION, GROUP_COCKPIT, start_id="$")
+        except Exception:
+            pass
+        self._ready = True
 
     async def run(self) -> None:
+        if not self._ready:
+            await self.setup()
+
         try:
             hb = await self._redis.get("orch:heartbeat")
             if not hb:
@@ -111,23 +145,21 @@ class UnifiedLiveRenderer:
         except Exception:
             pass
 
-        # Don't destroy CG — use existing cursor to avoid re-delivering past events
-        await ensure_consumer_group(self._redis, STREAM_AGENT_EVENTS, GROUP_COCKPIT, start_id="$")
+        self._running = True
+        self._mission_start = time.monotonic()
+        self._first_render_time = self._mission_start
+        self._last_event_time = self._mission_start
+        self._no_event_timeout_reached = False
+        with self._lock:
+            self._mission_status = "running"
+
+        # Start keyboard listener for expand/collapse interaction
         try:
-            await ensure_consumer_group(
-                self._redis, STREAM_AGENT_THINKING, GROUP_COCKPIT, start_id="$"
-            )
-            await ensure_consumer_group(self._redis, STREAM_SUBACTION, GROUP_COCKPIT, start_id="$")
+            self._keyboard_listener = keyboard.Listener(on_release=self._on_key_release)
+            self._keyboard_listener.daemon = True
+            self._keyboard_listener.start()
         except Exception:
             pass
-
-        self._running = True
-        self._first_render_time = time.monotonic()
-        self._last_event_time = time.monotonic()
-        self._no_event_timeout_reached = False
-
-        # Print mission banner to scrollback
-        self._scrollback.append(self._header_banner.render())
 
         with Live(
             self._render_frame(),
@@ -141,6 +173,13 @@ class UnifiedLiveRenderer:
                     changed = await self._poll_events()
                     if changed:
                         self._last_event_time = time.monotonic()
+                    self._process_keys()
+
+                    # Update pipeline status before rendering so the header
+                    # shows "complete" (not stale "running") in the last frame
+                    if self._pipeline_should_stop():
+                        self._stop_requested = True
+
                     live.update(self._render_frame())
 
                     if not self._no_event_timeout_reached:
@@ -149,40 +188,56 @@ class UnifiedLiveRenderer:
                         if elapsed > 5.0 and since_event > 5.0:
                             self._no_event_timeout_reached = True
 
-                    if self._pipeline_should_stop():
-                        self._stop_requested = True
-                    await asyncio.sleep(0.05)
-            except (KeyboardInterrupt, asyncio.CancelledError):
+                    await asyncio.sleep(0.02)
+
+                # One final render with the terminal state after the loop ends
+                if not self._stop_requested:
+                    self._resolve_remaining_agents("disabled")
+                live.update(self._render_frame())
+            except KeyboardInterrupt:
+                with self._lock:
+                    self._resolve_remaining_agents("cancelled")
+                    self._mission_status = "cancelled"
+            except asyncio.CancelledError:
                 pass
             finally:
                 self._cleanup()
 
+    # ── State resolution ─────────────────────────────────────────────────
+
+    def _resolve_remaining_agents(self, terminal: str) -> None:
+        """Force-resolve any agent still pending or running to a terminal state.
+        Called on error, cancellation, or timeout to produce a coherent final frame.
+        """
+        for agent in AGENT_ORDER:
+            cur = self._agent_states.get(agent, "pending")
+            if cur in ("pending", "running"):
+                self._agent_states[agent] = terminal
+                block = self._agent_blocks.get(agent)
+                if block:
+                    if terminal == "disabled":
+                        block.summary = "not triggered"
+                    elif terminal == "error":
+                        block.summary = block.summary or "Cancelled"
+                    block.status = terminal
+                    if not block.end_time:
+                        block.end_time = time.monotonic()
+
     def _all_agents_terminal(self) -> bool:
-        seen = [n for n in self._agent_blocks.values() if n.seen]
-        if not seen:
-            return False
-        return all(n.status in ("done", "error") for n in seen)
+        terminal = {"complete", "error", "disabled"}
+        return all(self._agent_states.get(a, "pending") in terminal for a in AGENT_ORDER)
 
     def _pipeline_should_stop(self) -> bool:
-        harbor = self._agent_blocks.get("Harbor")
-        if harbor and harbor.seen and harbor.status in ("done", "error"):
-            self._build_mission_summary()
-            self._push_summary_to_scrollback()
-            return True
-        for name in ("Scout", "Forge", "Furnace", "Dissect", "Arbiter"):
-            node = self._agent_blocks.get(name)
-            if node and node.seen and node.status == "error":
-                self._build_mission_summary()
-                self._push_summary_to_scrollback()
+        with self._lock:
+            if self._all_agents_terminal():
+                # Finalize mission status based on agent outcomes
+                any_error = any(self._agent_states.get(a) == "error" for a in AGENT_ORDER)
+                if self._mission_status not in ("error", "cancelled"):
+                    self._mission_status = "error" if any_error else "complete"
                 return True
-        seen = [n for n in self._agent_blocks.values() if n.seen]
-        if len(seen) == len(AGENT_ORDER):
-            all_terminal = all(n.status in ("done", "error") for n in seen)
-            if all_terminal:
-                self._build_mission_summary()
-                self._push_summary_to_scrollback()
-                return True
-        return False
+            return False
+
+    # ── Event polling ────────────────────────────────────────────────────
 
     async def _poll_events(self) -> bool:
         changed = False
@@ -193,7 +248,7 @@ class UnifiedLiveRenderer:
                 consumername="unified-1",
                 streams={STREAM_AGENT_EVENTS: ">"},
                 count=20,
-                block=100,
+                block=20,
             )
             if results:
                 for _, messages in results:
@@ -211,7 +266,7 @@ class UnifiedLiveRenderer:
                 consumername="unified-td",
                 streams={STREAM_AGENT_THINKING: ">"},
                 count=50,
-                block=50,
+                block=20,
             )
             if td_results:
                 for _, messages in td_results:
@@ -231,7 +286,7 @@ class UnifiedLiveRenderer:
                 consumername="unified-sa",
                 streams={STREAM_SUBACTION: ">"},
                 count=20,
-                block=50,
+                block=20,
             )
             if sa_results:
                 for _, messages in sa_results:
@@ -243,7 +298,7 @@ class UnifiedLiveRenderer:
         except Exception:
             pass
 
-        self._tick += 0.05
+        self._tick += 0.02
         return changed
 
     def _decode(self, raw_fields: dict) -> dict[str, Any]:
@@ -256,6 +311,8 @@ class UnifiedLiveRenderer:
             except (json.JSONDecodeError, TypeError):
                 msg[key] = val
         return msg
+
+    # ── Agent event handler ──────────────────────────────────────────────
 
     def _handle_agent_event(self, msg: dict[str, Any]) -> None:
         agent = str(msg.get("agent", ""))
@@ -272,103 +329,135 @@ class UnifiedLiveRenderer:
         if agent not in self._agent_blocks:
             return
 
-        # Clear no-event timeout — we just got an event
-        self._no_event_timeout_reached = False
+        with self._lock:
+            # Clear no-event timeout — we just got an event
+            self._no_event_timeout_reached = False
 
-        block = self._agent_blocks[agent]
-        self._last_seq[agent] = seq
+            block = self._agent_blocks[agent]
+            self._last_seq[agent] = seq
 
-        state_map = {
-            "thinking": "running",
-            "planning": "running",
-            "acting": "running",
-            "verifying": "running",
-            "done": "complete",
-            "error": "error",
-        }
-        pipeline_state = state_map.get(state, "pending")
-        self._pipeline_tracker.set_state(agent, pipeline_state)
+            if summary:
+                block.summary = summary
 
-        if summary:
-            block.summary = summary
-            self._pipeline_tracker.set_summary(agent, summary)
+            self._extract_structured_details(agent, detail)
 
-        self._extract_structured_details(agent, detail)
+            if state in ("thinking", "planning", "acting", "verifying"):
+                block.current_pane = state
 
-        if state in ("thinking", "planning", "acting", "verifying"):
-            if not block.seen:
-                block.seen = True
-                block.status = "active"
-                block.start_time = time.monotonic()
-                self._header_banner.update_status("running", agent)
+                if not block.seen:
+                    block.seen = True
+                    block.status = "active"
+                    block.start_time = time.monotonic()
 
-                # Transition from previous agent to new active agent
-                if self._active_agent and self._active_agent != agent:
-                    prev_block = self._agent_blocks[self._active_agent]
-                    if prev_block.status not in ("done", "error"):
-                        prev_block.status = "done"
-                        prev_block.end_time = time.monotonic()
-                        self._pipeline_tracker.set_state(self._active_agent, "complete")
-                        self._scrollback.append(prev_block.render_finalized(width=self._width))
-                    reason = summary or ""
-                    self._scrollback.append(
-                        render_transition(self._active_agent, agent, reason, width=self._width)
-                    )
-                elif self._previous_agent and self._previous_agent != agent:
-                    # Previous agent already finalized via "done" path
-                    reason = summary or ""
-                    self._scrollback.append(
-                        render_transition(self._previous_agent, agent, reason, width=self._width)
-                    )
-
-                self._active_agent = agent
-
-            if state == "verifying":
-                block.summary = f"Verifying: {summary}" if summary else block.summary
-
-        elif state == "done":
-            block.status = "done"
-            block.end_time = time.monotonic()
-            block.summary = summary or "Complete"
-            self._pipeline_tracker.set_state(agent, "complete")
-
-            if agent == self._active_agent:
-                self._scrollback.append(block.render_finalized(width=self._width))
-                self._previous_agent = agent
-                self._active_agent = None
-
-            if detail:
-                for k in ("endpoint_url", "model_format", "val_metric", "metric_name", "port"):
-                    v = detail.get(k)
-                    if v is not None:
-                        block.subactions.append(
-                            SubactionNode(detail=f"{k}: {v}", detail_data=detail, state="done")
+                    # Set ephemeral transition from previous active agent
+                    if self._last_active_agent and self._last_active_agent != agent:
+                        prev_block = self._agent_blocks[self._last_active_agent]
+                        if prev_block.status not in ("done", "error"):
+                            prev_block.status = "done"
+                            prev_block.end_time = time.monotonic()
+                            self._agent_states[self._last_active_agent] = "complete"
+                        reason = summary or ""
+                        self._current_transition = render_transition(
+                            self._last_active_agent, agent, reason, width=self._width
                         )
+                        self._transition_expires = time.monotonic() + _TRANSITION_DURATION
 
-            if agent == "Harbor":
-                self._collect_summary(detail)
-                if not self._harbor_probed:
-                    asyncio.create_task(self._probe_harbor_health(detail))
-                    self._harbor_probed = True
-                asyncio.ensure_future(self._delayed_stop(0.8))
+                    self._last_active_agent = agent
 
-        elif state == "error":
-            block.status = "error"
-            block.end_time = time.monotonic()
-            block.summary = summary or "Failed"
-            self._pipeline_tracker.set_state(agent, "error")
+                    # Mark queued-to-running transition
+                    self._agent_states[agent] = "running"
+                    if self._mission_status == "starting":
+                        self._mission_status = "running"
 
-            if agent == self._active_agent:
-                self._scrollback.append(block.render_finalized(width=self._width))
-                self._active_agent = None
+                # Route detail data to the active pane (lock released below)
+                if state == "planning" and summary:
+                    block.planning_items.append(summary)
+                elif state == "acting" and summary:
+                    block.acting_items.append(summary)
+                elif state == "verifying":
+                    block.verifying_status = summary or block.summary
 
-            for k in ("error", "reason"):
-                err = detail.get(k)
-                if err:
-                    block.subactions.append(SubactionNode(detail=f"Error: {err}", state="error"))
-                    break
-            if agent != "Harbor":
-                asyncio.ensure_future(self._delayed_stop(1.5))
+            elif state == "done":
+                block.status = "done"
+                block.end_time = time.monotonic()
+                block.summary = summary or "Complete"
+                self._agent_states[agent] = "complete"
+
+                if agent == self._last_active_agent:
+                    self._last_active_agent = None
+
+                if detail:
+                    for k in ("endpoint_url", "model_format", "val_metric", "metric_name", "port"):
+                        v = detail.get(k)
+                        if v is not None:
+                            block.subactions.append(
+                                SubactionNode(detail=f"{k}: {v}", detail_data=detail, state="done")
+                            )
+
+                if agent == "Arbiter":
+                    for k in ("metric_name", "val_metric", "threshold", "operator", "decision"):
+                        v = detail.get(k)
+                        if v is not None:
+                            self._summary_data[k] = v
+                    val = detail.get("val_metric")
+                    if val is not None:
+                        self._summary_data["val_metric"] = float(val)
+                    m_name = detail.get("metric_name", "metric")
+                    m_val = detail.get("val_metric") or detail.get("metric_value")
+                    thr = detail.get("threshold")
+                    op = detail.get("operator", "\u2265")
+                    dec = detail.get("decision", summary or "passed")
+                    # Gate: don't render PASS with null metric or threshold
+                    if m_val is None or thr is None:
+                        block.summary = "AWAITING EVALUATION"
+                    else:
+                        try:
+                            block.summary = (
+                                f"{dec} \u00b7 {m_name}={float(m_val):.4f} ({op} {float(thr):.4f})"
+                            )
+                        except (ValueError, TypeError):
+                            block.summary = f"{dec} \u00b7 {m_name}={m_val} ({op} {thr})"
+
+                if agent == "Harbor":
+                    endpoint = detail.get("endpoint_url", "")
+                    if endpoint:
+                        dur = block._dur_str()
+                        block.summary = f"Model live \u00b7 {dur}" if dur else "Model live"
+                        block.details["Endpoint"] = endpoint
+                        block.details["ModelFormat"] = detail.get("model_format", "onnx")
+                    self._collect_summary(detail)
+
+            elif state == "error":
+                block.status = "error"
+                block.end_time = time.monotonic()
+                block.summary = summary or "Failed"
+                self._agent_states[agent] = "error"
+                self._mission_status = "error"
+
+                if agent == self._last_active_agent:
+                    self._last_active_agent = None
+
+                for k in ("error", "reason"):
+                    err = detail.get(k)
+                    if err:
+                        block.subactions.append(
+                            SubactionNode(detail=f"Error: {err}", state="error")
+                        )
+                        break
+
+        # ── Actions requiring external async calls (lock released) ──────
+
+        if state == "done" and agent == "Harbor":
+            self._build_mission_summary()
+            self._push_summary_to_scrollback()
+            if not self._harbor_probed:
+                asyncio.create_task(self._probe_harbor_health(detail))
+                self._harbor_probed = True
+            asyncio.ensure_future(self._delayed_stop(0.8))
+
+        if state == "error" and agent != "Harbor":
+            self._resolve_remaining_agents("disabled")
+            asyncio.ensure_future(self._delayed_stop(1.5))
 
     def _extract_structured_details(self, agent: str, detail: dict[str, Any]) -> None:
         block = self._agent_blocks[agent]
@@ -400,7 +489,10 @@ class UnifiedLiveRenderer:
                 block.details["Rationale"] = detail["rationale"]
         elif agent == "Furnace":
             if "epoch" in detail and "total_epochs" in detail:
-                block.details["Epoch"] = f"{detail['epoch']}/{detail['total_epochs']}"
+                # Clamp: never display epoch > total_epochs (symptom of fencepost
+                # in Furnace's early-stopping counter, fixed separately)
+                epoch = min(int(detail["epoch"]), int(detail["total_epochs"]))
+                block.details["Epoch"] = f"{epoch}/{detail['total_epochs']}"
             if "metric_value" in detail:
                 block.details["Best"] = f"{detail['metric_value']:.4f}"
         elif agent == "Arbiter":
@@ -449,7 +541,10 @@ class UnifiedLiveRenderer:
         elif isinstance(detail, ForgeRationaleDetail):
             block.details["Rationale"] = detail.rationale
         elif isinstance(detail, FurnaceEpochDetail):
-            block.details["Epoch"] = f"{detail.epoch}/{detail.total_epochs or '?'}"
+            # Clamp: never display epoch > total_epochs
+            total = detail.total_epochs or 1
+            epoch = min(int(detail.epoch), int(total))
+            block.details["Epoch"] = f"{epoch}/{total}"
             block.details["Best"] = f"{detail.best_score:.4f}" if detail.best_score else "\u2014"
         elif isinstance(detail, ArbiterMetricsDetail):
             block.details["Primary"] = f"{detail.primary_metric}: {detail.primary_value:.4f}"
@@ -545,44 +640,161 @@ class UnifiedLiveRenderer:
 
     async def _delayed_stop(self, delay: float) -> None:
         await asyncio.sleep(delay)
+        with self._lock:
+            self._resolve_remaining_agents("disabled")
         self._running = False
+
+    # ── Render frame ─────────────────────────────────────────────────────
 
     def _render_frame(self) -> Text:
         out = Text()
         width = self._console.width
+        self._header_banner.update_width(width)
 
-        # Scrollback (finalized blocks + transition banners)
-        for item in self._scrollback:
-            out.append_text(item)
+        elapsed_seconds = int(time.monotonic() - self._mission_start)
+
+        # ── Header — always at top, driven by single source of truth ──
+        header_renderable = self._header_banner.render(
+            agent_states=self._agent_states.copy(),
+            status=self._mission_status,
+            elapsed_seconds=elapsed_seconds,
+            tick=self._tick,
+        )
+        out.append_text(header_renderable)
+        out.append("\n")
+
+        # ── Agent blocks in sequence ─────────────────────────────────
+        all_terminal = self._all_agents_terminal()
+        active_agent_now = None
+
+        for idx, agent in enumerate(AGENT_ORDER):
+            block = self._agent_blocks[agent]
+            state = self._agent_states.get(agent, "pending")
+
+            if state == "complete":
+                # Completed agent — show finalized badge + key details
+                block._focused = idx == self._focused_idx
+                rendered = block.render_finalized(width=width)
+                out.append_text(rendered)
+
+            elif state == "error":
+                # Failed agent — show error badge + detail
+                block._focused = idx == self._focused_idx
+                rendered = block.render_finalized(width=width)
+                out.append_text(rendered)
+
+            elif state == "running":
+                # Active agent — show live render
+                active_agent_now = agent
+                out.append_text(block.render_live(self._tick, width=width))
+                out.append("\n")
+
+                # Ephemeral transition: show if this agent just became active
+                if self._current_transition and time.monotonic() < self._transition_expires:
+                    out.append_text(self._current_transition)
+                    out.append("\n")
+
+                # Show queued agents after active
+                active_idx = AGENT_ORDER.index(agent)
+                for qa in AGENT_ORDER[active_idx + 1 :]:
+                    qb = self._agent_blocks[qa]
+                    if qb.seen is False:
+                        out.append_text(self._render_queued(qa))
+                        out.append("\n")
+
+            elif state in ("disabled",) or (state == "pending" and all_terminal):
+                # Disabled or pending-after-completion: show as "not triggered"
+                out.append_text(self._render_queued(agent))
+                out.append("\n")
+
+            elif state == "pending" and not all_terminal:
+                # Queued agent — show as pending
+                out.append_text(self._render_queued(agent))
+                out.append("\n")
+
+        # ── Summary card (only when all agents resolved) ──────────────
+        if self._mission_summary and all_terminal:
+            # Only draw summary when every agent slot has resolved
             out.append("\n")
+            out.append_text(self._mission_summary.render())
+            out.append("\n")
+            next_text = self._render_next_steps()
+            if next_text:
+                out.append_text(next_text)
+                out.append("\n")
 
-        # Live zone
-        if self._active_agent:
-            block = self._agent_blocks[self._active_agent]
-            out.append_text(block.render_live(self._tick, width=width))
-
-        # No-events warning (suppress when pipeline is complete)
-        pipeline_done = self._mission_summary is not None or self._all_agents_terminal()
-        if self._no_event_timeout_reached and not self._active_agent and not pipeline_done:
+        # ── No-events warning (suppress when pipeline is complete) ────
+        if self._no_event_timeout_reached and not active_agent_now and not all_terminal:
             warn = Text()
-            elapsed = time.monotonic() - self._first_render_time
-            warn.append("\n")
             warn.append("  \u26a0 ", style="bold yellow")
             warn.append("Waiting for agent events ", style="bold yellow")
             warn.append(
-                f"({int(elapsed // 60):02d}m {int(elapsed % 60):02d}s)", style="bold yellow"
+                f"({elapsed_seconds // 60:02d}m {elapsed_seconds % 60:02d}s)", style="bold yellow"
             )
             warn.append(" \u2014 ", style="bold yellow")
             warn.append("run directly: ", style="bold yellow")
             warn.append("prometheus mission new --block", style="bold italic yellow")
             out.append_text(warn)
 
-        # Pipeline ribbon at bottom
-        if self._pipeline_tracker:
-            out.append("\n")
-            out.append_text(self._pipeline_tracker.render(self._tick))
-
         return out
+
+    @staticmethod
+    def _render_queued(agent: str) -> Text:
+        t = Text()
+        agent_color = AGENT_COLORS.get(agent, Theme.secondary)
+        t.append("  \u25cb ", style=str(Theme.muted))
+        t.append(agent, style=f"bold {agent_color}")
+        t.append("  queued", style=str(Theme.muted))
+        return t
+
+    @staticmethod
+    def _render_next_steps() -> Text:
+        t = Text()
+        t.append("  next: ", style=str(Theme.muted))
+        t.append("prometheus predict --mission ...  ", style=str(Theme.body))
+        t.append("\u00b7  ", style=str(Theme.muted))
+        t.append("cockpit", style=str(Theme.info))
+        return t
+
+    # ── Keyboard interaction ────────────────────────────────────────────
+
+    def _on_key_release(self, key: keyboard.Key | keyboard.KeyCode | None) -> None:
+        try:
+            if key == keyboard.Key.up:
+                self._key_queue.append("up")
+            elif key == keyboard.Key.down:
+                self._key_queue.append("down")
+            elif key == keyboard.Key.enter:
+                self._key_queue.append("enter")
+            elif hasattr(key, "char") and key.char == "e":
+                self._key_queue.append("enter")
+            elif key == keyboard.Key.esc:
+                self._key_queue.append("esc")
+        except Exception:
+            pass
+
+    def _process_keys(self) -> None:
+        while self._key_queue:
+            k = self._key_queue.popleft()
+            if k == "up":
+                self._focused_idx = max(-1, self._focused_idx - 1)
+            elif k == "down":
+                if self._focused_idx < 0:
+                    self._focused_idx = 0
+                else:
+                    self._focused_idx = min(len(AGENT_ORDER) - 1, self._focused_idx + 1)
+            elif k == "enter":
+                if 0 <= self._focused_idx < len(AGENT_ORDER):
+                    agent = AGENT_ORDER[self._focused_idx]
+                    block = self._agent_blocks.get(agent)
+                    if block:
+                        block._expanded = not block._expanded
+            elif k == "esc":
+                self._focused_idx = -1
+                for agent in self._agent_blocks:
+                    self._agent_blocks[agent]._expanded = False
+
+    # ── Mission summary ─────────────────────────────────────────────────
 
     def _build_mission_summary(self) -> None:
         if self._mission_summary is not None:
@@ -591,9 +803,16 @@ class UnifiedLiveRenderer:
         scout = self._agent_blocks.get("Scout")
         forge = self._agent_blocks.get("Forge")
         arbiter = self._agent_blocks.get("Arbiter")
-
         harbor = self._agent_blocks.get("Harbor")
         harbor_detail = harbor.details if harbor else {}
+
+        # Fallback: read from Arbiter details if summary_data not populated
+        if not self._summary_data.get("val_metric") and arbiter:
+            if "Primary" in arbiter.details:
+                self._summary_data["metric_name"] = "AUC-ROC"
+                self._summary_data["val_metric"] = float(arbiter.details.get("Best", 0.0))
+            elif "Value" in arbiter.details:
+                self._summary_data["val_metric"] = float(arbiter.details.get("Value", 0.0))
 
         self._mission_summary = MissionSummaryCard(
             mission_id=self._mission_id,
@@ -617,7 +836,7 @@ class UnifiedLiveRenderer:
             duration_seconds=time.monotonic() - self._mission_start,
             status=(
                 "complete"
-                if not any(n.status == "error" for n in self._agent_blocks.values() if n.seen)
+                if not any(self._agent_states.get(a) == "error" for a in AGENT_ORDER)
                 else "error"
             ),
             model_name=harbor_detail.get("Model", "Model"),
@@ -634,8 +853,8 @@ class UnifiedLiveRenderer:
         self._mission_summary.update_width(self._console.width)
 
     def _push_summary_to_scrollback(self) -> None:
-        if self._mission_summary:
-            self._scrollback.append(self._mission_summary.render())
+        if self._mission_summary and not self._summary_pushed:
+            self._summary_pushed = True
 
     def _count_dissect_patches(self) -> int:
         dissect = self._agent_blocks.get("Dissect")
@@ -678,9 +897,16 @@ class UnifiedLiveRenderer:
         return artifacts
 
     def _cleanup(self) -> None:
+        if self._keyboard_listener is not None:
+            try:
+                self._keyboard_listener.stop()
+            except Exception:
+                pass
+        with self._lock:
+            self._resolve_remaining_agents("disabled")
         if not self._mission_summary:
             self._build_mission_summary()
-        if self._mission_summary:
+        if self._mission_summary and not self._summary_pushed:
             self._console.print()
             self._console.print(self._mission_summary.render())
 
@@ -696,3 +922,154 @@ async def run_unified_live(
         await renderer.run()
     except KeyboardInterrupt:
         pass
+
+
+async def run_quiet(
+    redis: aioredis.Redis,
+    mission_id: str,
+    **kwargs: Any,
+) -> None:
+    """Print flat [agent] key=val ... lines — no Rich, no Live."""
+    from bus.consumer import ensure_consumer_group
+
+    await ensure_consumer_group(redis, STREAM_AGENT_EVENTS, GROUP_COCKPIT, start_id="$")
+
+    done_agents: set[str] = set()
+
+    while True:
+        try:
+            results = await redis.xreadgroup(
+                groupname=GROUP_COCKPIT,
+                consumername="quiet-1",
+                streams={STREAM_AGENT_EVENTS: ">"},
+                count=20,
+                block=2000,
+            )
+            if not results:
+                continue
+
+            for _, messages in results:
+                for msg_id, raw in messages:
+                    msg: dict[str, Any] = {}
+                    for k, v in raw.items():
+                        key = k.decode() if isinstance(k, bytes) else k
+                        val = v.decode() if isinstance(v, bytes) else v
+                        try:
+                            msg[key] = json.loads(val)
+                        except (json.JSONDecodeError, TypeError):
+                            msg[key] = val
+
+                    agent = str(msg.get("agent", "")).lower()
+                    state = str(msg.get("state", ""))
+                    summary = str(msg.get("summary", ""))
+                    detail = msg.get("detail", {})
+                    if isinstance(detail, str):
+                        try:
+                            detail = json.loads(detail)
+                        except (json.JSONDecodeError, TypeError):
+                            detail = {}
+
+                    if not agent or not state:
+                        continue
+
+                    await redis.xack(STREAM_AGENT_EVENTS, GROUP_COCKPIT, msg_id)
+
+                    parts: list[str] = [f"[{agent}]"]
+
+                    if state in ("thinking", "planning", "verifying"):
+                        if state == "thinking":
+                            continue
+                        parts.append(state)
+                        if summary:
+                            parts.append(summary.lower().replace(" ", "_"))
+                        parts.extend(_quiet_kv(agent, state, detail))
+
+                    elif state == "acting":
+                        if agent == "furnace":
+                            prog = detail if isinstance(detail, dict) else {}
+                            e = prog.get("epoch", "")
+                            te = prog.get("total_epochs", "")
+                            fold = prog.get("fold", "")
+                            tf = prog.get("total_folds", "")
+                            loss = prog.get("loss", "")
+                            auc = prog.get("auc", "")
+                            pct = prog.get("progress", "")
+                            parts.append("progress")
+                            if fold and tf:
+                                parts.append(f"fold={fold}/{tf}")
+                            if e and te:
+                                parts.append(f"epoch={e}/{te}")
+                            if loss:
+                                parts.append(f"loss={loss}")
+                            if auc:
+                                parts.append(f"auc={auc}")
+                            if pct:
+                                parts.append(f"progress={pct}")
+                        else:
+                            parts.append(summary.lower().replace(" ", "_") if summary else "acting")
+
+                    elif state == "done":
+                        if agent == "scout":
+                            parts.append("spec_ready")
+                            if isinstance(detail, dict):
+                                parts.extend(_quiet_kv(agent, state, detail))
+                        elif agent == "forge":
+                            parts.append("script_ready")
+                            arch = ""
+                            if isinstance(detail, dict):
+                                arch = detail.get("architecture") or detail.get("selected", "")
+                            parts.append(f"arch={arch}" if arch else "")
+                        elif agent == "furnace":
+                            parts.append("complete")
+                        elif agent == "dissect":
+                            parts.append("repaired")
+                        elif agent == "arbiter":
+                            parts.append("decision")
+                            if isinstance(detail, dict):
+                                for k in ("decision", "val_metric", "threshold", "metric_name"):
+                                    v = detail.get(k)
+                                    if v is not None:
+                                        parts.append(f"{k}={v}")
+                        elif agent == "harbor":
+                            parts.append("deployed")
+                            if isinstance(detail, dict):
+                                ep = detail.get("endpoint_url", "")
+                                if ep:
+                                    parts.append(f"endpoint={ep}")
+                        done_agents.add(agent)
+
+                    elif state == "error":
+                        parts.append("error")
+                        if summary:
+                            parts.append(f"msg={summary}")
+
+                    line = "  ".join(p for p in parts if p)
+                    print(line)
+
+                    if agent == "harbor" and state == "done":
+                        return
+
+        except KeyboardInterrupt:
+            return
+        except Exception:
+            await asyncio.sleep(0.5)
+
+
+def _quiet_kv(agent: str, state: str, detail: dict[str, Any]) -> list[str]:
+    parts: list[str] = []
+    if agent == "scout":
+        for k in ("task_type", "modality", "confidence", "target"):
+            v = detail.get(k)
+            if v is not None:
+                parts.append(f"{k}={v}")
+    elif agent == "forge":
+        for k in ("architecture", "selected", "rationale", "confidence"):
+            v = detail.get(k)
+            if v is not None:
+                parts.append(f"{k}={v}")
+    elif agent == "arbiter":
+        for k in ("decision", "metric_value", "threshold", "metric_name"):
+            v = detail.get(k)
+            if v is not None:
+                parts.append(f"{k}={v}")
+    return parts

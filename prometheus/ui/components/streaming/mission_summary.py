@@ -53,7 +53,7 @@ class MissionSummaryCard:
         secs = secs % 60
         return f"{mins}m {secs}s"
 
-    def _build_artifact_line(self, artifact: dict[str, Any]) -> Text:
+    def _build_artifact_line(self, artifact: dict[str, Any], w: int) -> Text:
         name = artifact.get("name", "artifact")
         size = artifact.get("size_bytes", 0)
         if size < 1024:
@@ -62,10 +62,17 @@ class MissionSummaryCard:
             size_str = f"{size/1024:.0f}KB"
         else:
             size_str = f"{size/1024/1024:.1f}MB"
+        size_part = f" ({size_str})"
+        # Available for name: inner width w minus prefix (4) minus size_part minus interstice (1)
+        max_name = max(1, w - len(size_part) - 4)
+        display_name = name if len(name) <= max_name else name[: max_name - 1] + "\u2026"
+        pad = w - len(display_name) - len(size_part) - 4
         t = Text()
         t.append("  \u2714 ", style="summary_artifact")
-        t.append(f"{name:<30}", style="summary_value")
-        t.append(f"({size_str})", style="summary_label")
+        t.append(display_name, style="summary_value")
+        if pad > 0:
+            t.append(" " * pad)
+        t.append(size_part, style="summary_label")
         return t
 
     def _build_harbor_section(self, w: int, border_color: str, line: Text) -> None:
@@ -93,7 +100,7 @@ class MissionSummaryCard:
         line.append("Serving   ", style=str(Theme.muted))
         line.append(f"{health_icon} ", style=health_color)
         line.append(self.endpoint_url, style="harbor_endpoint")
-        line.append(" " * max(1, w - len(self.endpoint_url) - 16))
+        line.append(" " * max(1, w - len(self.endpoint_url) - 13))
         line.append("\u2502\n", style=border_color)
 
         model_str = f"{self.model_name} ({self.model_format.upper()})"
@@ -101,7 +108,7 @@ class MissionSummaryCard:
         line.append(" ", style=border_color)
         line.append("Model     ", style=str(Theme.muted))
         line.append(model_str, style=str(Theme.body))
-        line.append(" " * max(1, w - len(model_str) - 13))
+        line.append(" " * max(1, w - len(model_str) - 11))
         line.append("\u2502\n", style=border_color)
 
         pred_url = f"{self.endpoint_url}/predict"
@@ -109,7 +116,7 @@ class MissionSummaryCard:
         line.append(" ", style=border_color)
         line.append("Predict   ", style=str(Theme.muted))
         line.append(f"POST {pred_url}", style="harbor_endpoint")
-        line.append(" " * max(1, w - len(pred_url) - 14))
+        line.append(" " * max(1, w - len(pred_url) - 16))
         line.append("\u2502\n", style=border_color)
 
         swagger_url = f"{self.endpoint_url}/docs"
@@ -117,7 +124,7 @@ class MissionSummaryCard:
         line.append(" ", style=border_color)
         line.append("Swagger   ", style=str(Theme.muted))
         line.append(f"GET {swagger_url}", style="harbor_swagger")
-        line.append(" " * max(1, w - len(swagger_url) - 13))
+        line.append(" " * max(1, w - len(swagger_url) - 15))
         line.append("\u2502\n", style=border_color)
 
         if self.drift_enabled:
@@ -128,7 +135,7 @@ class MissionSummaryCard:
                 drift_str += f" ({self.drift_feature})"
             line.append("Drift     ", style=str(Theme.muted))
             line.append(drift_str, style="harbor_swagger")
-            line.append(" " * max(1, w - len(drift_str) - 13))
+            line.append(" " * max(1, w - len(drift_str) - 11))
             line.append("\u2502\n", style=border_color)
 
     def render(self) -> Text:
@@ -138,13 +145,18 @@ class MissionSummaryCard:
         )
         line = Text()
 
+        display_id = self.mission_id[:20] if self.mission_id else "\u2014"
+        title = f" Mission Summary \u00b7 {display_id} "
+        title_len = len(title)
+        dashes = max(0, w - title_len)
+        left_dashes = dashes // 2
+        right_dashes = dashes - left_dashes
         line.append("\u256d", style=border_color)
-        title = f" Mission Complete {self._format_duration()} "
-        line.append("\u2500" * ((w - len(title)) // 2), style=border_color)
+        line.append("\u2500" * max(0, left_dashes), style=border_color)
         line.append(
             title, style=Style(bgcolor=Theme.completion_border.hex, bold=True, color="#FFFFFF")
         )
-        line.append("\u2500" * (w - (w - len(title)) // 2 - len(title)), style=border_color)
+        line.append("\u2500" * max(0, right_dashes), style=border_color)
         line.append("\u256e\n", style=border_color)
 
         line.append("\u2502", style=border_color)
@@ -158,9 +170,8 @@ class MissionSummaryCard:
             line.append("\u2714 ", style=str(Theme.success))
         else:
             line.append("\u2718 ", style=str(Theme.error))
-        display_id = self.mission_id[:20] if self.mission_id else "\u2014"
         line.append(display_id, style=f"bold {Theme.accent}")
-        line.append(" " * max(1, w - len(display_id) - 4))
+        line.append(" " * max(1, w - len(display_id) - 3))
         line.append("\u2502\n", style=border_color)
 
         line.append("\u2502", style=border_color)
@@ -180,7 +191,7 @@ class MissionSummaryCard:
         line.append(" ", style=border_color)
         line.append("Result    ", style=str(Theme.muted))
         line.append(result_text, style=str(Theme.body))
-        line.append(" " * max(1, w - len(result_text) - 12))
+        line.append(" " * max(1, w - len(result_text) - 11))
         line.append("\u2502\n", style=border_color)
 
         # Crashes
@@ -191,7 +202,7 @@ class MissionSummaryCard:
             line.append(" ", style=border_color)
             line.append("Crashes   ", style=str(Theme.muted))
             line.append(crash_text, style=str(Theme.body))
-            line.append(" " * max(1, w - len(crash_text) - 12))
+            line.append(" " * max(1, w - len(crash_text) - 11))
             line.append("\u2502\n", style=border_color)
 
         # Harbor section (rich deployment info)
@@ -208,12 +219,11 @@ class MissionSummaryCard:
             line.append("\u2502", style=border_color)
             line.append(" ", style=border_color)
             line.append("Artifacts", style=str(Theme.muted))
-            line.append(" " * (w - 11))
+            line.append(" " * (w - 10))
             line.append("\u2502\n", style=border_color)
             for artifact in self.artifacts:
                 line.append("\u2502", style=border_color)
-                line.append_text(self._build_artifact_line(artifact))
-                line.append(" " * max(1, w - 50))
+                line.append_text(self._build_artifact_line(artifact, w))
                 line.append("\u2502\n", style=border_color)
 
         # Empty line
@@ -240,7 +250,7 @@ class MissionSummaryCard:
             line.append("\u2502", style=border_color)
             line.append("  \u2022 ", style=str(Theme.muted))
             line.append(step, style=str(Theme.info))
-            line.append(" " * max(1, w - len(step) - 5))
+            line.append(" " * max(1, w - len(step) - 4))
             line.append("\u2502\n", style=border_color)
 
         # Bottom border

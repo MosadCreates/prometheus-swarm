@@ -38,6 +38,7 @@ def mission():
 @click.option(
     "--block", is_flag=True, default=False, help="Run synchronously (block until completion)"
 )
+@click.option("--quiet", is_flag=True, default=False, help="Flat line output (CI/piping, no Rich)")
 @click.pass_context
 def mission_new(
     ctx: click.Context,
@@ -50,6 +51,7 @@ def mission_new(
     budget: float | None,
     time_limit: str | None,
     block: bool,
+    quiet: bool,
 ) -> ExitCode:
     """Create and start a new mission — the six-agent pipeline, end to end.
 
@@ -92,7 +94,9 @@ def mission_new(
 
     # --block runs synchronously via job_runner, no daemon needed
     if block:
-        return _run_blocking(renderer, description, dataset, target, budget, time_limit)
+        return _run_blocking(
+            renderer, description, dataset, target, budget, time_limit, quiet=quiet
+        )
 
     # Check if orchestrator daemon is running before submitting
     async def _check_orch() -> bool:
@@ -114,7 +118,9 @@ def mission_new(
     if not orch_alive and watch:
         console.print("  [bold yellow]Orchestrator not running — running pipeline directly[/]")
         console.print()
-        return _run_blocking(renderer, description, dataset, target, budget, time_limit)
+        return _run_blocking(
+            renderer, description, dataset, target, budget, time_limit, quiet=quiet
+        )
 
     # Submit to the orchestrator via Redis bus
     from orchestrator.job_queue import submit_job
@@ -204,6 +210,7 @@ def _run_blocking(
     target_column: str | None = None,
     budget: float | None = None,
     time_limit: str | None = None,
+    quiet: bool = False,
 ) -> ExitCode:
     """Run the full pipeline synchronously via job_runner (no daemon needed)."""
     import asyncio
@@ -213,15 +220,7 @@ def _run_blocking(
 
     import redis.asyncio as aioredis
 
-    from memory.redis_client import RedisClient
-    from orchestrator.job_runner import JobConfig, run_job
-
-    rc = RedisClient()
-    try:
-        asyncio.run(rc.connect())
-    except Exception as e:
-        renderer.error(f"Failed to connect to Redis: {e}")
-        return ExitCode.ERROR
+    from orchestrator.job_runner import JobConfig
 
     config = JobConfig(
         problem_description=description,
@@ -234,6 +233,31 @@ def _run_blocking(
 
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+    def _run_job_thread(config: JobConfig):
+        """Run job in a dedicated thread with its own event loop and Redis connection.
+
+        This prevents Forge's synchronous script generation (2-20s) and other
+        blocking operations from freezing the UI renderer on the main event loop.
+        """
+        import asyncio as _asyncio
+        import sys as _sys
+
+        from memory.redis_client import RedisClient
+        from orchestrator.job_runner import run_job
+
+        if _sys.platform == "win32":
+            _asyncio.set_event_loop_policy(_asyncio.WindowsSelectorEventLoopPolicy())
+
+        async def _run():
+            rc = RedisClient()
+            await rc.connect()
+            try:
+                return await run_job(config, rc._client)
+            finally:
+                await rc.close()
+
+        return _asyncio.run(_run())
 
     async def _run_with_ui() -> ExitCode:
         nonlocal config
@@ -261,20 +285,26 @@ def _run_blocking(
             except Exception:
                 pass
 
-        from prometheus.ui.claude.unified_live import run_unified_live
+        from prometheus.ui.claude.unified_live import UnifiedLiveRenderer, run_quiet
 
-        live_task = asyncio.create_task(
-            run_unified_live(
+        if quiet:
+            live_task = asyncio.create_task(run_quiet(ui_redis, config.job_id))
+        else:
+            renderer = UnifiedLiveRenderer(
                 ui_redis,
                 config.job_id,
                 description,
                 dataset_name=dataset_name,
                 num_rows=num_rows,
             )
-        )
+            await renderer.setup()
+            live_task = asyncio.create_task(renderer.run())
 
         try:
-            result = await run_job(config, rc._client)
+            # Run job in a thread pool to avoid blocking the renderer
+            # event loop with Forge's synchronous script generation
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(None, _run_job_thread, config)
         finally:
             live_task.cancel()
             try:
@@ -286,27 +316,28 @@ def _run_blocking(
         elapsed = time.monotonic() - start
         mins, secs = divmod(int(elapsed), 60)
 
-        if result.status == "pass":
-            renderer.print(f"  Pipeline complete ({mins}m {secs}s)")
-            if result.endpoint_url:
-                renderer.print(f"  Endpoint: {result.endpoint_url}")
-            if result.metric_value is not None:
-                renderer.print(f"  {result.metric_name}: {result.metric_value:.4f}")
-            return ExitCode.SUCCESS
-        else:
-            renderer.print(f"  Pipeline finished with status: {result.status} ({mins}m {secs}s)")
-            if result.error_detail:
-                renderer.print(f"  Detail: {result.error_detail}")
-            return ExitCode.ERROR
+        if not quiet:
+            if result.status == "pass":
+                renderer.print(f"  Pipeline complete ({mins}m {secs}s)")
+                if result.endpoint_url:
+                    renderer.print(f"  Endpoint: {result.endpoint_url}")
+                if result.metric_value is not None:
+                    renderer.print(f"  {result.metric_name}: {result.metric_value:.4f}")
+                return ExitCode.SUCCESS
+            else:
+                renderer.print(
+                    f"  Pipeline finished with status: {result.status} ({mins}m {secs}s)"
+                )
+                if result.error_detail:
+                    renderer.print(f"  Detail: {result.error_detail}")
+                return ExitCode.ERROR
+        return ExitCode.SUCCESS
 
     start = time.monotonic()
     try:
         return asyncio.run(_run_with_ui())
     except Exception as e:
         renderer.error(f"Pipeline failed: {e}")
-        return ExitCode.ERROR
-    finally:
-        asyncio.run(rc.close())
         return ExitCode.ERROR
 
 

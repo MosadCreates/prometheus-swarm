@@ -1,22 +1,65 @@
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
-from rich.style import Style
 from rich.text import Text
 
 from prometheus.ui.theme import Theme
 
-_AGENT_PIPELINE = ["Scout", "Forge", "Furnace", "Dissect", "Arbiter", "Harbor"]
-_AGENT_COLORS = {
+AGENT_ORDER = ["Scout", "Forge", "Furnace", "Dissect", "Arbiter", "Harbor"]
+
+AGENT_COLORS = {
     "Scout": Theme.agent_scout,
     "Forge": Theme.agent_forge,
     "Furnace": Theme.agent_furnace,
     "Dissect": Theme.agent_dissect,
     "Arbiter": Theme.agent_arbiter,
     "Harbor": Theme.agent_harbor,
+}
+
+STATE_ICONS = {
+    "pending": "\u25cb",
+    "running": "\u25b6",
+    "complete": "\u2714",
+    "error": "\u2718",
+    "disabled": "\u2014",
+}
+
+STATE_COLORS = {
+    "pending": str(Theme.muted),
+    "running": str(Theme.info),
+    "complete": str(Theme.success),
+    "error": str(Theme.error),
+    "disabled": str(Theme.muted),
+}
+
+_SPINNER_FRAMES = [
+    "\u280b",
+    "\u2819",
+    "\u2839",
+    "\u2838",
+    "\u283c",
+    "\u2834",
+    "\u2826",
+    "\u2827",
+    "\u2807",
+    "\u280f",
+]
+
+STATUS_LABELS = {
+    "starting": "\u25cf STARTING",
+    "running": "\u25b6 running",
+    "complete": "\u2714 complete",
+    "error": "\u2718 error",
+    "cancelled": "\u25cb cancelled",
+}
+
+STATUS_COLORS = {
+    "starting": Theme.warning,
+    "running": Theme.info,
+    "complete": Theme.success,
+    "error": Theme.error,
+    "cancelled": Theme.muted,
 }
 
 
@@ -26,15 +69,6 @@ class HeaderBanner:
     problem_description: str = ""
     dataset_name: str = ""
     num_rows: int = 0
-    version: str = "0.1.0"
-
-    _status: str = "starting"
-    _active_agent: str = ""
-    _start_time: float = field(default_factory=time.monotonic)
-    _gpu_name: str = "\u2014"
-    _gpu_util: int = 0
-    _memory_gb: float = 0.0
-
     _width: int = 80
 
     def update_width(self, width: int | None = None) -> None:
@@ -48,124 +82,104 @@ class HeaderBanner:
             except Exception:
                 self._width = 80
 
-    @property
-    def status(self) -> str:
-        return self._status
+    def _agent_spinner(self, tick: float) -> str:
+        idx = int(tick * 1000 / 100) % len(_SPINNER_FRAMES)
+        return _SPINNER_FRAMES[idx]
 
-    @property
-    def active_agent(self) -> str:
-        return self._active_agent
-
-    def update_status(self, status: str, active_agent: str = "") -> None:
-        self._status = status
-        if active_agent:
-            self._active_agent = active_agent
-
-    def update_gpu(self, name: str, util: int) -> None:
-        self._gpu_name = name
-        self._gpu_util = max(0, min(100, util))
-
-    def update_memory(self, gb: float) -> None:
-        self._memory_gb = max(0.0, gb)
-
-    @property
-    def elapsed_seconds(self) -> int:
-        return int(time.monotonic() - self._start_time)
-
-    @property
-    def elapsed_str(self) -> str:
-        secs = self.elapsed_seconds
-        return f"{secs // 60:02d}:{secs % 60:02d}"
-
-    def _status_badge(self) -> Text:
-        status_colors = {
-            "starting": Theme.warning,
-            "running": Theme.info,
-            "complete": Theme.success,
-            "error": Theme.error,
-            "detached": Theme.muted,
-        }
-        color = status_colors.get(self._status, Theme.secondary)
-        status_labels = {
-            "starting": "\u25cf STARTING",
-            "running": "\u25b6 RUNNING",
-            "complete": "\u2714 COMPLETE",
-            "error": "\u2718 ERROR",
-            "detached": "\u25cb DETACHED",
-        }
-        label = status_labels.get(self._status, self._status.upper())
+    def _pipeline_ribbon(self, agent_states: dict[str, str], tick: float) -> Text:
         t = Text()
-        t.append(label, style=f"bold {color}")
-        return t
-
-    def _pipeline_ribbon(self) -> Text:
-        t = Text()
-        t.append("Pipeline ", style=str(Theme.muted))
-        for i, agent in enumerate(_AGENT_PIPELINE):
+        for i, agent in enumerate(AGENT_ORDER):
             if i > 0:
-                t.append(" \u2192 ", style=str(Theme.tree_connector))
-            color = _AGENT_COLORS.get(agent, Theme.secondary)
-            t.append(agent, style=f"bold {color}")
+                t.append(" \u2500\u2500 ", style=str(Theme.tree_connector))
+
+            state = agent_states.get(agent, "pending")
+            if state == "running":
+                icon = self._agent_spinner(tick)
+            else:
+                icon = STATE_ICONS.get(state, "\u25cb")
+            color = STATE_COLORS.get(state, str(Theme.muted))
+            agent_color = AGENT_COLORS.get(agent, Theme.secondary)
+
+            t.append(icon, style=color)
+            t.append(" ")
+            t.append(agent, style=f"bold {agent_color}")
         return t
 
-    def render(self) -> Text:
+    def render(
+        self,
+        agent_states: dict[str, str] | None = None,
+        status: str = "starting",
+        elapsed_seconds: int = 0,
+        tick: float = 0.0,
+    ) -> Text:
         self.update_width()
-        w = min(self._width - 2, 88)
+        w = min(self._width - 2, 96)
+        agent_states = agent_states or {}
+        slug = self.mission_id[:20] if self.mission_id else "\u2014"
+        elapsed = f"{elapsed_seconds // 60:02d}:{elapsed_seconds % 60:02d}"
+        sc = STATUS_COLORS.get(status, Theme.secondary)
+        status_label = STATUS_LABELS.get(status, status.upper())
 
-        line = Text()
-
-        line.append("\u256d", style=str(Theme.tree_connector))
-        line.append("\u2500" * w, style=str(Theme.tree_connector))
-        line.append("\u256e\n", style=str(Theme.tree_connector))
-
-        line.append("\u2502", style=str(Theme.tree_connector))
-        line.append(" ", style=str(Theme.tree_connector))
-        display_id = self.mission_id[:20] if self.mission_id else "\u2014"
-        line.append(display_id, style=f"bold {Theme.accent}")
-        line.append(" ", style=str(Theme.tree_connector))
-        if self.problem_description:
-            desc = self.problem_description[:50]
-            line.append(f"\u201c{desc}\u201d", style=str(Theme.body))
-        line.append(" " * max(1, w - len(display_id) - len(self.problem_description[:50]) - 4))
-        line.append(" ", style=str(Theme.tree_connector))
-        line.append(self.elapsed_str, style=str(Theme.muted))
-        line.append("\n", style=str(Theme.tree_connector))
-
-        # Dataset info
+        # Dataset string
+        ds_parts = []
         if self.dataset_name:
-            line.append("\u2502", style=str(Theme.tree_connector))
-            line.append(" ", style=str(Theme.tree_connector))
-            line.append("Dataset", style=str(Theme.muted))
-            line.append("  ", style=str(Theme.tree_connector))
-            ds = self.dataset_name
-            if self.num_rows:
-                ds += f" \u00b7 {self.num_rows:,} rows"
-            line.append(ds, style=str(Theme.body))
-            line.append(" " * max(1, w - len(ds) - 10))
-            line.append("\n", style=str(Theme.tree_connector))
+            ds_parts.append(self.dataset_name)
+        if self.num_rows:
+            ds_parts.append(f"({self.num_rows:,} rows)")
+        ds_str = "  ".join(ds_parts) if ds_parts else ""
 
-        # Pipeline ribbon
-        line.append("\u2502", style=str(Theme.tree_connector))
-        line.append(" ", style=str(Theme.tree_connector))
-        line.append_text(self._pipeline_ribbon())
-        line.append(" " * max(1, w - 60))
-        line.append("\n", style=str(Theme.tree_connector))
+        # ── Top border with slug and elapsed ──
+        top = Text()
+        top.append("\u250c", style=str(Theme.tree_connector))
+        top.append("\u2500", style=str(Theme.tree_connector))
+        inner_w = w - 2
+        slug_end = len(slug) + 2
+        right_content = f"  Elapsed  {elapsed}"
+        top.append(slug, style=f"bold {Theme.accent}")
+        pad = inner_w - slug_end - len(right_content)
+        if pad > 0:
+            top.append("\u2500" * pad, style=str(Theme.tree_connector))
+        top.append(right_content, style=str(Theme.muted))
+        top.append("\u2500", style=str(Theme.tree_connector))
+        top.append("\u2510\n", style=str(Theme.tree_connector))
 
-        # Status and active agent
-        line.append("\u2502", style=str(Theme.tree_connector))
-        line.append(" ", style=str(Theme.tree_connector))
-        line.append_text(self._status_badge())
-        if self._active_agent:
-            agent_color = _AGENT_COLORS.get(self._active_agent, Theme.secondary)
-            line.append("  ", style=str(Theme.tree_connector))
-            line.append("Active: ", style=str(Theme.muted))
-            line.append(self._active_agent, style=f"bold {agent_color}")
-        line.append(" " * max(1, w - 30))
-        line.append("\n", style=str(Theme.tree_connector))
+        # ── Line 1 — dataset + elapsed + status ──
+        line1 = Text()
+        line1.append("\u2502 ", style=str(Theme.tree_connector))
+        status_styled = Text()
+        status_styled.append(status_label, style=f"bold {sc}")
+        right_part_len = len("  Elapsed  ") + len(elapsed) + len(status_label)
+        ds_line = f"Dataset  {ds_str}" if ds_str else ""
+        pad1 = inner_w - len(ds_line) - right_part_len
+        if pad1 < 1:
+            pad1 = 1
+        line1.append(ds_line, style=str(Theme.body))
+        line1.append(" " * pad1)
+        line1.append(f"  Elapsed  {elapsed}  ", style=str(Theme.muted))
+        line1.append_text(status_styled)
+        line1.append(" \u2502\n", style=str(Theme.tree_connector))
 
-        # Bottom border
-        line.append("\u2570", style=str(Theme.tree_connector))
-        line.append("\u2500" * w, style=str(Theme.tree_connector))
-        line.append("\u256f", style=str(Theme.tree_connector))
+        # ── Line 2 — pipeline ribbon ──
+        line2 = Text()
+        line2.append("\u2502 ", style=str(Theme.tree_connector))
+        ribbon = self._pipeline_ribbon(agent_states, tick)
+        ribbon_len = len(ribbon.plain)
+        pad2 = inner_w - ribbon_len
+        if pad2 < 1:
+            pad2 = 1
+        line2.append_text(ribbon)
+        line2.append(" " * pad2)
+        line2.append("\u2502\n", style=str(Theme.tree_connector))
 
-        return line
+        # ── Bottom border ──
+        bottom = Text()
+        bottom.append("\u2514", style=str(Theme.tree_connector))
+        bottom.append("\u2500" * inner_w, style=str(Theme.tree_connector))
+        bottom.append("\u2518", style=str(Theme.tree_connector))
+
+        out = Text()
+        out.append_text(top)
+        out.append_text(line1)
+        out.append_text(line2)
+        out.append_text(bottom)
+        return out
