@@ -7,6 +7,7 @@ rich==13.9.4
 lightgbm==4.3.0
 xgboost==2.0.3
 scikit-learn==1.4.2
+joblib==1.5.3               # model persistence in Harbor export / model export
 torch==2.3.0
 transformers==4.41.0
 optuna==3.6.1
@@ -38,6 +39,10 @@ jinja2==3.1.4
 click>=8.1
 pyreadline3>=3.5.6          # readline shim for Windows — enables Ctrl+Backspace word-delete
 textual>=0.52.0             # Cockpit TUI (Mission Cockpit, replay viewer)
+pynput==1.8.2               # keyboard quit shortcuts in the live mission UI
+pygments==2.20.0            # syntax highlighting in report rendering
+pyyaml==6.0.3               # YAML output rendering
+packaging==26.2             # version comparison in doctor/compat checks
 
 # Figures
 matplotlib>=3.8.0
