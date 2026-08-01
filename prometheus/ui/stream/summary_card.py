@@ -153,7 +153,7 @@ def _kv_line(t: Text, key: str, value: str, inner: int, bc: str, value_style: st
     t.append(f" {key:<10}", style=str(Theme.muted))
     vs = value_style or str(Theme.body)
     t.append(value, style=vs)
-    t.append(" " * max(1, inner - 11 - len(value)))
+    t.append(" " * max(1, inner - 12 - len(value)))
     t.append("│\n", style=bc)
 
 
@@ -194,8 +194,14 @@ def _build_success_body(t: Text, data: SummaryData, inner: int, bc: str) -> None
         if data.health_status:
             health_icon = "✔" if data.health_status == "healthy" else "✘"
             lat = f" ({data.health_latency_ms:.0f}ms)" if data.health_latency_ms else ""
-            _kv_line(t, "Health", f"{health_icon} {data.health_status.title()}{lat}", inner, bc,
-                     str(Theme.success) if data.health_status == "healthy" else str(Theme.error))
+            _kv_line(
+                t,
+                "Health",
+                f"{health_icon} {data.health_status.title()}{lat}",
+                inner,
+                bc,
+                str(Theme.success) if data.health_status == "healthy" else str(Theme.error),
+            )
 
     # Artifacts
     if data.artifacts:
@@ -210,7 +216,7 @@ def _build_success_body(t: Text, data: SummaryData, inner: int, bc: str) -> None
             t.append("│ ", style=bc)
             t.append(f"  ✔ {name}", style=str(Theme.success))
             t.append(f" ({size})", style=str(Theme.muted))
-            t.append(" " * max(1, inner - len(name) - len(size) - 7))
+            t.append(" " * max(1, inner - len(name) - len(size) - 8))
             t.append("│\n", style=bc)
 
 
@@ -235,7 +241,11 @@ def _build_error_body(t: Text, data: SummaryData, inner: int, bc: str) -> None:
 
 
 def _build_next_steps(
-    t: Text, data: SummaryData, inner: int, bc: str, is_success: bool,
+    t: Text,
+    data: SummaryData,
+    inner: int,
+    bc: str,
+    is_success: bool,
 ) -> None:
     """Build the next steps section."""
     t.append("│ ", style=bc)
@@ -261,5 +271,5 @@ def _build_next_steps(
         t.append("│ ", style=bc)
         t.append("  • ", style=str(Theme.muted))
         t.append(step, style=str(Theme.info))
-        t.append(" " * max(1, inner - len(step) - 4))
+        t.append(" " * max(1, inner - len(step) - 5))
         t.append("│\n", style=bc)
