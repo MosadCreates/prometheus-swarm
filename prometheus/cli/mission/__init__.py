@@ -123,19 +123,31 @@ def mission_new(
         )
 
     # Submit to the orchestrator via Redis bus
+    from contextlib import nullcontext
     from orchestrator.job_queue import submit_job
 
+    if watch:
+        from prometheus.ui.components import Spinner
+
+        submit_status = Spinner("Submitting mission...")
+    else:
+        console.print("  [dim]Submitting mission...[/dim]")
+        submit_status = nullcontext()
+
     try:
-        job_id = _asyncio.run(
-            submit_job(
-                problem_description=description,
-                dataset_path=dataset or "",
-                target_column=target,
-                constraints=(
-                    {"budget": budget, "time_limit": time_limit} if budget or time_limit else None
-                ),
+        with submit_status:
+            job_id = _asyncio.run(
+                submit_job(
+                    problem_description=description,
+                    dataset_path=dataset or "",
+                    target_column=target,
+                    constraints=(
+                        {"budget": budget, "time_limit": time_limit}
+                        if budget or time_limit
+                        else None
+                    ),
+                )
             )
-        )
     except KeyboardInterrupt:
         renderer.print("  [dim]Mission creation cancelled.[/dim]")
         return ExitCode.SUCCESS
@@ -741,12 +753,11 @@ def mission_resume(
     ``prometheus daemon start`` if the orchestrator is not running.
     """
     import asyncio
-    import json
     import os
     import sys
 
     from memory.redis_client import RedisClient
-    from contracts.state import MissionState, transition_and_save, TERMINAL_PHASES, SUCCESS_PHASES
+    from contracts.state import MissionState, transition_and_save, SUCCESS_PHASES
     from bus.publisher import publish
     from bus.events import RESUME_TRAINING, STREAM_DISSECT_OUTPUT
     from contracts.events import ResumeTrainingEvent
@@ -912,7 +923,7 @@ def mission_cancel(
     import sys
 
     from memory.redis_client import RedisClient
-    from contracts.state import MissionState, transition_and_save, TERMINAL_PHASES
+    from contracts.state import MissionState, transition_and_save
     from bus.publisher import publish
     from bus.events import JOB_FAILED, STREAM_ORCHESTRATOR_OUT
     from contracts.events import JobFailedEvent
@@ -1042,7 +1053,6 @@ def mission_report(
     import os
     import subprocess
     import sys
-    from datetime import datetime
     from pathlib import Path
 
     from prometheus.ui.cockpit.trace_replay import find_trace_path, find_brief_path
@@ -1294,7 +1304,6 @@ def _load_mission_summaries(
     limit: int | None = None,
 ) -> list[list[str]]:
     """Scan outputs/ for trace files and return summary rows."""
-    import json
     from pathlib import Path
 
     from prometheus.utils.slugs import uuid_to_slug
@@ -1393,7 +1402,6 @@ def _redis_mission_summary(
             c = RedisClient()
             await c.connect()
             state = await MissionState.load_from_redis(c._client, mission_id)
-            meta = await c.get_json(f"job:{mission_id}:meta")
             await c.close()
 
             phase = state.phase if state else "unknown"

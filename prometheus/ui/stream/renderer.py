@@ -27,7 +27,6 @@ import shutil
 import sys
 import time
 from enum import Enum
-from io import StringIO
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -50,28 +49,22 @@ from prometheus.ui.stream.agent_badge import (
     text_to_ansi,
 )
 from prometheus.ui.stream.cost_tracker import emit_bell, render_completion_line
-from prometheus.ui.stream.header import (
-    AGENT_ORDER,
-    HEADER_LINE_COUNT,
-    render_header,
-    supports_cursor_movement,
-    write_header_update,
-)
+from prometheus.ui.stream.header import AGENT_ORDER
 from prometheus.ui.stream.progress_bar import render_progress
 from prometheus.ui.stream.summary_card import SummaryData, render_summary
 from prometheus.ui.stream.thinking_stream import ThinkingStream
 from prometheus.ui.stream.transition import render_transition
-from prometheus.ui.theme import Theme
 
 logger = logging.getLogger(__name__)
 
 
 # ── Agent streaming modes ────────────────────────────────────────────────
 
+
 class AgentStreamMode(Enum):
-    ACTIVITY = "activity"    # Scout, Forge, Arbiter, Harbor
-    PROGRESS = "progress"    # Furnace
-    THINKING = "thinking"    # Dissect
+    ACTIVITY = "activity"  # Scout, Forge, Arbiter, Harbor
+    PROGRESS = "progress"  # Furnace
+    THINKING = "thinking"  # Dissect
 
 
 AGENT_STREAM_MODES = {
@@ -86,18 +79,28 @@ AGENT_STREAM_MODES = {
 
 # ── Per-agent state ──────────────────────────────────────────────────────
 
+
 class _AgentState:
     """Mutable state for a single agent during the mission."""
 
     __slots__ = (
-        "name", "status", "summary", "details", "subactions",
-        "start_time", "end_time", "thinking", "progress",
-        "progress_detail", "cascade_level", "cascade_states",
+        "name",
+        "status",
+        "summary",
+        "details",
+        "subactions",
+        "start_time",
+        "end_time",
+        "thinking",
+        "progress",
+        "progress_detail",
+        "cascade_level",
+        "cascade_states",
     )
 
     def __init__(self, name: str) -> None:
         self.name = name
-        self.status: str = "pending"          # pending|active|done|error
+        self.status: str = "pending"  # pending|active|done|error
         self.summary: str = ""
         self.details: dict[str, Any] = {}
         self.subactions: list[tuple[str, str]] = []  # (detail, state)
@@ -107,7 +110,7 @@ class _AgentState:
         self.progress: float = 0.0
         self.progress_detail: str = ""
         self.cascade_level: int = 0
-        self.cascade_states: dict[int, str] = {}     # level → done|running|pending
+        self.cascade_states: dict[int, str] = {}  # level → done|running|pending
 
     @property
     def elapsed(self) -> float:
@@ -121,6 +124,7 @@ class _AgentState:
 # ═══════════════════════════════════════════════════════════════════════════
 # StreamRenderer — the main class
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class StreamRenderer:
     """Scroll-forward streaming renderer for mission output.
@@ -165,9 +169,7 @@ class StreamRenderer:
             self._width = 80
 
         # ── State ──
-        self._agents: dict[str, _AgentState] = {
-            name: _AgentState(name) for name in AGENT_ORDER
-        }
+        self._agents: dict[str, _AgentState] = {name: _AgentState(name) for name in AGENT_ORDER}
         self._agent_states: dict[str, str] = {a: "pending" for a in AGENT_ORDER}
         self._mission_status: str = "starting"
         self._active_agent: str | None = None
@@ -175,7 +177,7 @@ class StreamRenderer:
 
         # ── Scroll-forward bookkeeping ──
         self._lines_since_header: int = 0
-        self._badge_line_offset: int = 0    # Lines below badge for cursor-up
+        self._badge_line_offset: int = 0  # Lines below badge for cursor-up
         self._header_printed: bool = False
         self._mission_start: float = 0.0
         self._tick: float = 0.0
@@ -190,14 +192,23 @@ class StreamRenderer:
     async def setup(self) -> None:
         """Create consumer groups before the job starts."""
         await ensure_consumer_group(
-            self._redis, STREAM_AGENT_EVENTS, GROUP_COCKPIT, start_id="$",
+            self._redis,
+            STREAM_AGENT_EVENTS,
+            GROUP_COCKPIT,
+            start_id="$",
         )
         try:
             await ensure_consumer_group(
-                self._redis, STREAM_AGENT_THINKING, GROUP_COCKPIT, start_id="$",
+                self._redis,
+                STREAM_AGENT_THINKING,
+                GROUP_COCKPIT,
+                start_id="$",
             )
             await ensure_consumer_group(
-                self._redis, STREAM_SUBACTION, GROUP_COCKPIT, start_id="$",
+                self._redis,
+                STREAM_SUBACTION,
+                GROUP_COCKPIT,
+                start_id="$",
             )
         except Exception:
             pass
@@ -235,11 +246,12 @@ class StreamRenderer:
         up = self._badge_line_offset
         # If the badge has scrolled off screen, don't update it to prevent corruption
         import shutil
+
         try:
             term_height = shutil.get_terminal_size().lines
         except (OSError, AttributeError):
             term_height = 40
-            
+
         if up >= term_height - 1:
             return
 
@@ -255,39 +267,6 @@ class StreamRenderer:
             ansi = text
         sys.stdout.write(f"\r\033[K{ansi}")
         sys.stdout.flush()
-
-    # ── Header management ────────────────────────────────────────────────
-
-    def _print_header(self) -> None:
-        """Print the header for the first time."""
-        elapsed = int(time.monotonic() - self._mission_start)
-        header = render_header(
-            mission_id=self._mission_id,
-            agent_states=self._agent_states,
-            status=self._mission_status,
-            elapsed_seconds=elapsed,
-            tick=self._tick,
-            width=self._width,
-        )
-        sys.stdout.write(header.rstrip("\n") + "\n")
-        sys.stdout.flush()
-        self._header_printed = True
-        self._lines_since_header = 0
-
-    def _update_header(self) -> None:
-        """Update the header."""
-        if not self._header_printed or not supports_cursor_movement():
-            return
-        elapsed = int(time.monotonic() - getattr(self, "_mission_start", time.monotonic()))
-        header = render_header(
-            mission_id=self._mission_id,
-            agent_states=self._agent_states,
-            status=self._mission_status,
-            elapsed_seconds=elapsed,
-            tick=self._tick,
-            width=self._width,
-        )
-        write_header_update(header, self._lines_since_header)
 
     # ── Agent lifecycle ──────────────────────────────────────────────────
 
@@ -317,7 +296,7 @@ class StreamRenderer:
         sys.stdout.write(f"\r\033[K{ansi}\n")
         sys.stdout.flush()
         self._lines_since_header += 1
-        self._badge_line_offset = 1   # Cursor is now 1 line below the badge
+        self._badge_line_offset = 1  # Cursor is now 1 line below the badge
 
     def _finalize_agent(self, name: str) -> None:
         """Print the agent's final state permanently."""
@@ -552,7 +531,11 @@ class StreamRenderer:
         # For ACTIVITY mode agents, print the subaction as a permanent line
         if detail_text:
             # Filter out overly verbose internal steps to match clean v1 flow
-            noise = ("Starting analysis...", "Profiling dataset...", "Analysing dataset characteristics...")
+            noise = (
+                "Starting analysis...",
+                "Profiling dataset...",
+                "Analysing dataset characteristics...",
+            )
             if not detail_text.startswith(noise):
                 agent.subactions.append((detail_text, sub_state))
                 self._emit_permanent(render_subaction(detail_text, state=sub_state))
@@ -564,7 +547,10 @@ class StreamRenderer:
             agent.cascade_states[level] = sub_state
 
     def _update_furnace_progress(
-        self, name: str, detail: dict[str, Any], summary: str = "",
+        self,
+        name: str,
+        detail: dict[str, Any],
+        summary: str = "",
     ) -> None:
         """Update Furnace's progress bar from event data."""
         agent = self._agents[name]
@@ -724,8 +710,26 @@ class StreamRenderer:
         try:
             api_cost_summary = await self._redis.hgetall(f"job:{self._mission_id}:api_cost_summary")
             if api_cost_summary:
-                total_tokens = int(api_cost_summary.get(b"total_tokens" if isinstance(list(api_cost_summary.keys())[0], bytes) else "total_tokens", total_tokens))
-                total_cost = float(api_cost_summary.get(b"total_cost_usd" if isinstance(list(api_cost_summary.keys())[0], bytes) else "total_cost_usd", 0.0))
+                total_tokens = int(
+                    api_cost_summary.get(
+                        (
+                            b"total_tokens"
+                            if isinstance(list(api_cost_summary.keys())[0], bytes)
+                            else "total_tokens"
+                        ),
+                        total_tokens,
+                    )
+                )
+                total_cost = float(
+                    api_cost_summary.get(
+                        (
+                            b"total_cost_usd"
+                            if isinstance(list(api_cost_summary.keys())[0], bytes)
+                            else "total_cost_usd"
+                        ),
+                        0.0,
+                    )
+                )
         except Exception:
             pass
 
@@ -735,6 +739,7 @@ class StreamRenderer:
 
         if endpoint and not health_status:
             import httpx
+
             try:
                 t0 = time.time()
                 async with httpx.AsyncClient(timeout=1.0) as client:
@@ -751,7 +756,11 @@ class StreamRenderer:
             winner_architecture=str(self._summary_data.get("architecture", "")),
             metric_name=str(self._summary_data.get("metric_name", "")),
             metric_value=_safe_float(self._summary_data.get("val_metric")),
-            threshold=_safe_float(self._summary_data.get("threshold")) if "threshold" in self._summary_data and self._summary_data["threshold"] is not None else None,
+            threshold=(
+                _safe_float(self._summary_data.get("threshold"))
+                if "threshold" in self._summary_data and self._summary_data["threshold"] is not None
+                else None
+            ),
             duration_seconds=elapsed,
             endpoint_url=endpoint,
             model_format=str(self._summary_data.get("model_format", "onnx")),
@@ -887,24 +896,19 @@ class StreamRenderer:
 
         self._running = True
         self._mission_start = time.monotonic()
-        last_header_update = 0.0
+
+        # First paint: show the mission started before any agent events arrive
+        detail = f" · {self._dataset_name}" if self._dataset_name else ""
+        self._emit_permanent(
+            render_subaction(f"Mission started{detail} — waiting for Scout to begin…")
+        )
         last_badge_update = 0.0
         last_status_check = 0.0
 
-        # Print the header
-        self._print_header()
-        # Print a blank line after header
-        self._emit_permanent("")
-
         try:
             while self._running:
-                changed = await self._poll_events()
+                await self._poll_events()
                 now = time.monotonic()
-
-                # Update header every ~1 second (timer + pipeline ribbon)
-                if now - last_header_update >= 1.0:
-                    self._update_header()
-                    last_header_update = now
 
                 # Update active badge every ~200ms (spinner animation)
                 if self._active_agent and now - last_badge_update >= 0.2:
@@ -925,16 +929,28 @@ class StreamRenderer:
                     try:
                         job_status = await self._redis.get(f"job:{self._mission_id}:status")
                         if job_status:
-                            canonical = str(job_status.decode() if isinstance(job_status, bytes) else job_status)
-                            if canonical in ("MISSION_PASSED", "MISSION_FAILED", "CANCELLED", "HARBOR_COMPLETED"):
-                                any_error = (canonical == "MISSION_FAILED")
+                            canonical = str(
+                                job_status.decode() if isinstance(job_status, bytes) else job_status
+                            )
+                            if canonical in (
+                                "MISSION_PASSED",
+                                "MISSION_FAILED",
+                                "CANCELLED",
+                                "HARBOR_COMPLETED",
+                            ):
+                                any_error = canonical == "MISSION_FAILED"
                                 if self._mission_status not in ("error", "cancelled"):
-                                    self._mission_status = "error" if any_error else ("cancelled" if canonical == "CANCELLED" else "complete")
+                                    self._mission_status = (
+                                        "error"
+                                        if any_error
+                                        else (
+                                            "cancelled" if canonical == "CANCELLED" else "complete"
+                                        )
+                                    )
 
                                 self._resolve_remaining("skipped")
 
-                                # Final header update and summary
-                                self._update_header()
+                                # Render the final summary
                                 await self._render_mission_summary()
                                 break
                     except Exception:
@@ -946,21 +962,16 @@ class StreamRenderer:
             self._resolve_remaining("cancelled")
             self._mission_status = "cancelled"
             self._emit_permanent("")
-            self._print_header()
-            self._emit_permanent("")
             self._emit_permanent(render_subaction("Mission cancelled by user", state="error"))
         except asyncio.CancelledError:
             # The orchestrator finished the job, so the mission is complete.
-            any_error = any(
-                self._agent_states.get(a) == "error" for a in AGENT_ORDER
-            )
+            any_error = any(self._agent_states.get(a) == "error" for a in AGENT_ORDER)
             if self._mission_status not in ("error", "cancelled"):
                 self._mission_status = "error" if any_error else "complete"
 
             self._resolve_remaining("skipped")
 
-            # Final header update and summary
-            self._update_header()
+            # Render the final summary
             await self._render_mission_summary()
         finally:
             self._running = False
@@ -981,6 +992,7 @@ class StreamRenderer:
 # ═══════════════════════════════════════════════════════════════════════════
 # Convenience wrapper — matches the signature of run_unified_live
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 async def run_stream(
     redis: aioredis.Redis,
