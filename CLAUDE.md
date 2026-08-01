@@ -1,10 +1,13 @@
 # CLAUDE.md — Prometheus Swarm
 
-> Last full audit: 2026-07-25. Bug fix sprint: 2026-07-25 (all 12 items
-> resolved — 6 retry bugs, 2 Cockpit TUI bugs, 5 documentation/config gaps).
-> This document is a complete, verified snapshot of the project as of this date.
-> Every claim below was confirmed by reading the actual source code, not inferred
-> from filenames, comments, or prior docs.
+> Last full audit: 2026-08-01. Every claim below was verified by reading the
+> actual source code, not inferred from filenames, comments, or prior docs.
+> Notable corrections vs. the previous snapshot: the orchestrator directory is
+> spelled `orchestrator` (correct); the CLI registers 15 commands with **zero**
+> redirect stubs; tests total 82 files (unit tests are flat under `tests/unit/`);
+> `research/benchmark/problems.json` contains 10 problems; the Dissect taxonomy
+> defines 24 categories; there is no `Makefile`, no top-level `UI/` directory,
+> and no `deploy_update_app.py`.
 
 ---
 
@@ -54,47 +57,45 @@ All inter-agent communication happens through **Redis Streams**. Agents don't im
 
 ## 3. Repository Structure
 
-All paths below exist in the repository. Top-level structure is flat (agents/, bus/, contracts/, orchestrator/, etc. are all at root), NOT nested inside prometheus/.
+All paths below exist in the repository. Top-level structure is flat (agents/, bus/, contracts/, orchestrator/, etc. are all at root), NOT nested inside prometheus/. Line counts are from `wc -l` on 2026-08-01.
 
 ```
 prometheus-swarm/
 │
 ├── .env / .env.example        ← Environment config (gitignored)
 ├── .gitignore
-├── .pre-commit-config.yaml    ← Pre-commit hooks (ruff check)
-├── AUDIT.md                   ← Bug fix sprint doc (6 bugs, July 2026)
+├── .pre-commit-config.yaml    ← Pre-commit hooks (ruff, black, bandit)
+├── AUDIT.md                   ← Bug fix sprint doc (July 2026)
 ├── CLAUDE.md                  ← THIS FILE
-├── PLAN.md                    ← Full build plan (3150+ lines, Phases 0-3+)
+├── PLAN.md                    ← Full build plan (historical build steps)
 ├── Prometheus_CLI_UX_Design_Book.md  ← CLI design spec (~34-page spec)
 ├── Prometheus_CLI_Implementation_Master_Prompt.md  ← CLI implementation guide
 ├── RESULTS_SCHEMA.md          ← Benchmark result schema specification
-├── README.md                  ← Project README (minimal, slightly stale)
-├── deploy_update_app.py       ← Deployment update script
-├── docker-compose.yml         ← Redis + ChromaDB + optional observability stack
+├── README.md                  ← Project README
+├── docker-compose.yml         ← Redis + ChromaDB + optional orchestrator (profile "full")
 ├── Dockerfile                 ← Main app Dockerfile
-├── Makefile                   ← Dev commands (lint, test, format, docker)
 ├── pyproject.toml             ← Metadata, entry point: prometheus = prometheus.main:cli
-├── requirements.txt           ← Pinned dependencies (50 lines)
+├── requirements.txt           ← Fully pinned dependencies (56 lines)
 ├── start.ps1                  ← Windows Docker startup script
 ├── uv.lock                    ← UV lock file
 │
 ├── agents/                    ← ⭐ Six AI agent implementations
 │   ├── __init__.py
-│   ├── base.py (30 lines)     ← BaseAgent ABC: agent_name, run(), call_llm()
-│   ├── llm_client.py (108 lines)  ← get_llm_response() — Anthropic Claude wrapper
+│   ├── base.py (128)          ← BaseAgent ABC: agent_name, run(), call_llm()
+│   ├── llm_client.py (167)    ← get_llm_response() — Anthropic Claude wrapper
 │   │
-│   ├── scout/                 ← Perceiver (4 files, ~1668 lines total)
-│   │   ├── agent.py           ← ScoutAgent.run(): detect modality, run EDA, build MissionBrief
+│   ├── scout/                 ← Perceiver (4 files, ~1813 lines total)
+│   │   ├── agent.py (470)     ← ScoutAgent.run(): detect modality, run EDA, build MissionBrief
 │   │   ├── tools.py (606)     ← detect_modality(), run_eda(), infer_task_type(), etc.
 │   │   ├── reasoning.py (675) ← Pure deterministic reasoning engine (no LLM): 10 reason_*() functions
 │   │   ├── prompts.py (62)    ← SCOUT_SYSTEM_PROMPT
 │   │
 │   ├── forge/                 ← Architect (12 files + 10 templates, ~4979 lines)
-│   │   ├── agent.py (536)     ← ForgeAgent.run(): architecture selection, multi-strategy script gen
-│   │   ├── tools.py (1353)    ← write_training_script(), define_optuna_space(), 5 f-string generators
+│   │   ├── agent.py (610)     ← ForgeAgent.run(): architecture selection, multi-strategy script gen
+│   │   ├── tools.py (1362)    ← write_training_script(), define_optuna_space(), 5 f-string generators
 │   │   ├── decision_tree.py   ← select_architecture(): heuristic decision tree
 │   │   ├── planner.py (531)   ← create_plan(): EngineeringPlan from Scout brief
-│   │   ├── template_renderer.py (364) ← Jinja2 rendering + ast.parse validation
+│   │   ├── template_renderer.py (384) ← Jinja2 rendering + ast.parse validation
 │   │   ├── confidence_router.py (49) ← template/cache/llm strategy selector
 │   │   ├── confidence_classifier.py  ← Confidence classification model
 │   │   ├── static_prevention.py (574) ← apply_static_prevention() text transformations
@@ -104,16 +105,16 @@ prometheus-swarm/
 │   │   ├── registry.py (287)   ← ArchitectureRegistry — single source of truth
 │   │   └── templates/          ← 10 .jinja files (lightgbm, xgboost, tabnet, distilbert, efficientnet)
 │   │
-│   ├── furnace/               ← Trainer (3 files, ~867 lines)
-│   │   ├── agent.py (809)     ← FurnaceAgent.run(): Docker/process management, crash handling
-│   │   ├── tools.py (47)      ← launch_training_container(), monitor_loss()
+│   ├── furnace/               ← Trainer (3 files, ~1085 lines)
+│   │   ├── agent.py (1024)    ← FurnaceAgent.run(): Docker/process management, crash handling
+│   │   ├── tools.py (50)      ← launch_training_container(), monitor_loss()
 │   │   └── prompts.py (11)    ← FURNACE_SYSTEM_PROMPT
 │   │
-│   ├── dissect/               ← Debugger (16 files, ~4898 lines)
-│   │   ├── agent.py (947)     ← DissectAgent.handle_crash(): 5-level cascade
-│   │   ├── routing.py (653)   ← run_cascade(): 5-level cascade router
-│   │   ├── taxonomy.py (552)  ← 31 error categories (TaxonomyEntry, classify_error)
-│   │   ├── rules.py (667)     ← Level 0 deterministic repair functions (10 fix_*())
+│   ├── dissect/               ← Debugger (16 files, ~5229 lines)
+│   │   ├── agent.py (986)     ← DissectAgent.handle_crash(): 5-level cascade
+│   │   ├── routing.py (676)   ← run_cascade(): 5-level cascade router
+│   │   ├── taxonomy.py (552)  ← 24 error categories (TaxonomyEntry, classify_error)
+│   │   ├── rules.py (685)     ← Level 0 deterministic repair functions (10 fix_*())
 │   │   ├── repair_templates.py (526) ← Compiled repair patterns promoted from LLM
 │   │   ├── repair_cache.py (118)     ← MD5-based fingerprint cache
 │   │   ├── knowledge_store.py (99)   ← Redis LLM knowledge queue for research data
@@ -124,10 +125,10 @@ prometheus-swarm/
 │   │   ├── budget.py (84)     ← RepairBudget: per-job budget
 │   │   ├── validation.py (170) ← validate_patch_pre() / validate_patch_post()
 │   │   ├── ui.py (172)        ← Rich console output for CLI
-│   │   └── prompts.py (52)    ← DISSECT_SYSTEM_PROMPT
+│   │   └── prompts.py (78)    ← DISSECT_SYSTEM_PROMPT
 │   │
-│   ├── arbiter/               ← Evaluator (9 files, ~1789 lines)
-│   │   ├── agent.py (396)     ← ArbiterAgent.on_training_complete()
+│   ├── arbiter/               ← Evaluator (9 files, ~1780 lines)
+│   │   ├── agent.py (497)     ← ArbiterAgent.on_training_complete()
 │   │   ├── decision.py (77)   ← make_decision(): PASS/RETRY/FAIL logic
 │   │   ├── evaluator.py (256) ← load_checkpoint_data(), evaluate()
 │   │   ├── controller.py (291)← build_constraints_from_brief(), evaluate_and_decide()
@@ -136,50 +137,50 @@ prometheus-swarm/
 │   │   ├── ui.py (121)        ← Rich console rendering
 │   │   └── prompts.py (24)    ← ARBITER_SYSTEM_PROMPT
 │   │
-│   └── harbor/                ← Deployer (5 files, ~2090 lines)
-│       ├── agent.py (309)     ← HarborAgent.on_evaluation_pass()
-│       ├── tools.py (694)     ← serialize_to_onnx(), generate_fastapi_app(), deploy_local_compose()
+│   └── harbor/                ← Deployer (5 files, ~2337 lines)
+│       ├── agent.py (504)     ← HarborAgent.on_evaluation_pass()
+│       ├── tools.py (723)     ← serialize_to_onnx(), generate_fastapi_app(), deploy_local_compose()
 │       ├── serving_template.py (355) ← FastAPI serving template
-│       ├── artifact_validator.py (708) ← verify_deployment(): 6-phase validation
+│       ├── artifact_validator.py (731) ← verify_deployment(): 6-phase validation
 │       └── prompts.py (24)    ← HARBOR_SYSTEM_PROMPT
 │
 ├── prometheus/                ← CLI application package
 │   ├── __main__.py            ← Entry: from prometheus.main import cli; cli()
-│   ├── main.py (327)          ← click.Group with 13 command groups + 16 redirect stubs + REPL
-│   ├── repl.py (303)          ← Interactive REPL mode
+│   ├── main.py (310)          ← click.Group with 15 commands (10 noun + 5 system) + REPL
+│   ├── repl.py (391)          ← Interactive REPL mode
 │   │
-│   ├── cli/                   ← All CLI command implementations (27 .py files)
-│   │   ├── __init__.py        ← Re-exports 12 CLI entry points
-│   │   ├── mission/           ← Mission command group (1158-line __init__.py + 4 support files)
-│   │   │   ├── __init__.py    ← @click.group 'mission' with 9 subcommands: new, list, status, watch, resume, cancel, report, replay, logs
+│   ├── cli/                   ← All CLI command implementations (28 .py files)
+│   │   ├── __init__.py (31)   ← Re-exports 15 CLI entry points
+│   │   ├── mission/           ← Mission command group (1722-line __init__.py + 4 support files)
+│   │   │   ├── __init__.py    ← @click.group 'mission' with 9 subcommands: new, list, status, logs, watch, resume, cancel, report, replay
 │   │   │   ├── session.py     ← MissionSession dataclass + singleton tracker
 │   │   │   ├── state_logger.py ← log_mission_state()
-│   │   │   ├── ui.py (686)    ← Rich live-updating UI for all 6 agent phases
+│   │   │   ├── ui.py (710)    ← Rich live-updating UI for all 6 agent phases
 │   │   │   └── ui_harbor.py   ← Harbor-specific completion UI
-│   │   ├── agent.py           ← @click.group 'agent' (list, inspect, trace)
-│   │   ├── benchmark.py       ← @click.group 'benchmark' (summary, wins, stats)
+│   │   ├── agent.py (373)     ← @click.group 'agent' (list, inspect, trace)
+│   │   ├── benchmark.py       ← @click.group 'benchmark' (NOT registered in main.py)
 │   │   ├── config.py          ← @click.group 'config' (list, set, check, edit, show)
 │   │   ├── daemon.py          ← @click.command 'daemon' (start, stop, status, restart, logs)
-│   │   ├── deploy.py          ← @click.group 'deploy' (list, logs, stop, predict)
-│   │   ├── evaluate.py        ← @click.group 'evaluate'
-│   │   ├── explain.py         ← @click.command 'explain'
+│   │   ├── deploy.py          ← @click.group 'deploy' (NOT registered in main.py)
+│   │   ├── evaluate.py (562)  ← @click.group 'evaluate' with 10 subcommands: run, compare, report, visualize, list, failures, calibration, summary, wins, stats
+│   │   ├── explain.py         ← @click.command 'explain' (NOT registered in main.py)
 │   │   ├── init.py            ← @click.command 'init' — first-run wizard
-│   │   ├── job.py             ← @click.group 'job' (submit, list, status, cancel)
-│   │   ├── logs.py            ← @click.group 'logs' (tail, show)
+│   │   ├── job.py             ← @click.group 'job' (NOT registered in main.py)
+│   │   ├── logs.py            ← @click.group 'logs' (NOT registered in main.py)
 │   │   ├── memory.py          ← @click.group 'memory' (stats, search)
 │   │   ├── model.py           ← @click.group 'model' (list, show, export)
-│   │   ├── output.py          ← Three-mode output contract (interactive/plain/json)
-│   │   ├── planner.py         ← @click.group 'planner'
+│   │   ├── output.py (171)    ← Three-mode output contract (interactive/plain/json) — legacy twin of utils/output.py
+│   │   ├── planner.py (558)   ← @click.group 'planner' (inspect, dry-run, validate, stats, explain, prediction-error)
 │   │   ├── plugin.py          ← @click.group 'plugin' (install, remove, list)
-│   │   ├── profile.py         ← @click.group 'profile' (list, save, switch, inspect, delete)
+│   │   ├── profile.py         ← @click.group 'profile' (NOT registered in main.py)
 │   │   ├── provider.py        ← @click.group 'provider' (add, list, current)
-│   │   ├── replay.py          ← @click.command 'replay'
-│   │   ├── report.py          ← @click.command 'report'
-│   │   ├── reproduce.py       ← @click.group 'reproduce'
-│   │   ├── solve.py           ← @click.command 'solve' — submits to event-driven orchestrator
-│   │   ├── swarm.py           ← @click.group 'swarm' (status, topology)
+│   │   ├── replay.py          ← @click.command 'replay' (NOT registered in main.py)
+│   │   ├── report.py          ← @click.command 'report' (NOT registered in main.py)
+│   │   ├── reproduce.py       ← @click.group 'reproduce' (NOT registered in main.py)
+│   │   ├── solve.py           ← @click.command 'solve' (NOT registered in main.py)
+│   │   ├── swarm.py           ← @click.group 'swarm' (NOT registered in main.py)
 │   │   ├── system.py          ← help_cmd, doctor_cmd, version_cmd
-│   │   ├── tool.py            ← @click.group 'tool' (list, inspect)
+│   │   ├── tool.py            ← @click.group 'tool' (NOT registered in main.py)
 │   │   └── workspace.py       ← @click.group 'workspace' (init, info, scan, status)
 │   │
 │   ├── services/              ← Service implementations (9 files)
@@ -206,113 +207,128 @@ prometheus-swarm/
 │   ├── mission/               ← Mission parsing (4 files: models, parser, validator)
 │   ├── planner/               ← Execution plan compiler (4 files)
 │   ├── plugins/               ← Plugin system (5 files)
-│   ├── registry/              ← Command registry (4 files, 1079-line _build())
-│   └── utils/                 ← Utilities (8 files)
+│   ├── registry/              ← Command registry (4 files, 1089-line _build())
+│   │   └── registry.py (1089) ← Static command metadata catalog (~100 commands, 15 categories)
+│   └── utils/                 ← Utilities (9 files)
 │       ├── commands.py        ← AliasedGroup: Click with aliases + fuzzy suggestion
 │       ├── compat.py          ← check_python, check_os, check_deps
 │       ├── exit_codes.py      ← ExitCode IntEnum
 │       ├── log.py             ← setup_logging()
+│       ├── output.py (171)    ← Three-mode output contract — byte-identical to cli/output.py; mission group imports this
 │       ├── slugs.py           ← Human-friendly slug generation
 │       ├── telemetry.py       ← Command execution telemetry
 │       └── docs_gen.py        ← Command docs generator
 │
 │   └── ui/                    ← UI rendering (not the Cockpit TUI)
 │       ├── cockpit/           ← Textual TUI application (4 files)
-│       │   ├── app.py (684)   ← CockpitApp: live TUI dashboard
-│       │   ├── widgets.py (1415) ← 11 widget types
-│       │   ├── consumer.py (117) ← Read-only Redis consumer
+│       │   ├── app.py (1028)  ← CockpitApp: live TUI dashboard
+│       │   ├── widgets.py (2099) ← 11 widget types + log_search_started() + show_filter_input()
+│       │   ├── consumer.py (131) ← Read-only Redis consumer
 │       │   └── trace_replay.py ← Saved trace replay
 │       ├── components/        ← Reusable Rich components
-│       ├── renderers/         ← Output format renderers
-│       ├── *.py               ← Scout UI, Forge UI, Furnace UI, tables, theme, etc.
+│       ├── renderers/         ← Output format renderers (incl. renderer_from_ctx)
+│       ├── stream/            ← Streaming renderer
+│       │   └── renderer.py (1133) ← Scroll-forward stream renderer: noise filter, paced reveal (0.15s), unique consumer names, per-message error isolation
+│       ├── claude/            ← Splash + startup animation
+│       ├── *.py               ← Scout UI, Forge UI, Furnace UI, tables, theme, console, input, splash
 │
 ├── bus/                       ← Redis Streams message bus
-│   ├── events.py              ← 11 event type constants + 9 stream names + 8 consumer group names
-│   ├── publisher.py           ← publish(): XADD to stream
-│   ├── consumer.py            ← consume_one(), consume_loop(), ensure_consumer_group()
+│   ├── events.py (70)         ← 11 event type constants + 14 stream names + 9 consumer group names
+│   ├── agent_events.py (237)  ← emit_agent_event(), AgentEventTracker, thinking-delta + subaction emitters
+│   ├── publisher.py (51)      ← publish(): XADD to stream
+│   ├── consumer.py (102)      ← consume_one(), consume_loop(), ensure_consumer_group()
 │   └── checkpoint.py          ← Stream checkpointing
 │
 ├── contracts/                 ← Domain models + typed event schemas + state machine
-│   ├── domain.py              ← SCHEMA_VERSION_V1, base types
-│   ├── events.py              ← 16 typed EventPayload subclasses (Pydantic v2)
-│   ├── state.py               ← MissionPhase enum (20 values), transition matrix, MissionState
+│   ├── domain.py (532)        ← SCHEMA_VERSION_V1, MissionBrief/MissionSpecification/CrashEvent
+│   ├── events.py (260)        ← 19 typed EventPayload subclasses (Pydantic v2)
+│   ├── state.py (426)         ← MissionPhase enum (21 values), transition matrix, MissionState
 │   ├── errors.py              ← Domain error types
 │   └── protocols.py           ← Protocol classes
 │
-├── orchestator/               ← Job orchestration [sic: directory is spelled 'orchestator']
-│   ├── runtime.py (1082)      ← Main orchestration loop
-│   ├── job_runner.py          ← Job lifecycle management
-│   ├── health_monitor.py      ← Agent health monitoring (heartbeat, restart)
-│   ├── mission_report.py      ← Mission report generation
-│   ├── patch_log_writer.py    ← BLPOP from Redis → JSONL file
-│   └── report_generator.py    ← Report generation utilities
+├── orchestrator/              ← Job orchestration
+│   ├── runtime.py (1199)      ← Main orchestration loop — OrchestratorRuntime.run() spawns 7 _consume_* coroutines
+│   ├── job_runner.py (417)    ← run_job(): sequential in-process driver, returns JobResult
+│   ├── job_queue.py (138)     ← Job queue
+│   ├── health_monitor.py (113)← Agent health monitoring (heartbeat, restart)
+│   ├── mission_report.py (1029)← Mission report generation
+│   ├── patch_log_writer.py (50)← BLPOP from Redis → JSONL file
+│   ├── reproducibility.py (292)← Git/config/data fingerprints for reproducibility
+│   └── trace_persister.py (116)← Event trace persistence
 │
 ├── runtime/                   ← Retry engine + execution helpers
-│   ├── models.py (588)        ← Result, Context, Error types, MissionState (duplicate of contracts/state.py)
+│   ├── models.py (599)        ← Result, Context, Error types, MissionState (duplicate of contracts/state.py)
 │   ├── paths.py               ← Path resolution
-│   ├── retry_engine.py        ← Retry execution engine
-│   ├── retry_orchestrator.py (777) ← Orchestrated retry logic
-│   ├── retry_strategy.py      ← Retry strategy definitions
+│   ├── retry_engine.py (295)  ← Retry execution engine
+│   ├── retry_orchestrator.py (861) ← Orchestrated retry logic
+│   ├── retry_strategy.py (286)← Retry strategy definitions
 │   ├── retry_state.py         ← Retry state tracking
 │   ├── capability_registry.py ← Agent capability registry
 │   ├── ui_retry.py            ← UI retry integration
 │   └── retry_log.py           ← Retry logging
 │
 ├── shared/                    ← Shared utilities
-│   ├── config.py              ← Configuration loading (pydantic-settings)
-│   ├── settings.py            ← Application settings
-│   ├── logging.py             ← Structured logging (JSON + console)
-│   ├── cache.py               ← Caching utilities
-│   └── console.py             ← Rich console output
+│   ├── __init__.py
+│   ├── metrics.py (389)       ← Prometheus metric definitions
+│   └── health_monitor.py (112)← Health monitoring
+│   (NOTE: shared/config.py and shared/logging.py do NOT exist — config lives in prometheus/core/config.py)
 │
 ├── memory/                    ← Memory layer (Redis + ChromaDB)
 │   ├── redis_client.py        ← Singleton async Redis client
 │   ├── chroma_client.py       ← ChromaDB connection + collection helpers
 │   ├── schemas.py             ← Memory record schemas
 │   ├── embeddings.py          ← Embedding generation
-│   └── collections/           ← 3 collections: patch_memory, architecture_memory, tool_memory
+│   ├── reasoning_models.py    ← Reasoning models
+│   └── collections/           ← 4 collections: patch_memory, architecture_memory, tool_memory, experience_memory
 │
 ├── evaluation/                ← Evaluation framework
-│   ├── core.py, suite.py, metrics/
+│   ├── __init__.py            ← Dynamic feature-flag config via __getattr__ delegation
+│   ├── benchmark_validation.py (248)
+│   ├── stress_injector.py (260)
+│   ├── perf_logger.py
+│   ├── reproducibility.py
+│   └── config.py              ← Feature-flag toggles
 │
 ├── training/                  ← Training environment
-│   ├── docker_manager.py (314)← Container lifecycle
+│   ├── docker_manager.py (325)← Container lifecycle
 │   ├── checkpoint_manager.py (44) ← Checkpoint save/restore
 │   ├── label_normalizer.py (149) ← Deterministic label encoding across retries
-│   └── base_training_image/   ← Dockerfile for training containers
+│   └── base_training_image/   ← Dockerfile for training containers (lightgbm, xgboost, optuna, torch, transformers, pytorch-tabnet)
 │
 ├── serving/                   ← Model serving
 │   ├── onnx_runtime.py (47)   ← ONNX model loading and inference
 │   ├── drift_monitor.py (93)  ← PSI-based drift detection
 │   ├── metrics.py (75)        ← Prometheus metrics for serving
-│   └── docker/                ← Serving container Dockerfile
+│   └── docker/                ← Serving container Dockerfile (fastapi, uvicorn, onnxruntime, prometheus-client)
 │
-├── UI/                        ← Cockpit TUI (top-level, separate from prometheus/ui/)
-│   └── [TUI application files]
+├── learning/                  ← Execution outcome + planner feedback models
+│   ├── execution_outcome.py
+│   └── planner_feedback.py
 │
-├── tests/                     ← ⭐ Test suite (77 files, 68 .py test files)
+├── figures/                   ← Paper figures (fig_architecture_*, fig_calibration_*, etc.)
+│
+├── experiments/               ← Experiment artifacts (gitignored)
+│
+├── tests/                     ← ⭐ Test suite (82 test files)
 │   ├── __init__.py
-│   ├── unit/                  ← 65 test files (fast, no external deps)
-│   │   ├── agents/            ← Per-agent tests (scout, forge, furnace, dissect, arbiter, harbor)
-│   │   ├── contracts/         ← State machine tests
-│   │   ├── bus/               ← Event bus tests
-│   │   ├── runtime/           ← Retry engine tests
-│   │   ├── shared/            ← Memory tests
-│   │   ├── cockpit/           ← TUI tests (5 files)
-│   │   ├── cli/               ← CLI command tests
-│   │   ├── planner/           ← Planner tests
-│   │   └── validation/        ← Research validation tests
-│   ├── integration/           ← 13 files (Redis, Docker required)
+│   ├── unit/                  ← 64 test files (FAST, flat — no per-agent subdirs)
+│   │   ├── test_scout_tools.py, test_forge_decision_tree.py, test_dissect_taxonomy.py
+│   │   ├── test_arbiter_metrics.py, test_bus_events.py, test_state_machine.py
+│   │   ├── test_cockpit_*.py (5 files), test_validation_*.py (8 files), test_planner_*.py
+│   │   ├── test_retry_orchestration.py, test_reliability.py, test_renderer_state.py
+│   │   └── ... (all 64 flat)
+│   ├── integration/           ← 12 files (Redis required; some Docker)
 │   │   ├── test_titanic_e2e.py, test_three_kaggle_e2e.py
 │   │   ├── test_furnace_dissect_loop.py, test_dissect_sandbox_docker.py
-│   │   └── test_harbor_serving.py, test_bus_e2e.py, etc.
-│   ├── fixtures/              ← Test data (titanic.csv, 5 injected_error scripts, fuzz datasets)
-│   ├── services/              ← Service-layer tests (6 files)
-│   ├── validators/            ← Registry validation
-│   └── research/              ← (empty — no test files)
+│   │   ├── test_harbor_serving.py, test_bus_e2e.py, test_job_runner.py, etc.
+│   ├── services/              ← 5 files (agent, compat, profile, provider, workspace service tests)
+│   ├── validators/            ← 1 file (test_registry.py)
+│   ├── cli/                   ← conftest.py with mocked CLI services (no test files)
+│   ├── research/              ← patch_log.jsonl only (no test files)
+│   └── fixtures/              ← Test data (titanic.csv, 5 injected_error scripts, fuzz datasets)
 │
 ├── research/                  ← Research experiment framework (15 .py files)
-│   ├── benchmark/             ← problems.json (50 problems), baseline_v1.json, results/
+│   ├── benchmark/             ← problems.json (10 problems), baseline_v1.json, results/
 │   ├── campaigns/             ← 15 campaign directories (pilot-v1, smoke-v2, verify-v3, etc.)
 │   ├── validation/            ← Experiment tracking (models, runner, tracker, metrics, statistics)
 │   ├── engineering/           ← Engineering dashboard
@@ -322,21 +338,28 @@ prometheus-swarm/
 │   ├── statistical_analysis.py (245) ← Mann-Whitney U + McNemar + Cohen's h
 │   └── ... (analyze_ablation.py, analyze_campaign.py, compare_baselines.py, etc.)
 │
-├── scripts/                   ← Generated training scripts (output directory)
-├── outputs/                   ← Job outputs (models, checkpoints, reports, logs)
-├── data/                      ← Dataset files
+├── scripts/                   ← Operational scripts + generated training scripts
+│   ├── run_titanic_e2e.py, run_churn_e2e.py, publish_titanic.py, reset_titanic.py
+│   ├── build-training-image.ps1, check_streams.py, check_stream_events.py, list_jobs.py
+│   └── training_script_*.py    ← Generated scripts (gitignored)
+│
+├── outputs/                   ← Job outputs (models, checkpoints, reports, logs) — gitignored
+├── data/                      ← Dataset files (CSVs gitignored)
 ├── docs/                      ← Documentation
 │   ├── ADR/                   ← Architecture Decision Records
 │   ├── ARCHITECTURE.md        ← Architecture overview
 │   ├── CONVENTIONS.md         ← Coding conventions
 │   ├── commands/              ← Generated CLI command docs
 │   └── ERROR_TAXONOMY.md      ← Error taxonomy reference
-├── frontend/                  ← Next.js dashboard (scaffolded)
-│   ├── package.json           ← Next.js 14, React 18, Tailwind
-│   └── src/app/               ← Routes: feed, jobs/[id], drift, dashboard, missions, etc.
+├── frontend/                  ← Next.js dashboard (18 page.tsx routes)
+│   ├── package.json           ← Next.js 14, React 18, Tailwind, Supabase, React Query
+│   └── src/app/               ← Routes: dashboard, datasets, deployments, drift, feed, jobs/[id], missions, models, projects, settings, submit, training, login/register, etc.
 ├── infra/                     ← Infrastructure configs
-│   ├── kubernetes/, helm/, monitoring/
-└── .github/workflows/ci.yml   ← GitHub Actions CI
+│   ├── kubernetes/            ← serving deployment + LoadBalancer
+│   ├── monitoring/            ← prometheus.yml, grafana_dashboard.json
+│   └── helm/                  ← empty (only .gitkeep)
+├── .claude/                   ← Claude Code settings (gitignored)
+└── .github/workflows/         ← ci.yml (ruff + pytest on "main") + quality.yml (uv matrix on "master")
 ```
 
 ---
@@ -349,7 +372,7 @@ A top-level workflow that takes a problem description + dataset through all 6 ag
 ### Agent
 One of six autonomous AI workers that perform a specific phase of the ML pipeline. Each agent runs in its own process, reads from Redis Streams, writes to Redis + ChromaDB, and publishes events.
 
-### Canonical Mission Phases (20 values)
+### Canonical Mission Phases (21 values)
 Defined in `contracts/state.py:MissionPhase`:
 
 | Phase | Meaning |
@@ -376,11 +399,11 @@ Defined in `contracts/state.py:MissionPhase`:
 | `CANCELLED` | User cancelled the job |
 | `MISSION_FAILED` | Terminal failure |
 
-### Typed Events (16 types)
-Defined in `contracts/events.py` as Pydantic `EventPayload` subclasses: `MissionBriefReadyEvent`, `TrainingScriptReadyEvent`, `EpochCompleteEvent`, `TrainingCompleteEvent`, `CrashEventPayload`, `ResumeTrainingEvent`, `EscalateEvent`, `EvaluationPassEvent`, `EvaluationRetryEvent`, `EvaluationFailedEvent`, `JobFailedEvent`, `EndpointLiveEvent`, `PlanCreatedEvent`, `PlanCompletedEvent`, `PlanFailedEvent`, `DriftAlertEvent`, `AgentEventPayload`.
+### Typed Events (19 types)
+Defined in `contracts/events.py` as Pydantic `EventPayload` subclasses: `MissionBriefReadyEvent`, `TrainingScriptReadyEvent`, `EpochCompleteEvent`, `TrainingCompleteEvent`, `CrashEventPayload`, `ResumeTrainingEvent`, `EscalateEvent`, `EvaluationPassEvent`, `EvaluationRetryEvent`, `EvaluationFailedEvent`, `JobFailedEvent`, `EndpointLiveEvent`, `PlanCreatedEvent`, `PlanCompletedEvent`, `PlanFailedEvent`, `DriftAlertEvent`, `ThinkingDeltaEvent`, `SubactionProgressEvent`, `AgentEventPayload`.
 
-### Stream Names (11 streams)
-Defined in `bus/events.py`: `scout_output`, `forge_output`, `furnace_feed`, `furnace_output`, `furnace_crash`, `dissect_output`, `arbiter_output`, `harbor_output`, `orchestrator_output`, plus `agent_events` and `agent_thinking` for the Cockpit.
+### Stream Names (14 stream names)
+Defined in `bus/events.py`: 11 primary streams in `ALL_EVENT_STREAMS` — `scout_output`, `forge_output`, `furnace_feed`, `furnace_output`, `furnace_crash`, `dissect_output`, `arbiter_output`, `harbor_output`, `orchestrator_output`, `planner_output`, `agent_events` — plus auxiliary `agent_thinking`, `thinking_delta`, `subaction_progress`. 9 consumer groups: `forge_consumers`, `furnace_consumers`, `dissect_consumers`, `arbiter_consumers`, `harbor_consumers`, `frontend_consumers`, `orchestrator_consumers`, `scout_consumers`, `cockpit_consumers`.
 
 ### Dissect Cascade (5 levels)
 1. **Level 0 — Deterministic Rules** (`rules.py`): 10 regex-based repair functions
@@ -392,8 +415,8 @@ Defined in `bus/events.py`: `scout_output`, `forge_output`, `furnace_feed`, `fur
 ### Cockpit
 The live TUI dashboard (`prometheus/ui/cockpit/app.py`). Textual-based, shows real-time agent status, thinking tokens, logs, and event timeline. Launched via `prometheus` or as standalone.
 
-### CLI Command Nouns (13 groups)
-`mission`, `agent`, `workspace`, `model`, `provider`, `config`, `plugin`, `benchmark`, `deploy`, `evaluate`, `job`, `memory`, `planner` — plus system commands `init`, `doctor`, `version`, `help`, `daemon` and 16 backward-compat redirect stubs.
+### CLI Command Nouns (10 groups + 5 system commands)
+Noun groups: `mission`, `agent`, `workspace`, `model`, `provider`, `config`, `plugin`, `evaluate`, `memory`, `planner`. System commands: `init`, `doctor`, `version`, `help`, `daemon`. There are **no redirect stubs** — the old `benchmark`, `deploy`, `job`, `logs`, `swarm`, `tool`, etc. command files still exist on disk but are **not registered** in `main.py`.
 
 ### Retry Engine
 The `runtime/` package: orchestrates retry attempts across agents. Key classes: `RetryOrchestrator`, `RetryContext`, `RetryState`, `CapabilityRegistry`. Supports 4 strategies: exponential backoff, immediate, graceful degradation, fallback.
@@ -404,39 +427,37 @@ The `runtime/` package: orchestrates retry attempts across agents. Key classes: 
 
 ### CLI Entry Point
 - **Spec:** `prometheus` (console_scripts) or `python -m prometheus`
-- **Actual:** `prometheus/main.py` — click.Group with `AliasedGroup`. Falls back to REPL if no subcommand given in TTY.
+- **Actual:** `prometheus/main.py` — click.Group with `AliasedGroup` and lazy `register_fn`. Falls back to REPL if no subcommand given in TTY.
 - **Status:** ✅ Working
 
-### Command Nouns
+### Global Options (main.py:142-190)
+`-C/--project-dir`, `-w/--workspace`, `--no-color`, `--high-contrast`, `--font-size {small,medium,large}`, `--debug`, `--format {interactive,plain,json}`, `--shell` (hidden), `--version`, `--help`.
+
+### Aliases (main.py:124-139)
+Noun-level short forms: `ws`→workspace, `ag`→agent, `cfg`→config, `prov`→provider, `mdl`→model, `plug`→plugin, `miss`→mission, `eval`→evaluate, `mem`→memory, `plan`→planner. Convenience shortcuts: `new`→`mission new`, `start`→`mission new`.
+
+### Registered Commands (15 total)
 
 | Command | Syntax | Flags | Actual Behavior | Status |
 |---------|--------|-------|----------------|--------|
-| **mission** | `mission <subcommand>` | `--file`, `--target`, etc. | 9 subcommands: new, list, status, watch, resume, cancel, report, replay, logs. `new` submits to orchestrator. `watch` shows live Rich UI. | ✅ Verified in `cli/mission/__init__.py` (1158 lines) |
-| **agent** | `agent list/inspect/trace` | None | Lists 6 agents, inspects details, traces job path. Uses `AgentService`. | ✅ Verified in `cli/agent.py` |
+| **mission** | `mission <subcommand>` | `--file`, `--target`, etc. | 9 subcommands: new, list, status, logs, watch, resume, cancel, report, replay. `new` submits to orchestrator. `watch` shows live Rich UI. | ✅ Verified in `cli/mission/__init__.py` (1722 lines) |
+| **agent** | `agent list/inspect/trace` | None | Lists 6 agents, inspects details (+ tools list), traces job path. Uses `AgentService`. | ✅ Verified in `cli/agent.py` |
 | **workspace** | `workspace init/info/scan/status` | None | Detects project root, scans files, reads pyproject.toml. | ✅ Verified in `cli/workspace.py` |
 | **model** | `model list/show/export` | None | Scans outputs/ for eval reports, displays metrics, exports ONNX/pickle. | ✅ Verified in `cli/model.py` |
 | **provider** | `provider add/list/current` | None | Manages LLM provider API keys in .env. | ✅ Verified in `cli/provider.py` |
 | **config** | `config list/set/check/edit/show` | None | Reads/writes .env with credential redaction. | ✅ Verified in `cli/config.py` |
 | **plugin** | `plugin install/remove/list` | None | Manages PluginRegistry. | ✅ Verified in `cli/plugin.py` |
-| **benchmark** | `benchmark summary/wins/stats` | None | Reads research/benchmark/results/. | ✅ Verified in `cli/benchmark.py` |
-| **deploy** | `deploy list/logs/stop/predict` | None | Interacts with Docker serving containers. | ✅ Verified in `cli/deploy.py` |
-| **evaluate** | `evaluate` | None | Loads data from research/benchmark/. | ✅ Verified in `cli/evaluate.py` |
-| **job** | `job submit/list/status/cancel` | None | Wraps JobService — Redis CRUD. | ✅ Verified in `cli/job.py` |
+| **evaluate** | `evaluate <subcommand>` | None | 10 subcommands: run, compare, report, visualize, list, failures, calibration, summary, wins, stats. Aggregates benchmark result JSONs. | ✅ Verified in `cli/evaluate.py` |
 | **memory** | `memory stats/search` | None | ChromaDB + Redis queries via MemoryService. | ✅ Verified in `cli/memory.py` |
-| **planner** | `planner` | None | Inspects ExecutionPlan objects. | ✅ Verified in `cli/planner.py` |
+| **planner** | `planner <subcommand>` | None | 6 subcommands: inspect, dry-run, validate, stats, explain, prediction-error. Reads ExecutionPlan / engineering_plan from Redis. | ✅ Verified in `cli/planner.py` |
+| **init** | `init` | None | First-run wizard: provider setup, API key, workspace init | ✅ Verified in `cli/init.py` |
+| **doctor** | `doctor` | None | Runs prerequisite checks (Docker, Redis, Python, .env) | ✅ Verified in `cli/system.py` |
+| **version** | `version` | None | Prints `0.1.0` | ✅ Verified in `cli/system.py` |
+| **help** | `help` | None | Shows categorized command reference | ✅ Verified in `cli/system.py` |
+| **daemon** | `daemon start/stop/status/restart/logs` | None | PID-based subprocess orchestration | ✅ Verified in `cli/daemon.py` |
 
-### System Commands
-
-| Command | Syntax | Actual Behavior | Status |
-|---------|--------|----------------|--------|
-| `init` | `init` | First-run wizard: provider setup, API key, workspace init | ✅ Verified |
-| `doctor` | `doctor` | Runs prerequisite checks (Docker, Redis, Python, .env) | ✅ Verified |
-| `version` | `version` | Prints `0.1.0` | ✅ Verified |
-| `help` | `help` | Shows categorized command reference | ✅ Verified |
-| `daemon` | `daemon start/stop/status/restart/logs` | PID-based subprocess orchestration | ✅ Verified |
-
-### Backward-Compat Redirect Stubs (16 total)
-`logs`→`mission logs`, `replay`→`mission replay`, `report`→`mission report`, `solve`→`mission new`, `job`→`mission`, `swarm`→`agent list`, `deploy`→`model export`, `explain`→`doctor`, `planner`→`mission status`, `memory`→`agent inspect`, `tool`→`config list`, `profile`→`config set`, `benchmark`→`mission new --auto`, `reproduce`→`mission new`, `evaluate`→`model show` — each prints a redirect message to use the canonical command.
+### Unregistered Command Files (not wired in main.py)
+`benchmark`, `deploy`, `explain`, `job`, `logs`, `profile`, `replay`, `report`, `reproduce`, `solve`, `swarm`, `tool` — these `.py` files still exist under `prometheus/cli/` but are **no longer registered** as commands. The 16 redirect stubs that CLAUDE.md previously documented were deleted from `main.py`.
 
 ### Cockpit TUI
 
@@ -451,14 +472,14 @@ The `runtime/` package: orchestrates retry attempts across agents. Key classes: 
 | ReplayController | Controls for trace replay mode | ✅ Working |
 | LogScreen | Scrollback event log overlay | ✅ Working |
 | HelpScreen | Keyboard shortcut reference | ✅ Working |
-| **Search functionality** | `log_search_started` AttributeError | 🔴 Broken (AUDIT.md Bug 1) |
-| **Filter functionality** | `show_filter_input` AttributeError | 🔴 Broken (AUDIT.md Bug 2) |
+| **Search functionality** | `log_search_started()` implemented (widgets.py:1680) + search modal on LogScreen | ✅ Fixed |
+| **Filter functionality** | `show_filter_input()` implemented (widgets.py:1686) + filter-by-state modal on LogScreen | ✅ Fixed |
 
 ### Dissect Cascade Levels
 
 | Level | Module | Actual Behavior | Status |
 |-------|--------|----------------|--------|
-| **L0 — Deterministic Rules** | `rules.py` (667 lines) | 10 fix_*() functions: fix_name_error, fix_import_error, fix_dtype_mismatch, fix_shape_mismatch, fix_nan_handling, etc. Each returns patched code or None. | ✅ Working |
+| **L0 — Deterministic Rules** | `rules.py` (685 lines) | 10 fix_*() functions: fix_name_error, fix_import_error, fix_dtype_mismatch, fix_shape_mismatch, fix_nan_handling, etc. Each returns patched code or None. | ✅ Working |
 | **L1 — Compiled Templates** | `repair_templates.py` (526 lines) | `RepairTemplate` registry with promote_to_template(). Compiled patterns promoted from successful LLM patches. | ✅ Working |
 | **L2 — Repair Cache** | `repair_cache.py` (118 lines) | MD5-based cache of (dataset_path + error_type + error_snippet → known fix). | ✅ Working |
 | **L3 — Patch Memory** | `knowledge_store.py` (99 lines) | ChromaDB semantic search (K=3). Records every LLM interaction to `llm_knowledge_queue`. | 🟡 Partial — ChromaDB query exists but semantic retrieval quality depends on embedding model |
@@ -521,7 +542,7 @@ The `runtime/` package: orchestrates retry attempts across agents. Key classes: 
 - Computes crash fingerprint (SHA-256 of error_category + message[:200] + script_hash[:16] + stage)
 - Checks budget: max 1 LLM call per fingerprint, $0.10, 15000 tokens, 180s wall clock
 - Runs 5-level cascade:
-  - L0: Match error against 31 taxonomy categories via regex → apply fix_*() rule
+  - L0: Match error against 24 taxonomy categories via regex → apply fix_*() rule
   - L1: Match against compiled repair templates
   - L2: Check repair cache (MD5 key)
   - L3: ChromaDB patch memory semantic search (K=3)
@@ -566,6 +587,11 @@ The `runtime/` package: orchestrates retry attempts across agents. Key classes: 
 - If PSI > 0.2: publishes `DRIFT_ALERT`
 - Drift alert consumed by Orchestrator/Scout for potential retraining
 
+### Two Orchestrator Drivers (verified)
+
+1. **`orchestrator/job_runner.py` (417 lines)** — sequential in-process driver: Scout→Forge→Furnace (with concurrent `dissect_listener` on `furnace_crash`)→Arbiter→Harbor (on PASS). Outcome read via `xrevrange`. Persists `MissionState`. Returns `JobResult`.
+2. **`orchestrator/runtime.py` (1199 lines)** — event-driven `OrchestratorRuntime.run()`: sole consumer on all 7 agent streams via 7 `_consume_*` coroutines + `_heartbeat_loop`. Launches agents as libraries; only Furnace self-reads `dissect_output`.
+
 ---
 
 ## 7. Current Implementation Status
@@ -573,25 +599,25 @@ The `runtime/` package: orchestrates retry attempts across agents. Key classes: 
 | Component | Status | Evidence |
 |-----------|--------|----------|
 | **6 Agent cores** (agent.py) | ✅ Working | All have real implementations with Redis I/O, event publishing, Prometheus metrics. None are stubs. Total: ~16,000 lines across 54 files. |
-| **Contracts** (domain, events, state) | ✅ Working | Pydantic v2 models, 16 typed events, 20-state machine with transition matrix |
-| **Event bus** (publisher, consumer) | ✅ Working | Redis Streams with consumer groups, checkpointing, typed events |
-| **Orchestrator** (runtime) | ✅ Working | 1082-line main loop, parallel Furnace↔Dissect crash recovery |
-| **CLI** (13 command groups) | ✅ Working | click-based with AliasedGroup, fuzzy suggestions, 16 redirects, REPL fallback |
-| **Cockpit TUI** | ✅ Working | Textual app, 11 widget types, live Redis streams, trace replay. **Known bugs:** search & filter broken. |
+| **Contracts** (domain, events, state) | ✅ Working | Pydantic v2 models, 19 typed events, 21-state machine with transition matrix |
+| **Event bus** (publisher, consumer) | ✅ Working | Redis Streams with consumer groups, checkpointing, typed events, agent_events emitters |
+| **Orchestrator** (runtime + job_runner) | ✅ Working | Event-driven `OrchestratorRuntime` (1199 lines) + sequential `run_job()` driver, parallel Furnace↔Dissect crash recovery |
+| **CLI** (10 noun groups + 5 system) | ✅ Working | click-based with AliasedGroup, aliases, fuzzy suggestions, zero redirect stubs, REPL fallback |
+| **Cockpit TUI** | ✅ Working | Textual app, 11 widget types, live Redis streams, trace replay. Search & filter fixed. |
 | **LLM provider** (Anthropic) | ✅ Working | Full integration with retry, token tracking, cost logging |
 | **Forge templates** (10 templates) | ✅ Working | Jinja2 rendering for all 5 architectures + task variants |
 | **Dissect cascade** (5 levels) | ✅ Working | L0-L4 with deterministic rules, templates, cache, ChromaDB, LLM |
 | **Retry engine** (runtime/) | ✅ Working | Orchestrator, 4 strategies, state tracking, capability registry |
 | **Prometheus metrics** | ✅ Working | Counter/Gauge/Histogram for all agent categories |
 | **Memory** (Redis + ChromaDB) | ✅ Working | 4 collections, embeddings, semantic search |
-| **Research framework** | ✅ Working | Benchmark runner (50 problems, 3 conditions), ablation (7 configs), statistics (Mann-Whitney, McNemar, Cohen's h) |
+| **Research framework** | ✅ Working | Benchmark runner (10 problems, 3 conditions), ablation (7 configs), statistics (Mann-Whitney, McNemar, Cohen's h) |
 | **Docker management** | ✅ Working | Container lifecycle, health checks, GPU support |
 | **Script fingerprinting** | ✅ Working | SHA-256 dedup — skips training if identical script succeeded before |
 | **Error prevention** (static + Redis) | ✅ Working | 5 static prevention transformations + Redis-backed PreventionRules |
 | **Patch log writer** | ✅ Working | BLPOP from Redis → JSONL file with filelock |
 | **Label normalizer** | ✅ Working | Training module for deterministic label encoding across retries |
 | **Drift monitor** | ✅ Working | PSI-based, 3600s interval, 0.2 threshold |
-| **Frontend (Next.js)** | 🟡 Partial | Routes exist (feed, jobs/[id], drift, dashboard), Redis client partial |
+| **Frontend (Next.js)** | 🟡 Partial | 18 routes exist (dashboard, jobs/[id], drift, missions, etc.), Redis client partial |
 | **Tool memory** | 🟡 Partial | ChromaDB collection exists, semantic retrieval partially wired |
 | **GKE/Kubernetes deployment** | ⚪ Planned | infra/kubernetes exists but configs are minimal |
 | **OpenAI provider** | ⚪ Planned | Base class exists, no integration |
@@ -601,36 +627,50 @@ The `runtime/` package: orchestrates retry attempts across agents. Key classes: 
 
 ## 8. Known Issues, Bugs & Open Hypotheses
 
-### Bugs from AUDIT.md (July 10, 2026) — All Unfixed
+### Resolved (as of 2026-08-01)
 
 | # | Bug | File | Status |
 |---|-----|------|--------|
-| A | **No LabelEncoder in tabular training scripts** — LightGBM, XGBoost, TabNet templates don't encode string targets. `training/label_normalizer.py` exists but is unused by generated scripts. | `agents/forge/templates/*.jinja` | ✅ Fixed — LabelEncoder already present in all 4 templates + 3 f-string generators |
-| B | **TabNet proposed but pytorch-tabnet not installed** — Architecture selection can choose tabnet but the library isn't in the training Docker image. | `training/base_training_image/Dockerfile` | ✅ Fixed — `pytorch-tabnet==4.1.0` in Dockerfile |
-| C | **`state.imbalance_strategy` not updated after crash** — Retry loop doesn't propagate imbalance_strategy to MissionState, so next retry iteration uses stale value. | `runtime/retry_orchestrator.py:175-198` | ✅ Fixed — `state.imbalance_strategy` set at line 311 |
-| D | **`best_metric` stays 0.0** — `record_retry_attempt()` only updates `best_metric` on PASS, not on RETRY. | `runtime/models.py:368` | ✅ Fixed — unconditional `metric_value > best_metric` check |
-| E | **Same as Bug C — after success too** — State not updated after successful retry at lines 220-249. | `runtime/retry_orchestrator.py:220-249` | ✅ Fixed — `state.imbalance_strategy` set at line 363 |
-| F | **`wait_for_dissect=False` hardcoded during retry** — Furnace skips WAIT state in retry mode, so Dissect never receives CRASH_EVENTs from retry runs. | `runtime/retry_orchestrator.py:462` | ✅ Fixed — concurrent Furnace (`wait_for_dissect=True`) + Dissect handler tasks |
+| A | **No LabelEncoder in tabular training scripts** | `agents/forge/templates/*.jinja` | ✅ Fixed — LabelEncoder already present in all 4 templates + 3 f-string generators |
+| B | **TabNet proposed but pytorch-tabnet not installed** | `training/base_training_image/Dockerfile` | ✅ Fixed — `pytorch-tabnet==4.1.0` in Dockerfile |
+| C | **`state.imbalance_strategy` not updated after crash** | `runtime/retry_orchestrator.py` | ✅ Fixed |
+| D | **`best_metric` stays 0.0** | `runtime/models.py:368` | ✅ Fixed — unconditional `metric_value > best_metric` check |
+| E | **Same as Bug C — after success too** | `runtime/retry_orchestrator.py` | ✅ Fixed |
+| F | **`wait_for_dissect=False` hardcoded during retry** | `runtime/retry_orchestrator.py` | ✅ Fixed — concurrent Furnace + Dissect handler tasks |
+| 1 | Cockpit `search` fails | `prometheus/ui/cockpit/widgets.py` | ✅ Fixed — `log_search_started()` implemented (line 1680) |
+| 2 | Cockpit `filter` fails | `prometheus/ui/cockpit/widgets.py` | ✅ Fixed — `show_filter_input()` implemented (line 1686) |
+| 5 | Dissect prompt only lists 11 categories | `agents/dissect/prompts.py` | ✅ Fixed — prompt lists all 24 categories |
+| 7 | pyproject.toml dependencies incomplete | `pyproject.toml` | ✅ Fixed — full ML/infra set added |
 
-### Cockpit TUI Bugs (from AUDIT.md + exploration)
-
-| # | Bug | File | Status |
-|---|-----|------|--------|
-| 1 | Cockpit `search` fails: `'SearchWidget' object has no attribute 'log_search_started'` | `prometheus/ui/cockpit/widgets.py` | ✅ Fixed — implemented `log_search_started()` + search modal on `LogScreen` |
-| 2 | Cockpit `filter` fails: `'JobListPanel' object has no attribute 'show_filter_input'` | `prometheus/ui/cockpit/widgets.py` | ✅ Fixed — implemented `show_filter_input()` + filter-by-state modal on `LogScreen` |
-
-### Discovered During Audit
+### Active Issues (verified 2026-08-01)
 
 | # | Issue | File | Severity |
 |---|-------|------|----------|
-| 3 | **Directory is spelled `orchestator`** (missing 'r') — the orchestrator/ directory has a typo in its name. This may cause import issues if anything uses the canonical spelling. | `orchestator/` at root | 🟡 Low — consistent within codebase |
-| 4 | **Duplicate MissionState definitions** — `contracts/state.py` defines the canonical MissionState while `runtime/models.py` has a parallel MissionState. These may diverge. | `runtime/models.py` vs `contracts/state.py` | 🟢 Reconciled — added `schema_version`, `metric_direction` to runtime version; cross-reference comments |
-| 5 | **Dissect prompt only lists 11 categories** — The system prompt in `prompts.py` lists 11 error categories, but `taxonomy.py` defines 24 (not 31 as previously stated). | `agents/dissect/prompts.py:52` | ✅ Fixed — prompt now lists all 24 categories |
-| 6 | **PLAN.md is 3150+ lines of historical build steps** — This is a literal step-by-step build plan, not a design doc. It's useful for understanding how the system was built but is easy to confuse with current architecture. | `PLAN.md` | 🟡 Awareness |
-| 7 | **pyproject.toml dependencies are incomplete** — The pyproject.toml only lists `click`, `rich`, `shellingham` as dependencies, but the full dependency set is in `requirements.txt`. | `pyproject.toml` | ✅ Fixed — full dependency list added |
-| 8 | **README.md test count is wrong** — Claims 47 tests pass; actual test count is 93 test `.py` files. | `README.md` | 🟡 Low — stale doc |
-| 9 | **README.md phase status is wrong** — Claims Phase 3 is "In progress" and Phase 4 is "Not started" — actual state is beyond Phase 3.5 with Phase 4 benchmark campaigns completed. | `README.md` | 🟡 Low — stale doc |
-| 10 | **CLAUDE.md claimed Appendix C doesn't exist** — The Design Book already has Appendix C with the event schema; the implementation already matches it. | `CLAUDE.md` | ✅ Fixed — corrected in this version |
+| 3 | ~~Directory misspelled `orchestator`~~ | ~~orchestator/~~ | ✅ Resolved — the directory is spelled `orchestrator` (correct). The prior doc claim was stale. Only residue: a docstring in `tests/integration/test_orchestrator_escalate.py`. |
+| 4 | **Duplicate MissionState definitions** — `contracts/state.py` (Pydantic) vs `runtime/models.py` (dataclass) both define MissionState. runtime/models.py admits the duplication ("keep these fields in sync"). Only the contracts version is imported by orchestrator code. | `runtime/models.py` vs `contracts/state.py` | 🟡 Divergence risk — kept in sync manually |
+| 6 | **PLAN.md is 3150+ lines of historical build steps** | `PLAN.md` | 🟡 Awareness — build log, not design doc |
+| 8 | **README.md test count is wrong** — README claims "All 47 tests pass"; actual: 82 test files (64 unit, 12 integration, 5 services, 1 validators) | `README.md` | 🟡 Low — stale doc (being fixed) |
+| 9 | **README.md phase status is wrong** — claims Phase 3 "In progress" and Phase 4 "Not started" — actual state is beyond Phase 3.5 with research campaigns complete | `README.md` | 🟡 Low — stale doc (being fixed) |
+| 10 | **No Makefile exists** — CLAUDE.md and README reference `make lint/test/typecheck/...` but no `Makefile` is in the repo. Use the documented pip/pytest commands directly. | repo root | 🟡 Low — doc references must not rely on `make` |
+| 11 | **CI branch inconsistency** — `.github/workflows/ci.yml` triggers on `main`; `.github/workflows/quality.yml` triggers on `master`. | `.github/workflows/` | 🟡 Low — quality.yml may never fire |
+| 12 | **REPL help is stale** — `prometheus/repl.py` (~line 32) still lists the 16 "redirect stubs" that no longer exist in `main.py`. | `prometheus/repl.py` | 🟡 Low — cosmetic |
+| 13 | **pyproject.toml still missing 5 runtime deps** — `joblib`, `pygments`, `pyyaml`, `packaging`, `pynput` exist only in requirements.txt (pinned 2026-07-27), not in pyproject.toml | `pyproject.toml` | 🟢 Reconciled — requirements.txt is the authoritative install path |
+
+### Previously Documented Items — Now Corrected
+
+| Old Claim | Actual (2026-08-01) |
+|-----------|---------------------|
+| Directory spelled `orchestator` (missing 'r') | Directory is `orchestrator` (correct) |
+| 13 command groups + 16 redirect stubs | 15 registered commands (10 noun + 5 system), 0 redirects |
+| 20 MissionPhase values | 21 values (verified enum in contracts/state.py) |
+| 16 typed events | 19 EventPayload subclasses (incl. ThinkingDelta, SubactionProgress, AgentEvent) |
+| 11 streams / 8 consumer groups | 14 stream names / 9 consumer groups |
+| 31 error taxonomy categories | 24 categories (verified TaxonomyEntry list) |
+| `shared/config.py` + `shared/logging.py` exist | Do NOT exist — config moved to `prometheus/core/config.py` |
+| problems.json = 50 problems | 10 problems |
+| 77 test files (CLAUDE.md) / "47 tests pass" (README) | 82 test files |
+| `Makefile`, `deploy_update_app.py`, top-level `UI/` exist | None of these exist |
+| `main.py` 327 lines, `mission/__init__.py` 1158 lines | 310 and 1722 |
 
 ---
 
@@ -638,9 +678,9 @@ The `runtime/` package: orchestrates retry attempts across agents. Key classes: 
 
 | Question | Options | Current Leaning | Tradeoffs |
 |----------|---------|-----------------|-----------|
-| **Default orchestrator: sequential vs event-driven?** | A) Legacy sequential `orchestrator/runtime.py` (in-process, deprecated) vs B) Event-driven `orchestrator/job_runner.py` (Redis Streams, async) | B — event-driven is the current path | A is simpler, B is more robust for crash recovery |
+| **Default orchestrator: sequential vs event-driven?** | A) Sequential `job_runner.py` (in-process) vs B) Event-driven `orchestrator/runtime.py` (Redis Streams, async) | Both implemented; B is the current path | A is simpler, B is more robust for crash recovery |
 | **Training container: Docker vs local subprocess?** | Docker (isolated, portable) vs local subprocess (faster, simpler) | Docker — current implementation uses Docker for training | Docker adds latency but is required for sandbox testing and isolation |
-| **MissionState canonical location?** | `contracts/state.py` or `runtime/models.py` | Both — reconciled with cross-reference comments and matched fields (`schema_version`, `metric_direction`) | Dual representation maintained for different serialization needs; kept in sync |
+| **MissionState canonical location?** | `contracts/state.py` or `runtime/models.py` | `contracts/state.py` — canonical Pydantic version; runtime keeps a synced dataclass | Dual representation maintained for different serialization needs |
 | **OpenAI provider integration?** | Full implementation or defer | Deferred — Anthropic is the only active provider | OpenAI support would broaden accessibility |
 | **Frontend priority?** | Complete Next.js dashboard or leave as scaffolded | Currently scaffolded — focus is on CLI/TUI | Web dashboard would improve accessibility but is not needed for research |
 
@@ -650,18 +690,12 @@ The `runtime/` package: orchestrates retry attempts across agents. Key classes: 
 
 ### Key Architectural Decisions
 
-- **Redis Streams over Kafka:** Single-node research deployment. Redis is simpler, requires no ZooKeeper, and is already used for job state. The bus layer has 4 files totaling ~380 lines.
-
+- **Redis Streams over Kafka:** Single-node research deployment. Redis is simpler, requires no ZooKeeper, and is already used for job state. The bus layer has 5 files totaling ~600 lines.
 - **ChromaDB over Pinecone:** Self-hosted research deployment. No API costs, no data leaves the local machine. Latency is higher but acceptable for research workloads.
-
 - **Jinja2 templates over programmatic script generation:** Templates are debuggable — you can read the actual template file and see exactly what will be generated. This was critical during development when Forge's LLM-generated scripts were unreliable.
-
 - **Textual TUI over web dashboard:** Real-time operational visibility during development. The Cockpit shows thinking tokens, cascade decomposition, and live metrics — information density that's harder to achieve in a web UI.
-
-- **click over argparse:** Developer experience. click's declarative command groups, automatic help generation, and plugin-friendly design made it the right choice for 13+ command nouns.
-
+- **click over argparse:** Developer experience. click's declarative command groups, automatic help generation, and plugin-friendly design made it the right choice for 10+ command nouns.
 - **Docker Compose over Kubernetes:** Research phases. K8s adds operational complexity that isn't justified for a single-node system. The `infra/` directory has K8s configs but they're aspirational.
-
 - **pydantic-settings over python-dotenv:** Type-safe configuration. pydantic-settings validates types at load time (e.g., `int(port)`) instead of forcing every consumer to parse strings.
 
 ### Past Incidents Worth Remembering
@@ -682,32 +716,25 @@ The `runtime/` package: orchestrates retry attempts across agents. Key classes: 
 - **pytest** with `pytest-asyncio` (asyncio_mode = auto)
 - **Marks:** `unit`, `integration`, `slow`, `e2e`, `validation`, `training_exec`
 - **Config:** in `pyproject.toml` — asyncio_mode=auto, testpaths=[tests], pythonpath=[.]
-- **Total files:** 77 files (68 .py test files + fixtures + conftest)
+- **Total files: 82 `test_*.py` files** (64 unit + 12 integration + 5 services + 1 validators). Verified by counting `test_*.py` on 2026-08-01. The README's "All 47 tests pass" and any "77 test files" claim are stale.
 
-### Test Distribution
+### Test Distribution (verified 2026-08-01)
 
-| Directory | Count | Type |
-|-----------|-------|------|
-| `tests/unit/agents/` | ~15 files | Per-agent unit tests |
-| `tests/unit/contracts/` | 1 file | State machine tests |
-| `tests/unit/bus/` | 1 file | Event bus tests |
-| `tests/unit/runtime/` | 1 file | Retry engine tests |
-| `tests/unit/shared/` | 5 files | Memory + config + execution |
-| `tests/unit/cockpit/` | 5 files | TUI tests |
-| `tests/unit/cli/` | 1 file | CLI command tests |
-| `tests/unit/planner/` | 4 files | Planner compiler + validators |
-| `tests/unit/evaluation/` | 5 files | Evaluation framework |
-| `tests/unit/validation/` | 8 files | Research validation |
-| `tests/unit/other/` | 6 files | Various (agent instantiation, reliability, etc.) |
-| `tests/integration/` | 13 files | Require Redis/Docker |
-| `tests/services/` | 6 files | Service layer tests |
-| `tests/validators/` | 2 files | Registry validation |
+| Directory | Count | Notes |
+|-----------|-------|-------|
+| `tests/unit/` | 64 files | **Flat** — no per-agent subdirectories. Includes scout, forge, furnace, dissect, arbiter, harbor tests, 5 Cockpit tests, 8 validation tests, planner, retry, reliability, renderer_state, mission output contracts, mission logs trace fidelity, etc. |
+| `tests/integration/` | 12 files | Require Redis (aioredis at localhost:6379); some require Docker. Titanic/3-Kaggle E2E, furnace-dissect loop, dissect sandbox, harbor serving, bus E2E, job_runner, orchestrator escalate, orchestrator titanic, scenarios, trace_persister. |
+| `tests/services/` | 5 files | agent_service, compat, profile_service, provider_service, workspace_service |
+| `tests/validators/` | 1 file | test_registry.py |
+| `tests/cli/` | 0 test files | Only `conftest.py` with mocked CLI services (MagicMock + CliRunner) |
+| `tests/research/` | 0 test files | Only `patch_log.jsonl` data |
+| `tests/fixtures/` | — | titanic.csv, 13 fuzz CSVs, 5 injected_errors, golden phase7 JSONs |
 
 ### Key Coverage Observations
 
-- **All 6 agents** have dedicated unit and integration tests
+- **All 6 agents** have dedicated tests (in the flat `tests/unit/`)
 - **Dissect** has 5 injected-error test fixtures for real crash testing
-- **Cockpit TUI** has 5 test files (live Redis, cascade, replay, full mission)
+- **Cockpit TUI** has 5 test files (live Redis, cascade, replay, full mission, pilot)
 - **Forge** has 6 test files (templates, planner, decision tree, confidence router, fingerprint, prevention)
 - **Research validation** has 8 test files
 - **No tests** for: `prometheus/ui/` rendering components, `prometheus/registry/`, `prometheus/utils/`, frontend
@@ -745,18 +772,18 @@ All external calls (Redis, Docker, LLM) are wrapped in try/except with `job_id` 
 5. Add event payload model to `contracts/events.py` (if new event)
 6. Add state transitions to `contracts/state.py:MISSION_PHASE_TRANSITIONS`
 7. Register in `prometheus/cli/agent.py` (for `agent list/inspect`)
-8. Add tests in `tests/unit/agents/` and `tests/integration/`
+8. Add tests in `tests/unit/` (flat) and `tests/integration/`
 9. Add agent-specific Prometheus metrics in `serving/metrics.py`
 
 ### How to Add a New CLI Command
 1. Create file in `prometheus/cli/<name>.py` with `@click.group` or `@click.command`
 2. Export from `prometheus/cli/__init__.py`
-3. Register in `prometheus/main.py:_register_commands()`
-4. Add `Command` entry to `prometheus/registry/registry.py:_build()` (1079-line function)
-5. Add redirect stub in `prometheus/main.py:_register_commands()` if it replaces an old command
+3. Register in `prometheus/main.py:_register_commands()` (`cli.add_command(...)`)
+4. Add `Command` entry to `prometheus/registry/registry.py:_build()` (1089-line function)
+5. Do NOT add a redirect stub — the redirect mechanism was removed
 
 ### Test Structure Convention
-- Test files mirror source structure under `tests/` (e.g., `agents/scout/tools.py` → `tests/unit/agents/test_scout_tools.py`)
+- Test files live **flat** in `tests/unit/` (e.g., `agents/scout/tools.py` → `tests/unit/test_scout_tools.py`)
 - Integration tests go in `tests/integration/`
 - Test data goes in `tests/fixtures/`
 - Fixtures use `pytest.mark.asyncio` for async tests
@@ -809,19 +836,7 @@ python -m prometheus --repl
 python -m prometheus daemon start
 ```
 
-### Make Commands
-```bash
-make lint         # ruff check
-make format       # ruff format
-make typecheck    # mypy (note: may not work — pyproject.toml has no mypy config)
-make test         # pytest all tests
-make test-fast    # pytest -m "not slow"
-make test-e2e     # End-to-end tests
-make test-cov     # pytest with coverage
-make clean        # Clean build artifacts
-make docker       # Build training/serving Docker images
-make precommit    # Run pre-commit on all files
-```
+> **Note:** There is no `Makefile` in this repository. Use the pip/pytest/uv commands directly. The `make lint/test/...` commands in older docs no longer apply.
 
 ### Running Tests
 ```bash
@@ -832,10 +847,22 @@ pytest tests/ -v
 pytest tests/ -m "not slow" -v
 
 # Specific test file
-pytest tests/unit/agents/test_scout_tools.py -v
+pytest tests/unit/test_scout_tools.py -v
 
 # Integration tests (requires running Docker + Redis)
 pytest tests/integration/test_titanic_e2e.py -v -s
+```
+
+### Linting & Formatting
+```bash
+# Ruff lint
+ruff check .
+
+# Ruff format check
+ruff format --check .
+
+# Pre-commit hooks (ruff, ruff-format, black, bandit, generic hooks)
+pre-commit run --all-files
 ```
 
 ### Environment Variables (.env)
@@ -865,7 +892,7 @@ A fast-lookup index of the most important files, organized by function.
 | File | Purpose |
 |------|---------|
 | `prometheus/__main__.py` | `python -m prometheus` entry — calls `cli()` |
-| `prometheus/main.py` | click.Group bootstrap, 13 commands + 16 redirects + REPL |
+| `prometheus/main.py` | click.Group bootstrap, 15 commands + REPL |
 | `prometheus/repl.py` | Interactive REPL mode |
 
 ### Agent Implementations (core logic — 6 agents)
@@ -882,7 +909,7 @@ A fast-lookup index of the most important files, organized by function.
 | `agents/furnace/agent.py` | Furnace: Docker training, metrics streaming, crash handling |
 | `agents/dissect/agent.py` | Dissect: 5-level cascade error debugger |
 | `agents/dissect/routing.py` | 5-level cascade router |
-| `agents/dissect/taxonomy.py` | 31 error category taxonomy |
+| `agents/dissect/taxonomy.py` | 24 error category taxonomy |
 | `agents/dissect/rules.py` | Level 0 deterministic repair functions |
 | `agents/dissect/governor.py` | Per-fingerprint budget enforcement |
 | `agents/dissect/fingerprint.py` | Error fingerprinting for dedup |
@@ -895,10 +922,11 @@ A fast-lookup index of the most important files, organized by function.
 ### Contracts & Data Flow
 | File | Purpose |
 |------|---------|
-| `contracts/domain.py` | SCHEMA_VERSION_V1, base types |
-| `contracts/events.py` | 16 typed EventPayload Pydantic models |
-| `contracts/state.py` | MissionPhase (20 values), transition matrix, MissionState |
+| `contracts/domain.py` | SCHEMA_VERSION_V1, base types, MissionBrief/MissionSpecification/CrashEvent |
+| `contracts/events.py` | 19 typed EventPayload Pydantic models |
+| `contracts/state.py` | MissionPhase (21 values), transition matrix, MissionState |
 | `bus/events.py` | Stream names, consumer groups, event type constants |
+| `bus/agent_events.py` | Thinking-delta + subaction emitters, AgentEventTracker |
 | `bus/publisher.py` | publish() — XADD to Redis Streams |
 | `bus/consumer.py` | consume_one(), consume_loop() — XREADGROUP with ACK |
 | `bus/checkpoint.py` | Stream checkpointing |
@@ -906,44 +934,45 @@ A fast-lookup index of the most important files, organized by function.
 ### Orchestration
 | File | Purpose |
 |------|---------|
-| `orchestator/runtime.py` | Main orchestration loop (1082 lines) |
-| `orchestator/job_runner.py` | Job lifecycle management |
-| `orchestator/health_monitor.py` | Agent health monitoring (heartbeat, restart) |
-| `orchestator/patch_log_writer.py` | BLPOP from Redis → JSONL file |
-| `runtime/retry_orchestrator.py` | Orchestrated retry logic (777 lines) |
+| `orchestrator/runtime.py` | Event-driven orchestration loop (1199 lines) |
+| `orchestrator/job_runner.py` | Sequential in-process job lifecycle (417 lines) |
+| `orchestrator/health_monitor.py` | Agent health monitoring (heartbeat, restart) |
+| `orchestrator/patch_log_writer.py` | BLPOP from Redis → JSONL file |
+| `orchestrator/reproducibility.py` | Git/config/data fingerprints |
+| `runtime/retry_orchestrator.py` | Orchestrated retry logic (861 lines) |
 | `runtime/retry_strategy.py` | 4 retry strategies |
 | `runtime/models.py` | Result, Context, Error types + duplicate MissionState |
 
 ### CLI
 | File | Purpose |
 |------|---------|
-| `prometheus/cli/mission/__init__.py` | Mission command (1158 lines) — the main user-facing command |
-| `prometheus/cli/mission/ui.py` | Rich live-updating UI for all 6 agent phases |
+| `prometheus/cli/mission/__init__.py` | Mission command (1722 lines) — the main user-facing command |
+| `prometheus/cli/mission/ui.py` | Rich live-updating UI for all 6 agent phases (710 lines) |
 | `prometheus/cli/agent.py` | Agent management commands |
 | `prometheus/cli/config.py` | Configuration management commands |
-| `prometheus/cli/solve.py` | Submits to event-driven orchestrator |
-| `prometheus/registry/registry.py` | 1079-line command catalog (~80 commands) |
+| `prometheus/utils/output.py` | Three-mode output contract (interactive/plain/json) — the twin of cli/output.py that mission imports |
+| `prometheus/registry/registry.py` | 1089-line command catalog (~100 commands) |
 
 ### Cockpit TUI
 | File | Purpose |
 |------|---------|
-| `prometheus/ui/cockpit/app.py` | CockpitApp: Textual live dashboard (684 lines) |
-| `prometheus/ui/cockpit/widgets.py` | 11 widget types (1415 lines) |
+| `prometheus/ui/cockpit/app.py` | CockpitApp: Textual live dashboard (1028 lines) |
+| `prometheus/ui/cockpit/widgets.py` | 11 widget types + search/filter modals (2099 lines) |
 | `prometheus/ui/cockpit/consumer.py` | Read-only Redis consumer for agent events |
+| `prometheus/ui/stream/renderer.py` | Scroll-forward streaming renderer (1133 lines) |
 
 ### Infrastructure
 | File | Purpose |
 |------|---------|
 | `memory/redis_client.py` | Singleton async Redis client |
 | `memory/chroma_client.py` | ChromaDB connection helpers |
-| `training/docker_manager.py` | Docker container lifecycle (314 lines) |
+| `training/docker_manager.py` | Docker container lifecycle (325 lines) |
 | `training/checkpoint_manager.py` | Checkpoint save/restore (44 lines) |
 | `training/label_normalizer.py` | Deterministic label encoding (149 lines) |
 | `serving/onnx_runtime.py` | ONNX inference runtime (47 lines) |
 | `serving/drift_monitor.py` | PSI-based drift detection (93 lines) |
 | `serving/metrics.py` | Prometheus metric definitions (75 lines) |
-| `shared/config.py` | pydantic-settings configuration |
-| `shared/logging.py` | Structured JSON logging |
+| `shared/metrics.py` | Prometheus metric definitions (389 lines) |
 
 ### Research
 | File | Purpose |
@@ -967,28 +996,24 @@ A fast-lookup index of the most important files, organized by function.
 
 ## 15. Open Questions / Explicitly Unverified Items
 
-This section lists everything I could not fully confirm during this audit.
+This section lists everything that was not fully confirmed during this audit.
 
-1. **Actual test pass count.** I counted 77 test files but did not run `pytest` to confirm pass rate. The README claims "47 tests pass" which is contradicted by the 77-file count. The actual number may be different.
+1. **Actual test pass rate.** Counted 82 test files but did not run `pytest` to confirm pass rate. The README claims "47 tests pass" which is contradicted by the 82-file count. The actual number may be different.
 
-2. **`runtime/models.py` vs `contracts/state.py` duplication.** Both define `MissionState`. I did not diff them to check for divergence. This should be reconciled — the `contracts/` version is the canonical one.
+2. **`runtime/models.py` vs `contracts/state.py` duplication.** Both define `MissionState`. The `contracts/` version is the canonical one; `runtime/models.py` documents that fields must stay in sync. Not diffed field-by-field.
 
-3. **ChromaDB integration test.** I confirmed the `chroma_client.py` and collection modules exist but did not run an end-to-end ChromaDB query test to verify the semantic search pipeline works end-to-end.
+3. **ChromaDB integration test.** Confirmed `chroma_client.py` and collection modules exist but did not run an end-to-end ChromaDB query test to verify the semantic search pipeline works end-to-end.
 
 4. **OpenAI provider.** `agents/openai_provider.py` does not exist at the expected path. The provider code lives in `prometheus/providers/` and the OpenAI provider there is base-class-only. Full integration status is unverified.
 
-5. **Memory collection count.** I confirmed `patch_memory` and `architecture_memory` collections exist. `tool_memory` may exist but I did not verify its schema or semantic retrieval wiring.
+5. **Memory collection count.** Confirmed `patch_memory`, `architecture_memory`, `tool_memory`, and `experience_memory` collection modules exist. Semantic retrieval quality unverified.
 
-6. **GitHub Actions CI.** I found `.github/workflows/ci.yml` but did not read its contents. CI pipeline status is unverified.
+6. **CI green status.** `.github/workflows/ci.yml` is substantive (ruff + pytest with Redis service + deploy-check) but the last run's green/red status was not verified. `quality.yml` triggers on `master` while `ci.yml` uses `main` — a live inconsistency.
 
-7. **All 50 benchmark problems.** I confirmed `research/benchmark/problems.json` exists but did not read its contents to verify all 50 problem definitions.
+7. **All 10 benchmark problems.** Confirmed `research/benchmark/problems.json` has 10 problems (each with id/dataset/task_type/modality/evaluation_metric/difficulty/expected_architecture). Did not run them.
 
-8. **Pre-commit hook config.** `.pre-commit-config.yaml` exists but I did not read its contents to verify what hooks are configured.
+8. **Frontend build status.** The Next.js frontend has 18 page.tsx routes. Did not verify it currently builds or runs.
 
-9. **`UI/` top-level directory vs `prometheus/ui/`.** Both exist. The top-level `UI/` may be a duplicate or may contain the actual TUI. I did not fully explore `UI/` at the top level — my exploration focused on `prometheus/ui/cockpit/`.
+9. **Furnace subprocess vs Docker.** `furnace/agent.py` has both `_launch_and_monitor_docker` and `_launch_and_monitor_subprocess`. Which is the default path in production was not fully traced.
 
-10. **`deploy_update_app.py` at root.** I did not read this file. Its purpose is unknown.
-
-11. **Docker Compose full stack.** `docker-compose.yml` may include more than just Redis and ChromaDB (observability stack like Grafana, Prometheus, Loki). I did not read the full file.
-
-12. **Frontend build status.** The Next.js frontend at `frontend/` has `frontend/.next/` build output directories, suggesting it was built at some point. I did not verify whether it currently builds or runs.
+10. **`src/` directory.** A `src/` directory exists at the top level but is gitignored ("External / unrelated code"). Its contents (assistant, bootstrap, bridge, buddy, cli, commands, components, constants, context, coordinator, ...) appear unrelated to the main pipeline.

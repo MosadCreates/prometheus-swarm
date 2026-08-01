@@ -36,23 +36,9 @@ def planner_inspect(ctx, job_id, verbose):
     """Show the ExecutionPlan for a job."""
     renderer = renderer_from_ctx(ctx)
 
-    async def _fetch():
-        try:
-            from prometheus.core.redis import CliRedis
-
-            redis = CliRedis()
-            try:
-                raw = await redis._client.get_str(f"job:{job_id}:execution_plan")
-                return raw
-            finally:
-                await redis.close()
-        except ImportError:
-            return None
-
-    raw = asyncio.run(_fetch())
+    raw = asyncio.run(_fetch_key(job_id, "execution_plan"))
     if not raw:
-        renderer.error(f"No ExecutionPlan found for job '{job_id[:8]}'.", title="Not found")
-        return ExitCode.ERROR_NOT_FOUND
+        return _inspect_engineering_plan(renderer, job_id, verbose)
 
     try:
         plan = json.loads(raw) if isinstance(raw, str) else raw
@@ -134,21 +120,8 @@ def planner_dry_run(ctx, job_id):
     """Compile a MissionSpecification into a plan and validate it (no execution)."""
     renderer = renderer_from_ctx(ctx)
 
-    async def _fetch():
-        try:
-            from prometheus.core.redis import CliRedis
-
-            redis = CliRedis()
-            try:
-                raw = await redis._client.get_str(f"job:{job_id}:mission_spec")
-                return raw
-            finally:
-                await redis.close()
-        except ImportError:
-            return None
-
     with Spinner("Compiling plan..."):
-        raw = asyncio.run(_fetch())
+        raw = asyncio.run(_fetch_key(job_id, "mission_spec"))
 
     if not raw:
         renderer.error(
@@ -216,23 +189,11 @@ def planner_validate(ctx, job_id):
     """Run all 5 validators on an existing ExecutionPlan."""
     renderer = renderer_from_ctx(ctx)
 
-    async def _fetch():
-        try:
-            from prometheus.core.redis import CliRedis
-
-            redis = CliRedis()
-            try:
-                raw = await redis._client.get_str(f"job:{job_id}:execution_plan")
-                return raw
-            finally:
-                await redis.close()
-        except ImportError:
-            return None
-
-    raw = asyncio.run(_fetch())
+    raw = asyncio.run(_fetch_key(job_id, "execution_plan"))
     if not raw:
         renderer.error(
             f"No ExecutionPlan found for job '{job_id[:8]}'.",
+            hint=f"prometheus planner dry-run {job_id[:8]}",
             title="Not found",
         )
         return ExitCode.ERROR_NOT_FOUND
@@ -508,6 +469,75 @@ def planner_prediction_error(ctx, arch):
         renderer.print(
             f"    {jid:<10}  dur: [red]{dur:6.1f}%[/]  ram: [red]{ram:6.1f}%[/]  deploy: {dep}"
         )
+    renderer.print()
+    return ExitCode.SUCCESS
+
+
+async def _fetch_key(job_id: str, key_suffix: str) -> str | None:
+    try:
+        from prometheus.core.redis import CliRedis
+
+        redis = CliRedis()
+        try:
+            return await redis._client.get_str(f"job:{job_id}:{key_suffix}")
+        finally:
+            await redis.close()
+    except ImportError:
+        return None
+
+
+def _inspect_engineering_plan(renderer, job_id: str, verbose: bool) -> ExitCode:
+    """Fallback for planner inspect: render Forge's engineering_plan (live data)."""
+    raw = asyncio.run(_fetch_key(job_id, "engineering_plan"))
+    if not raw:
+        renderer.error(
+            f"No ExecutionPlan or EngineeringPlan found for job '{job_id[:8]}'.",
+            title="Not found",
+        )
+        return ExitCode.ERROR_NOT_FOUND
+
+    try:
+        plan = json.loads(raw) if isinstance(raw, str) else raw
+    except (json.JSONDecodeError, TypeError):
+        renderer.error("Invalid EngineeringPlan format.", title="Parse error")
+        return ExitCode.ERROR
+
+    arch = plan.get("architecture_selected", {})
+    if not arch:
+        arch = {}
+
+    renderer.print(f"\n  [bold]EngineeringPlan[/]  [dim]job {job_id[:8]}[/]")
+    renderer.print(f"  [bold]Architecture:[/]  {arch.get('name', '?')}")
+
+    mr = arch.get("expected_metric_range")
+    if mr:
+        renderer.print(f"  [bold]Expected metric:[/]  [{mr[0]:.2f}, {mr[1]:.2f}]")
+    if arch.get("expected_training_minutes") is not None:
+        renderer.print(f"  [bold]Training time:[/]  ~{arch.get('expected_training_minutes')} min")
+    if arch.get("expected_ram_mb") is not None:
+        renderer.print(f"  [bold]Peak RAM:[/]  ~{arch.get('expected_ram_mb')} MB")
+
+    reason = arch.get("reason_for_selection", "")
+    if reason:
+        if not verbose and len(reason) > 120:
+            reason = reason[:120] + "..."
+        renderer.print(f"  [bold]Why:[/]  {reason}")
+
+    pipeline = plan.get("preprocessing_pipeline", [])
+    if pipeline:
+        steps = "; ".join(s.get("name", "?") for s in pipeline)
+        renderer.print(f"  [bold]Pipeline:[/]  {steps}")
+
+    validation = plan.get("validation_strategy", {})
+    if validation:
+        renderer.print(
+            f"  [bold]Validation:[/]  {validation.get('method', '?')}"
+            f"  [dim]{validation.get('split_ratio', '')}[/]"
+        )
+
+    renderer.print(
+        "\n  [dim](rendered from engineering_plan — no ExecutionPlan recorded for this job)[/]"
+    )
     renderer.print()
     return ExitCode.SUCCESS
 

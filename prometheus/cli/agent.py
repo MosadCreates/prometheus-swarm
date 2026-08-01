@@ -102,6 +102,12 @@ def agent_inspect(ctx, agent_name, mission):
         items.append(("Mission ID", mission[:24]))
 
     renderer.status(items, title=f"Agent: {detail.name}")
+
+    if detail.tools:
+        renderer.print(f"\n  [bold]Tools ({len(detail.tools)}):[/]")
+        for t in detail.tools:
+            renderer.print(f"    \u2514\u2500 [dim]{t}[/dim]")
+        renderer.print()
     return ExitCode.SUCCESS
 
 
@@ -142,6 +148,15 @@ def agent_metrics(ctx):
     return ExitCode.SUCCESS
 
 
+def _state_color(state: str) -> str:
+    """Map a trace event state to a terminal color."""
+    if state in ("done", "complete", "success"):
+        return "green"
+    if state in ("error", "failed", "crashed"):
+        return "red"
+    return "yellow"
+
+
 def _build_event_tree(
     events: list[tuple[str, dict]],
 ) -> list[dict]:
@@ -155,8 +170,6 @@ def _build_event_tree(
     Events with no parent or whose parent is not in the collection
     become root nodes.
     """
-    from collections import defaultdict
-
     # Index by event_id scoped to mission_id
     by_key: dict[tuple[str, str], dict] = {}
     for mid, ev in events:
@@ -208,7 +221,6 @@ def _render_event_tree(
     lines: list[str] = []
     for i, node in enumerate(roots):
         ev = node["event"]
-        mid = node["mission_id"]
         children = node["_children"]
         is_last_child = i == len(roots) - 1
 
@@ -220,11 +232,7 @@ def _render_event_tree(
         parent_id = ev.get("parent_event_id", "")
         parent_str = f"  [{Theme.muted}]parent: {parent_id[:16]}[/]" if parent_id else ""
 
-        state_color = (
-            "green"
-            if state in ("done", "complete", "success")
-            else "red" if state in ("error", "failed", "crashed") else "yellow"
-        )
+        state_color = _state_color(state)
 
         if depth == 0:
             connector = f"[{Theme.muted}]\u2500\u2500[/]"
@@ -357,7 +365,7 @@ def agent_trace(
                                     summary = (ev.get("summary") or ev.get("event") or "")[:80]
                                     renderer.print(
                                         f"  [dim]{ts}[/dim] "
-                                        f"[{'green' if state in ('done','complete','success') else 'red' if state in ('error','failed','crashed') else 'yellow'}]{state}[/] "
+                                        f"[{_state_color(state)}]{state}[/] "
                                         f"{summary}"
                                     )
                         pos = current_size

@@ -491,7 +491,7 @@ def _launch_claude_transcript(mission_id: str) -> None:
 @click.pass_context
 def mission_list(ctx: click.Context, filter_status: str | None, limit: int | None) -> ExitCode:
     """List missions with their current phase and status."""
-    from prometheus.cli.output import emit_str_table, detect_format
+    from prometheus.utils.output import emit_str_table, detect_format
 
     fmt = detect_format(ctx)
     emit_str_table(
@@ -506,10 +506,13 @@ def mission_list(ctx: click.Context, filter_status: str | None, limit: int | Non
 
 @mission.command(name="status")
 @click.argument("mission_id", required=False, default=None)
+@click.option(
+    "--verbose", "-v", is_flag=True, default=False, help="Also show reproducibility context"
+)
 @click.pass_context
-def mission_status(ctx: click.Context, mission_id: str | None) -> ExitCode:
+def mission_status(ctx: click.Context, mission_id: str | None, verbose: bool) -> ExitCode:
     """Show current status of a mission (latest by default)."""
-    from prometheus.cli.output import emit_dict, detect_format, Format
+    from prometheus.utils.output import emit_dict, detect_format, Format
 
     fmt = detect_format(ctx)
     mission_id, summary = _resolve_mission(mission_id)
@@ -533,6 +536,11 @@ def mission_status(ctx: click.Context, mission_id: str | None) -> ExitCode:
         "timestamp": ts,
     }
 
+    if verbose:
+        reproducibility = _load_reproducibility_context(mission_id)
+        if reproducibility:
+            data["reproducibility"] = reproducibility
+
     if fmt in (Format.JSON, Format.PLAIN):
         emit_dict(ctx, fmt, data, schema="prometheus.status.v1")
     else:
@@ -546,7 +554,59 @@ def mission_status(ctx: click.Context, mission_id: str | None) -> ExitCode:
         sep = " \u00b7 "
         renderer = renderer_from_ctx(ctx)
         renderer.print(f"  {sep.join(parts)}")
+        if verbose and data.get("reproducibility"):
+            _render_reproducibility(renderer, data["reproducibility"])
     return ExitCode.SUCCESS
+
+
+def _load_reproducibility_context(job_id: str) -> dict | None:
+    """Fetch job:{job_id}:reproducibility from Redis (written at submit time)."""
+    import asyncio
+    import json
+
+    async def _fetch() -> str | None:
+        try:
+            from prometheus.core.redis import CliRedis
+
+            redis = CliRedis()
+            try:
+                return await redis._client.get_str(f"job:{job_id}:reproducibility")
+            finally:
+                await redis.close()
+        except (ImportError, Exception):
+            return None
+
+    raw = asyncio.run(_fetch())
+    if not raw:
+        return None
+    try:
+        return json.loads(raw) if isinstance(raw, str) else raw
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _render_reproducibility(renderer, rc: dict) -> None:
+    """Render reproducibility context lines under mission status --verbose."""
+    git_hash = rc.get("git_commit", "")
+    git_branch = rc.get("git_branch", "")
+    dirty = rc.get("has_uncommitted_changes", False)
+    dirty_mark = " [red]DIRTY[/]" if dirty else " [green]CLEAN[/]"
+    renderer.print("  [bold]Reproducibility:[/]")
+    renderer.print(f"    Git:      {git_hash[:12] if git_hash else '[dim]none[/]'}{dirty_mark}")
+    if git_branch:
+        renderer.print(f"    Branch:   {git_branch}")
+    config_hash = rc.get("configuration_hash", "")
+    if config_hash:
+        renderer.print(f"    Config:   {config_hash}")
+    renderer.print(f"    Python:   {rc.get('python_version', '?')}")
+    ds_fp = rc.get("dataset_fingerprint", {})
+    if ds_fp and ds_fp.get("exists"):
+        size_mb = ds_fp.get("size_bytes", 0) / (1024 * 1024)
+        renderer.print(
+            f"    Dataset:  {ds_fp.get('file_path', '?')}  "
+            f"[dim]{size_mb:.1f} MB / {ds_fp.get('content_hash', '')[:12]}[/]"
+        )
+    renderer.print()
 
 
 @mission.command(name="logs")
@@ -567,7 +627,7 @@ def mission_logs(
     lines: int | None,
 ) -> ExitCode:
     """Show mission event log as one line per event."""
-    from prometheus.cli.output import emit_log_lines, detect_format
+    from prometheus.utils.output import emit_log_lines, detect_format
 
     fmt = detect_format(ctx)
     mission_id, summary = _resolve_mission(mission_id)
@@ -1105,6 +1165,9 @@ def mission_report(
         except (json.JSONDecodeError, OSError):
             pass
 
+    # ── Read patch history (Dissect repairs recorded for this job) ──
+    patches = _load_patch_history(mission_id)
+
     # ── Compute summary from events ────────────────────────────────
     agents_seen: list[str] = []
     last_event = events[-1]
@@ -1150,6 +1213,10 @@ def mission_report(
             "num_columns": ds.get("num_columns"),
         }
 
+    # Patch history (Dissect repairs)
+    if patches:
+        summary["patches"] = patches
+
     # ── Output ──────────────────────────────────────────────────────
     if output_format == "json":
         output = json.dumps(summary, indent=2, default=str)
@@ -1188,6 +1255,34 @@ def mission_report(
             renderer.error(f"Could not open report: {exc}")
 
     return ExitCode.SUCCESS
+
+
+def _load_patch_history(job_id: str) -> list[dict]:
+    """Read research/patch_log.jsonl and return entries matching this job_id."""
+    import json
+    from pathlib import Path
+
+    log_path = Path("research") / "patch_log.jsonl"
+    if not log_path.exists():
+        return []
+
+    entries = []
+    try:
+        with open(log_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    if entry.get("job_id") == job_id or entry.get("job_id") == job_id[:8]:
+                        entries.append(entry)
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        pass
+
+    return entries
 
 
 @mission.command(name="replay")

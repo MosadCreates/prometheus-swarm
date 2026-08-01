@@ -8,6 +8,9 @@ from prometheus.cli.model import model
 from prometheus.cli.provider import provider
 from prometheus.cli.config import config
 from prometheus.cli.plugin import plugin
+from prometheus.cli.evaluate import evaluate
+from prometheus.cli.memory import memory
+from prometheus.cli.planner import planner
 
 __all__ = [
     "init_cmd",
@@ -22,4 +25,7 @@ __all__ = [
     "provider",
     "config",
     "plugin",
+    "evaluate",
+    "memory",
+    "planner",
 ]

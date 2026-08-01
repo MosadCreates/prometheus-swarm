@@ -23,11 +23,12 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import shutil
 import sys
 import time
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 
 import redis.asyncio as aioredis
 from rich.console import Console
@@ -75,6 +76,24 @@ AGENT_STREAM_MODES = {
     "Arbiter": AgentStreamMode.ACTIVITY,
     "Harbor": AgentStreamMode.ACTIVITY,
 }
+
+
+# ── Subaction noise filter (display-only) ────────────────────────────────
+# Vacuous "doing…" / phase-complete lines whose content is fully carried by a
+# later structured detail line. Applied via startswith in the renderer only —
+# the event bus always records the real signal (Rule 1).
+NOISE_SUBACTION_PREFIXES: tuple[str, ...] = (
+    "Starting analysis...",
+    "Profiling dataset...",
+    "Analysing dataset characteristics...",
+    "EDA complete",
+    "Engineering reasoning complete",
+)
+
+
+# ── Paced reveal ─────────────────────────────────────────────────────────
+_REVEAL_DELAY = 0.15  # Seconds between revealed lines in a burst
+_STAGGER_MAX_QUEUE = 5  # Max lines paced per tick; overflow flushes at once
 
 
 # ── Per-agent state ──────────────────────────────────────────────────────
@@ -180,12 +199,19 @@ class StreamRenderer:
         self._badge_line_offset: int = 0  # Lines below badge for cursor-up
         self._header_printed: bool = False
         self._mission_start: float = 0.0
-        self._tick: float = 0.0
         self._running: bool = False
         self._ready: bool = False
 
         # ── Summary data ──
         self._summary_data: dict[str, Any] = {}
+
+        # ── Paced-reveal state ──
+        self._batching: bool = False
+        self._pending_actions: list[Callable[[], None]] = []
+
+        # ── Consumer identity: unique per instance so concurrent renderers
+        # never share a consumer name (which splits deliveries in the group).
+        self._consumer_id = f"{os.getpid()}-{secrets.token_hex(4)}"
 
     # ── Setup ────────────────────────────────────────────────────────────
 
@@ -217,7 +243,19 @@ class StreamRenderer:
     # ── Output primitives ────────────────────────────────────────────────
 
     def _emit_permanent(self, text: str | Text) -> None:
-        """Print a line that will never be rewritten. Scrolls down."""
+        """Print a line that will never be rewritten. Scrolls down.
+
+        While ``_batching`` is active (inside a ``_poll_events`` tick on a
+        TTY), the line is queued and revealed by ``_reveal_paced`` instead of
+        printing immediately. Non-TTY output always prints immediately.
+        """
+        if self._batching and sys.stdout.isatty():
+            self._pending_actions.append(lambda: self._flush_permanent(text))
+            return
+        self._flush_permanent(text)
+
+    def _flush_permanent(self, text: str | Text) -> None:
+        """Immediately write a permanent line (batched or not)."""
         if isinstance(text, Text):
             ansi = text_to_ansi(text, width=self._width)
         else:
@@ -229,12 +267,26 @@ class StreamRenderer:
 
     def _emit_permanent_rich(self, text: Text) -> None:
         """Print a Rich Text permanently using the console."""
+        if self._batching and sys.stdout.isatty():
+            self._pending_actions.append(lambda: self._flush_permanent_rich(text))
+            return
+        self._flush_permanent_rich(text)
+
+    def _flush_permanent_rich(self, text: Text) -> None:
+        """Immediately write a Rich Text line (batched or not)."""
         self._console.print(text, highlight=False)
         # Count how many terminal lines the text occupied
         plain = text.plain
         lines = plain.count("\n") + 1
         self._lines_since_header += lines
         self._badge_line_offset += lines
+
+    def _flush_pending_now(self) -> None:
+        """Synchronously print all queued lines now, preserving order."""
+        actions = self._pending_actions
+        self._pending_actions = []
+        for act in actions:
+            act()
 
     def _rewrite_badge(self, text: str | Text) -> None:
         """Rewrite the active agent's badge line in-place."""
@@ -290,7 +342,7 @@ class StreamRenderer:
             status="active",
             summary=agent.summary or "Starting…",
             elapsed=0.0,
-            tick=self._tick,
+            tick=time.monotonic(),
         )
         ansi = text_to_ansi(badge, width=self._width)
         sys.stdout.write(f"\r\033[K{ansi}\n")
@@ -391,6 +443,13 @@ class StreamRenderer:
 
         agent = self._agents[agent_name]
 
+        # Display-only noise filter (see NOISE_SUBACTION_PREFIXES): vacuous
+        # "doing…" / phase-complete lines are suppressed from the subaction
+        # line, the transition reason, and the badge summary. The event still
+        # drives agent lifecycle state (Rule 1 — real signal preserved).
+        if summary.startswith(NOISE_SUBACTION_PREFIXES):
+            summary = ""
+
         if isinstance(detail, str):
             try:
                 detail = json.loads(detail)
@@ -406,21 +465,31 @@ class StreamRenderer:
         if state in ("thinking", "planning", "acting", "verifying"):
             # ── Agent becoming active ──
             if agent.status == "pending":
-                # Transition from previous agent
-                if self._last_completed_agent and self._last_completed_agent != agent_name:
-                    reason = summary or ""
-                    self._emit_transition(self._last_completed_agent, agent_name, reason)
-                elif self._active_agent and self._active_agent != agent_name:
-                    # Previous agent didn't formally complete — finalize it
-                    prev = self._agents[self._active_agent]
-                    if prev.status == "active":
-                        prev.status = "done"
-                        prev.summary = prev.summary or "Complete"
-                        self._agent_states[self._active_agent] = "complete"
-                        self._finalize_agent(self._active_agent)
-                    self._emit_transition(self._active_agent, agent_name, summary or "")
+                # Flush any queued tail lines (previous agent's finalize
+                # details) so they print above the transition banner.
+                self._flush_pending_now()
 
-                self._start_agent(agent_name)
+                # Print the finalize/banner/badge sequence synchronously (no
+                # pacing) so display order always matches stream order. The
+                # active agent is the authoritative transition source —
+                # _last_completed_agent may be stale if a done event was lost.
+                self._batching = False
+                try:
+                    if self._active_agent and self._active_agent != agent_name:
+                        # Previous agent didn't formally complete — finalize it
+                        prev = self._agents[self._active_agent]
+                        if prev.status == "active":
+                            prev.status = "done"
+                            prev.summary = prev.summary or "Complete"
+                            self._agent_states[self._active_agent] = "complete"
+                            self._finalize_agent(self._active_agent)
+                        self._emit_transition(self._active_agent, agent_name, summary or "")
+                    elif self._last_completed_agent and self._last_completed_agent != agent_name:
+                        self._emit_transition(self._last_completed_agent, agent_name, summary or "")
+
+                    self._start_agent(agent_name)
+                finally:
+                    self._batching = True
 
             # ── Emit subaction for ACTIVITY mode agents ──
             mode = AGENT_STREAM_MODES.get(agent_name, AgentStreamMode.ACTIVITY)
@@ -439,7 +508,7 @@ class StreamRenderer:
                 status="active",
                 summary=agent.summary,
                 elapsed=agent.elapsed,
-                tick=self._tick,
+                tick=time.monotonic(),
             )
             self._rewrite_badge(badge)
 
@@ -529,16 +598,9 @@ class StreamRenderer:
             return
 
         # For ACTIVITY mode agents, print the subaction as a permanent line
-        if detail_text:
-            # Filter out overly verbose internal steps to match clean v1 flow
-            noise = (
-                "Starting analysis...",
-                "Profiling dataset...",
-                "Analysing dataset characteristics...",
-            )
-            if not detail_text.startswith(noise):
-                agent.subactions.append((detail_text, sub_state))
-                self._emit_permanent(render_subaction(detail_text, state=sub_state))
+        if detail_text and not detail_text.startswith(NOISE_SUBACTION_PREFIXES):
+            agent.subactions.append((detail_text, sub_state))
+            self._emit_permanent(render_subaction(detail_text, state=sub_state))
 
         # For Dissect cascade tracking
         if agent_name == "Dissect" and "cascade_level" in msg:
@@ -812,67 +874,129 @@ class StreamRenderer:
         """Poll all three Redis streams for new events. Returns True if any found."""
         changed = False
 
-        # ── agent_events ──
+        # Batch permanent lines emitted this tick so same-tick bursts are
+        # revealed by _reveal_paced instead of printing in one instant.
+        self._batching = True
         try:
-            results = await self._redis.xreadgroup(
-                groupname=GROUP_COCKPIT,
-                consumername="stream-1",
-                streams={STREAM_AGENT_EVENTS: ">"},
-                count=20,
-                block=20,
-            )
-            if results:
-                for _, messages in results:
-                    for msg_id, raw in messages:
-                        msg = self._decode(raw)
-                        self._handle_agent_event(msg)
-                        await self._redis.xack(STREAM_AGENT_EVENTS, GROUP_COCKPIT, msg_id)
-                        changed = True
-        except Exception:
-            pass
+            # ── agent_events ──
+            try:
+                results = await self._redis.xreadgroup(
+                    groupname=GROUP_COCKPIT,
+                    consumername=f"stream-1-{self._consumer_id}",
+                    streams={STREAM_AGENT_EVENTS: ">"},
+                    count=50,
+                    block=20,
+                )
+                if results:
+                    for _, messages in results:
+                        for msg_id, raw in messages:
+                            try:
+                                msg = self._decode(raw)
+                                self._handle_agent_event(msg)
+                                await self._redis.xack(STREAM_AGENT_EVENTS, GROUP_COCKPIT, msg_id)
+                                changed = True
+                            except Exception:
+                                # One bad message must not drop the rest of the
+                                # batch. Leave it unacked (stays in the PEL for
+                                # diagnosis) and continue.
+                                logger.exception(
+                                    "[renderer] Failed handling agent_events %s; left unacked",
+                                    msg_id,
+                                )
+            except Exception:
+                pass
 
-        # ── agent_thinking (Dissect tokens) ──
-        try:
-            td_results = await self._redis.xreadgroup(
-                groupname=GROUP_COCKPIT,
-                consumername="stream-td",
-                streams={STREAM_AGENT_THINKING: ">"},
-                count=50,
-                block=20,
-            )
-            if td_results:
-                for _, messages in td_results:
-                    for msg_id, raw in messages:
-                        msg = self._decode(raw)
-                        if "text" in msg and "token" not in msg:
-                            msg["token"] = msg.pop("text")
-                        self._handle_thinking_delta(msg)
-                        await self._redis.xack(STREAM_AGENT_THINKING, GROUP_COCKPIT, msg_id)
-                        changed = True
-        except Exception:
-            pass
+            # ── agent_thinking (Dissect tokens) ──
+            try:
+                td_results = await self._redis.xreadgroup(
+                    groupname=GROUP_COCKPIT,
+                    consumername=f"stream-td-{self._consumer_id}",
+                    streams={STREAM_AGENT_THINKING: ">"},
+                    count=50,
+                    block=20,
+                )
+                if td_results:
+                    for _, messages in td_results:
+                        for msg_id, raw in messages:
+                            try:
+                                msg = self._decode(raw)
+                                if "text" in msg and "token" not in msg:
+                                    msg["token"] = msg.pop("text")
+                                self._handle_thinking_delta(msg)
+                                await self._redis.xack(STREAM_AGENT_THINKING, GROUP_COCKPIT, msg_id)
+                                changed = True
+                            except Exception:
+                                logger.exception(
+                                    "[renderer] Failed handling agent_thinking %s; left unacked",
+                                    msg_id,
+                                )
+            except Exception:
+                pass
 
-        # ── subaction_progress ──
-        try:
-            sa_results = await self._redis.xreadgroup(
-                groupname=GROUP_COCKPIT,
-                consumername="stream-sa",
-                streams={STREAM_SUBACTION: ">"},
-                count=20,
-                block=20,
-            )
-            if sa_results:
-                for _, messages in sa_results:
-                    for msg_id, raw in messages:
-                        msg = self._decode(raw)
-                        self._handle_subaction(msg, str(msg_id))
-                        await self._redis.xack(STREAM_SUBACTION, GROUP_COCKPIT, msg_id)
-                        changed = True
-        except Exception:
-            pass
+            # ── subaction_progress ──
+            try:
+                sa_results = await self._redis.xreadgroup(
+                    groupname=GROUP_COCKPIT,
+                    consumername=f"stream-sa-{self._consumer_id}",
+                    streams={STREAM_SUBACTION: ">"},
+                    count=50,
+                    block=20,
+                )
+                if sa_results:
+                    for _, messages in sa_results:
+                        for msg_id, raw in messages:
+                            try:
+                                msg = self._decode(raw)
+                                self._handle_subaction(msg, str(msg_id))
+                                await self._redis.xack(STREAM_SUBACTION, GROUP_COCKPIT, msg_id)
+                                changed = True
+                            except Exception:
+                                logger.exception(
+                                    "[renderer] Failed handling subaction_progress %s; "
+                                    "left unacked",
+                                    msg_id,
+                                )
+            except Exception:
+                pass
+        finally:
+            self._batching = False
+            await self._reveal_paced()
 
-        self._tick += 0.05
         return changed
+
+    async def _reveal_paced(self) -> None:
+        """Reveal batched permanent lines with a small stagger.
+
+        Display-only pacing of real events: the first line prints immediately,
+        then up to ``_STAGGER_MAX_QUEUE`` lines total are revealed at
+        ``_REVEAL_DELAY`` intervals. Any overflow is flushed immediately so a
+        large burst never causes a multi-second reveal. Non-TTY output prints
+        everything at once (no artificial delay when piped).
+        """
+        actions = self._pending_actions
+        self._pending_actions = []
+        if not actions:
+            return
+        if not sys.stdout.isatty() or len(actions) <= 1:
+            for act in actions:
+                act()
+            return
+        index = 1
+        try:
+            actions[0]()
+            for act in actions[1:_STAGGER_MAX_QUEUE]:
+                await asyncio.sleep(_REVEAL_DELAY)
+                act()
+                index += 1
+            for act in actions[_STAGGER_MAX_QUEUE:]:
+                act()
+        except BaseException:
+            # Never drop pending lines — flush whatever hasn't run yet, then
+            # let the original error (incl. CancelledError/KeyboardInterrupt)
+            # propagate so the caller's own handling still applies.
+            for act in actions[index:]:
+                act()
+            raise
 
     @staticmethod
     def _decode(raw_fields: dict) -> dict[str, Any]:
@@ -910,15 +1034,16 @@ class StreamRenderer:
                 await self._poll_events()
                 now = time.monotonic()
 
-                # Update active badge every ~200ms (spinner animation)
-                if self._active_agent and now - last_badge_update >= 0.2:
+                # Update active badge every ~100ms (spinner animation at the
+                # spinner's native 100ms frame interval)
+                if self._active_agent and now - last_badge_update >= 0.1:
                     agent = self._agents[self._active_agent]
                     badge = render_badge(
                         name=self._active_agent,
                         status="active",
                         summary=agent.summary,
                         elapsed=agent.elapsed,
-                        tick=self._tick,
+                        tick=now,
                     )
                     self._rewrite_badge(badge)
                     last_badge_update = now

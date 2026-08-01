@@ -151,6 +151,15 @@ class DockerManager:
             script_name = os.path.basename(script_path)
             run_cmd = [f"/app/scripts/{script_name}"]
 
+        # Remove any stale container holding this name before launching, so
+        # a previous crashed run can't cause a 409 Conflict on startup.
+        try:
+            stale = client.containers.get(container_name)
+            stale.remove(force=True)
+            logger.info(f"[job={job_id}] Removed stale container {container_name} before launch")
+        except Exception:
+            pass
+
         container = client.containers.run(
             image=image,
             command=run_cmd,

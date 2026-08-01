@@ -266,8 +266,9 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
                 result.crash_message = crash_raw.get("exception_message", "")[:200]
             return result
 
-        # Read TRAINING_COMPLETE event from stream
-        tc_results = await redis_client.xrange("furnace_output", count=50)
+        # Read TRAINING_COMPLETE event from stream (newest-first so the
+        # latest job's event is always found even with a long history)
+        tc_results = await redis_client.xrevrange("furnace_output", count=50)
         tc_event = None
         for msg_id, fields in reversed(tc_results):
             fj = {}
@@ -299,8 +300,8 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
         arbiter.redis = rc
         await arbiter.on_training_complete(tc_event)
 
-        # Read Arbiter's decision from stream
-        arb_results = await redis_client.xrange("arbiter_output", count=50)
+        # Read Arbiter's decision from stream (newest-first)
+        arb_results = await redis_client.xrevrange("arbiter_output", count=50)
         arb_event = None
         for msg_id, fields in reversed(arb_results):
             fj = {}
@@ -350,7 +351,7 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
                     harbor.on_evaluation_pass(arb_event),
                     timeout=120,
                 )
-                har_results = await redis_client.xrange("harbor_output", count=50)
+                har_results = await redis_client.xrevrange("harbor_output", count=50)
                 for msg_id, fields in reversed(har_results):
                     fj = {}
                     for k, v in fields.items():

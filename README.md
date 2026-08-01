@@ -84,14 +84,18 @@ Invoke-RestMethod -Uri "http://localhost:8081/predict" -Method Post -Body $body 
 prometheus-swarm/
 ├── agents/          # Six AI agents (scout, forge, furnace, dissect, arbiter, harbor)
 ├── bus/             # Redis Streams message bus (publisher, consumer, events)
+├── contracts/       # Pydantic event payloads + mission state machine
+├── orchestrator/    # Event-driven + sequential job orchestration
+├── runtime/         # Retry engine, retry strategies, state tracking
 ├── memory/          # Redis (short-term) + ChromaDB (long-term vector memory)
-├── orchestrator/    # Runtime: job queue, health monitor, patch log writer
+├── prometheus/      # CLI application (click groups + Rich UI + Cockpit TUI)
 ├── training/        # Docker container management, checkpoint manager
 ├── serving/         # ONNX runtime, drift monitor, Dockerfile
-├── scripts/         # Generated training scripts
-├── tests/           # Unit + integration tests
+├── evaluation/      # Benchmark validation, stress injection, reproducibility
+├── scripts/         # Operational scripts + generated training scripts
+├── tests/           # 82 unit/integration/service test files
 ├── frontend/        # Next.js live agent feed UI
-├── research/        # Paper, benchmarks, patch_log dataset
+├── research/        # Paper, benchmarks (10 problems), patch_log dataset
 └── infra/           # Kubernetes, Prometheus, Grafana configs
 ```
 
@@ -99,21 +103,30 @@ prometheus-swarm/
 
 ## Tests
 
+The suite has **82 test files** (verified 2026-08-01): 64 unit tests (fast, no external deps), 12 integration tests (require Redis, some also Docker), 5 service tests, and 1 registry validator test.
+
 ```bash
+# All tests
 pytest tests/ -v
+
+# Fast tests only (no Docker/Redis)
+pytest tests/ -m "not slow" -v
+
+# Integration tests (requires running Docker + Redis)
+pytest tests/integration/test_titanic_e2e.py -v -s
 ```
 
-All 47 tests pass:
-
-| Test Suite | File | Status |
-|-----------|------|--------|
-| Titanic E2E | `tests/integration/test_titanic_e2e.py` | ✅ |
-| 3 Kaggle E2E | `tests/integration/test_three_kaggle_e2e.py` | ✅ |
-| Scout Tools | `tests/unit/test_scout_tools.py` | ✅ |
-| Forge Decision Tree | `tests/unit/test_forge_decision_tree.py` | ✅ |
-| Dissect Taxonomy | `tests/unit/test_dissect_taxonomy.py` | ✅ |
-| Arbiter Metrics | `tests/unit/test_arbiter_metrics.py` | ✅ |
-| Bus Events | `tests/unit/test_bus_events.py` | ✅ |
+| Test Suite | File | Notes |
+|-----------|------|-------|
+| Titanic E2E | `tests/integration/test_titanic_e2e.py` | Requires Redis/Docker |
+| 3 Kaggle E2E | `tests/integration/test_three_kaggle_e2e.py` | Requires Redis/Docker |
+| Scout Tools | `tests/unit/test_scout_tools.py` | Fast |
+| Forge Decision Tree | `tests/unit/test_forge_decision_tree.py` | Fast |
+| Dissect Taxonomy | `tests/unit/test_dissect_taxonomy.py` | Fast |
+| Arbiter Metrics | `tests/unit/test_arbiter_metrics.py` | Fast |
+| Bus Events | `tests/unit/test_bus_events.py` | Fast |
+| Furnace–Dissect Loop | `tests/integration/test_furnace_dissect_loop.py` | Requires Redis/Docker |
+| Harbor Serving | `tests/integration/test_harbor_serving.py` | Requires Redis/Docker |
 
 ---
 
@@ -124,8 +137,11 @@ All 47 tests pass:
 | **0** | Foundation (Redis, Docker, Claude API, ChromaDB) | ✅ Complete |
 | **1** | Scout + Forge + Furnace (Titanic E2E) | ✅ Complete |
 | **2** | Dissect + Arbiter + Harbor (3 Kaggle datasets) | ✅ Complete |
-| **3** | ChromaDB memory + Orchestrator hardening | 🔄 In progress |
-| **4** | Research experiment + Paper | ⏳ Not started |
+| **3** | ChromaDB memory + Orchestrator hardening | ✅ Complete |
+| **3.5** | CLI (13+ command groups), Cockpit TUI, streaming renderer | ✅ Complete |
+| **4** | Research experiments + Paper (benchmark runner, 10 problems, 15 campaigns) | 🔄 In progress |
+
+**Current state (2026-08-01):** the six-agent pipeline, CLI (15 registered commands), Cockpit TUI, and research framework (benchmark/ablation/statistics) are all functional. The CLI now runs on an event-driven orchestrator (`orchestrator/runtime.py`) with a sequential in-process driver (`orchestrator/job_runner.py`) as the alternative. Active work focuses on research publication at MSR 2026 / ASE 2026.
 
 ---
 

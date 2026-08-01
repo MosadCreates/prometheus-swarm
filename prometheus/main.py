@@ -73,23 +73,6 @@ def _global_exception_handler(exc_type, exc_value, exc_tb):
 sys.excepthook = _global_exception_handler
 
 
-def _redirect_cmd(old_path: str, new_usage: str) -> click.Command:
-    """Create a stub command that prints a redirect and exits."""
-
-    @click.command(name=old_path, hidden=True)
-    def _stub() -> None:
-        import click as _click
-
-        _click.echo(
-            f"  `prometheus {old_path}` has been reorganized.\n"
-            f"  Use instead: prometheus {new_usage}",
-            err=True,
-        )
-        raise SystemExit(2)
-
-    return _stub
-
-
 def _register_commands():
     global _COMMANDS_REGISTERED
     if _COMMANDS_REGISTERED:
@@ -109,9 +92,12 @@ def _register_commands():
         provider,
         config,
         plugin,
+        evaluate,
+        memory,
+        planner,
     )
 
-    # ── 8 noun groups ──────────────────────────────────────────────
+    # ── Noun groups ────────────────────────────────────────────────
     cli.add_command(mission)
     cli.add_command(agent)
     cli.add_command(workspace)
@@ -119,6 +105,9 @@ def _register_commands():
     cli.add_command(provider)
     cli.add_command(config)
     cli.add_command(plugin)
+    cli.add_command(evaluate)
+    cli.add_command(memory)
+    cli.add_command(planner)
 
     # ── System-level commands ──────────────────────────────────────
     cli.add_command(init_cmd)
@@ -126,23 +115,6 @@ def _register_commands():
     cli.add_command(version_cmd)
     cli.add_command(help_cmd)
     cli.add_command(daemon_cmd)
-
-    # ── Backward-compat redirect stubs ─────────────────────────────
-    cli.add_command(_redirect_cmd("logs", "mission logs"))
-    cli.add_command(_redirect_cmd("replay", "mission replay"))
-    cli.add_command(_redirect_cmd("report", "mission report"))
-    cli.add_command(_redirect_cmd("solve", "mission new"))
-    cli.add_command(_redirect_cmd("job", "mission"))
-    cli.add_command(_redirect_cmd("swarm", "agent list"))
-    cli.add_command(_redirect_cmd("deploy", "model export"))
-    cli.add_command(_redirect_cmd("explain", "doctor"))
-    cli.add_command(_redirect_cmd("planner", "mission status"))
-    cli.add_command(_redirect_cmd("memory", "agent inspect"))
-    cli.add_command(_redirect_cmd("tool", "config list"))
-    cli.add_command(_redirect_cmd("profile", "config set"))
-    cli.add_command(_redirect_cmd("benchmark", "mission new --auto"))
-    cli.add_command(_redirect_cmd("reproduce", "mission new"))
-    cli.add_command(_redirect_cmd("evaluate", "model show"))
 
 
 @click.group(
@@ -158,12 +130,9 @@ def _register_commands():
         "mdl": "model",
         "plug": "plugin",
         "miss": "mission",
-        # Old noun names that were renamed or absorbed
-        "jb": "job",
-        "sv": "solve",
-        "ex": "explain",
-        "rp": "replay",
-        "rpt": "report",
+        "eval": "evaluate",
+        "mem": "memory",
+        "plan": "planner",
         # Convenience shortcuts
         "new": "mission new",
         "start": "mission new",
