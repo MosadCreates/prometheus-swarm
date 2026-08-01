@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rich.table import Table
 
-from prometheus.registry import Command
+from prometheus.registry import Command, get_categories
 from prometheus.ui.theme import Theme
 
 
@@ -18,20 +18,7 @@ def CategorizedCommandTable(categorized: dict[str, list[Command]]) -> Table:
     table.add_column("Description", style=str(Theme.muted))
 
     first = True
-    for category in [
-        "System",
-        "Config",
-        "Workspace",
-        "Project",
-        "Agents",
-        "Swarm",
-        "Jobs",
-        "Provider",
-        "Memory",
-        "Deploy",
-        "Tools",
-        "Logs",
-    ]:
+    for category in get_categories():
         commands = categorized.get(category)
         if not commands:
             continue

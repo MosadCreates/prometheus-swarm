@@ -1,91 +1,49 @@
 # System Commands
 
-## `benchmark`
-Run performance benchmarks.
-- **Category:** System
-- **Tier:** 3
-- **Implemented:** ✗
-- **Since:** v0.3.0
-- **Experimental:** yes
-
-## `cheatsheet`
-Show a quick-reference cheatsheet.
+## `daemon start`
+Start the orchestrator as a background daemon process
 - **Category:** System
 - **Tier:** 2
 - **Implemented:** ✓
-- **Examples:**
-  - `prometheus prometheus cheatsheet`
-- **Related:** `help`, `commands`, `search`
 
-## `commands`
-List all available commands.
-- **Category:** System
-- **Tier:** 1
-- **Implemented:** ✓
-- **Examples:**
-  - `prometheus prometheus commands`
-- **Related:** `help`, `search`
-
-## `diagnostics`
-Show command diagnostics and telemetry.
+## `daemon status`
+Check if the orchestrator daemon is running and responding
 - **Category:** System
 - **Tier:** 2
 - **Implemented:** ✓
-- **Examples:**
-  - `prometheus prometheus diagnostics`
-- **Related:** `doctor`
+
+## `daemon stop`
+Stop the background orchestrator daemon
+- **Category:** System
+- **Tier:** 2
+- **Implemented:** ✓
 
 ## `docs`
-Generate command reference documentation.
+Generate command reference documentation from the live command tree
 - **Category:** System
-- **Tier:** 2
+- **Tier:** 1
 - **Implemented:** ✓
-- **Examples:**
-  - `prometheus prometheus docs --output docs/commands`
-- **Related:** `help`, `commands`
 
 ## `doctor`
-Check system prerequisites and health.
+Check system health and prerequisites
 - **Category:** System
 - **Tier:** 1
 - **Implemented:** ✓
-- **Examples:**
-  - `prometheus prometheus doctor`
-- **Related:** `config check`
 
 ## `help`
-Show help for any command.
+Show help for a command or list commands by category
 - **Category:** System
 - **Tier:** 1
 - **Implemented:** ✓
-- **Aliases:** `?`
-- **Examples:**
-  - `prometheus prometheus help`
-  - `prometheus prometheus help agent list`
-- **Related:** `commands`, `search`, `cheatsheet`
 
-## `search`
-Search commands by name, description, or keyword.
+## `init`
+Run the guided setup wizard (first-time config)
 - **Category:** System
 - **Tier:** 1
 - **Implemented:** ✓
-- **Examples:**
-  - `prometheus prometheus search deploy`
-- **Related:** `commands`, `help`
-
-## `update`
-Check for and apply updates.
-- **Category:** System
-- **Tier:** 3
-- **Implemented:** ✗
-- **Since:** v0.2.0
 
 ## `version`
-Show the Prometheus version.
+Show the Prometheus version and dependency versions
 - **Category:** System
 - **Tier:** 1
 - **Implemented:** ✓
-- **Aliases:** `--version`
-- **Examples:**
-  - `prometheus prometheus version`
-- **Related:** `doctor`

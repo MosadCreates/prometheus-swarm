@@ -1,21 +1,29 @@
 # Plugin Commands
 
 ## `plugin inspect`
-Inspect a specific plugin.
+Inspect a specific plugin
 - **Category:** Plugin
 - **Tier:** 2
 - **Implemented:** ✓
-- **Aliases:** `plugins inspect`
-- **Examples:**
-  - `prometheus prometheus plugin inspect my-plugin`
-- **Related:** `plugin list`
+- **Aliases:** `plug inspect`, `plugins inspect`
+
+## `plugin install`
+Install a plugin by import path or package name
+- **Category:** Plugin
+- **Tier:** 2
+- **Implemented:** ✓
+- **Aliases:** `plug install`, `plugins install`
 
 ## `plugin list`
-List all registered plugins.
+List all registered plugins
 - **Category:** Plugin
 - **Tier:** 2
 - **Implemented:** ✓
-- **Aliases:** `plugins list`
-- **Examples:**
-  - `prometheus prometheus plugin list`
-- **Related:** `plugin inspect`
+- **Aliases:** `plug list`, `plugins list`
+
+## `plugin remove`
+Remove (unregister) a previously installed plugin
+- **Category:** Plugin
+- **Tier:** 2
+- **Implemented:** ✓
+- **Aliases:** `plug remove`, `plugins remove`

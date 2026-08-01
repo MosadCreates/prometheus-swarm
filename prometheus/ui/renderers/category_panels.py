@@ -5,30 +5,16 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from prometheus.registry import Command
+from prometheus.registry import Command, get_categories
 from prometheus.ui.theme import Theme
 
-
-_CATEGORY_ORDER = [
-    "System",
-    "Config",
-    "Workspace",
-    "Project",
-    "Agents",
-    "Swarm",
-    "Jobs",
-    "Provider",
-    "Memory",
-    "Deploy",
-    "Tools",
-    "Logs",
-]
 
 _CATEGORY_STYLES = {
     "System": str(Theme.heading),
     "Config": str(Theme.heading),
     "Workspace": str(Theme.heading),
     "Project": str(Theme.heading),
+    "Mission": str(Theme.success),
     "Agents": str(Theme.success),
     "Swarm": str(Theme.success),
     "Jobs": str(Theme.warning),
@@ -37,12 +23,17 @@ _CATEGORY_STYLES = {
     "Deploy": str(Theme.warning),
     "Tools": str(Theme.secondary),
     "Logs": str(Theme.secondary),
+    "Model": str(Theme.command),
+    "Plugin": str(Theme.secondary),
+    "Evaluate": str(Theme.warning),
+    "Planner": str(Theme.command),
+    "Profile": str(Theme.heading),
 }
 
 
 def CategoryPanels(categorized: dict[str, list[Command]]) -> Group:
     panels = []
-    for cat in _CATEGORY_ORDER:
+    for cat in get_categories():
         commands = categorized.get(cat)
         if not commands:
             continue

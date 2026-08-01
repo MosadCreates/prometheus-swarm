@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import os
 import shlex
-import sys
 from pathlib import Path
 from typing import Callable
 
 import click
-from rich.text import Text
 
 from prometheus.main import cli, VERSION
 from prometheus.ui.styles import Token
@@ -15,47 +13,39 @@ from prometheus.ui.console import console
 from prometheus.ui.input import read_input
 from prometheus.utils.slugs import workspace_name, count_missions_this_week
 
-_COMMAND_NOUNS = frozenset(
-    {
-        "mission",
-        "agent",
-        "workspace",
-        "model",
-        "provider",
-        "config",
-        "plugin",
-        "help",
-        "init",
-        "doctor",
-        "version",
-        "daemon",
-        # Redirect stubs (valid commands that print a redirect message)
-        "benchmark",
-        "deploy",
-        "evaluate",
-        "explain",
-        "job",
-        "logs",
-        "memory",
-        "planner",
-        "profile",
-        "replay",
-        "report",
-        "reproduce",
-        "solve",
-        "swarm",
-        "tool",
-    }
-)
 
-_MISSION_VERBS = frozenset(
-    {"new", "watch", "list", "status", "resume", "cancel", "report", "replay", "logs"}
-)
-_AGENT_VERBS = frozenset({"list", "inspect", "trace"})
-_MODEL_VERBS = frozenset({"list", "show", "export"})
-_CONFIG_VERBS = frozenset({"get", "set"})
-_PROVIDER_VERBS = frozenset({"list", "add", "current"})
-_PLUGIN_VERBS = frozenset({"install", "remove", "list"})
+def _command_nouns() -> frozenset[str]:
+    """Registered command nouns, derived from the live registry."""
+    from prometheus.registry import get_commands
+
+    nouns: set[str] = set()
+    for cmd in get_commands():
+        if cmd.hidden:
+            continue
+        first = cmd.name.split()[0]
+        nouns.add(first)
+        for alias in cmd.aliases:
+            nouns.add(alias.split()[0])
+    return frozenset(nouns)
+
+
+def _verbs_by_noun() -> dict[str, frozenset[str]]:
+    """Registered subcommand verbs per noun, derived from the live registry."""
+    from prometheus.registry import get_commands
+
+    verbs: dict[str, set[str]] = {}
+    for cmd in get_commands():
+        if cmd.hidden:
+            continue
+        parts = cmd.name.split()
+        if len(parts) == 2:
+            verbs.setdefault(parts[0], set()).add(parts[1])
+        for alias in cmd.aliases:
+            aparts = alias.split()
+            if len(aparts) == 2:
+                verbs.setdefault(aparts[0], set()).add(aparts[1])
+    return {noun: frozenset(v) for noun, v in verbs.items()}
+
 
 _AGENT_NAMES = ["Scout", "Forge", "Furnace", "Dissect", "Arbiter", "Harbor"]
 
@@ -97,6 +87,7 @@ def _make_completer() -> Callable[[str], list[str]]:
 
     def _complete_current_word(line: str) -> list[str]:
         words = line.split()
+        verbs_by_noun = _verbs_by_noun()
         # Determine the prefix (last word or empty if trailing space)
         if not words or line.endswith(" "):
             text = words[-1] if words else ""
@@ -109,7 +100,7 @@ def _make_completer() -> Callable[[str], list[str]]:
         # mission <verb> <tab> — offer mission IDs
         if noun == "mission" and len(words) >= 2:
             verb = words[1].lower()
-            if verb in _MISSION_VERBS:
+            if verb in verbs_by_noun.get("mission", ()):
                 return [mid for mid in _mission_ids_from_outputs() if mid.startswith(text)]
 
         # agent <verb> <tab> — offer agent names
@@ -121,7 +112,7 @@ def _make_completer() -> Callable[[str], list[str]]:
         # model <verb> <tab> — offer mission IDs
         if noun == "model" and len(words) >= 2:
             verb = words[1].lower()
-            if verb in ("show", "export"):
+            if verb in ("show", "export", "inspect"):
                 return [mid for mid in _mission_ids_from_outputs() if mid.startswith(text)]
 
         # workspace use <tab> — offer workspace names
@@ -137,10 +128,9 @@ def _make_completer() -> Callable[[str], list[str]]:
 
 
 def _all_words() -> set[str]:
-    words: set[str] = set(_COMMAND_NOUNS)
-    words.update(_MISSION_VERBS, _AGENT_VERBS, _MODEL_VERBS)
-    words.update(_CONFIG_VERBS, _PROVIDER_VERBS, _PLUGIN_VERBS)
-    words.update({"init", "use", "current", "add", "get", "set", "install", "remove"})
+    words: set[str] = set(_command_nouns())
+    for verbs in _verbs_by_noun().values():
+        words.update(verbs)
     return words
 
 
@@ -219,11 +209,9 @@ def run_repl() -> None:
             "doctor": "doctor",
             "list": "mission list",
             "report": "mission report",
-            "solve": "solve",
-            "explain": "explain",
             "memory": "memory stats",
-            "benchmark": "benchmark summary",
-            "workspace": "workspace status",
+            "status": "mission status",
+            "models": "model list",
         }
         if line.startswith(":") and line[1:] in _HANDLED_SHORTCUTS:
             cmd = _HANDLED_SHORTCUTS[line[1:]]
@@ -272,7 +260,7 @@ def run_repl() -> None:
             continue
 
         first_noun = cmd.lower()
-        if first_noun not in _COMMAND_NOUNS:
+        if first_noun not in _command_nouns():
             echo("  [dim]\u2192 starting a new mission from this description[/dim]")
             desc_text = " ".join(parts)
             try:
@@ -323,7 +311,7 @@ def _repl_help(echo):
     echo()
 
     echo("  [bold]Nouns[/bold]")
-    for noun in sorted(_COMMAND_NOUNS):
+    for noun in sorted(_command_nouns()):
         echo(f"  [{Token.secondary}]{noun:<12}[/]")
     echo()
 

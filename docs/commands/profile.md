@@ -1,61 +1,43 @@
 # Profile Commands
 
 ## `profile current`
-Show the active profile.
+Show the active profile
 - **Category:** Profile
 - **Tier:** 2
 - **Implemented:** ✓
-- **Aliases:** `profiles current`
-- **Examples:**
-  - `prometheus prometheus profile current`
-- **Related:** `profile list`
+- **Aliases:** `prof current`, `profiles current`
 
 ## `profile delete`
-Delete a saved profile.
+Delete a saved profile
 - **Category:** Profile
 - **Tier:** 2
 - **Implemented:** ✓
-- **Aliases:** `profiles delete`
-- **Examples:**
-  - `prometheus prometheus profile delete my-config`
-- **Related:** `profile list`
+- **Aliases:** `prof delete`, `profiles delete`
 
 ## `profile inspect`
-Show a profile's environment variables.
+Show a profile's environment variables
 - **Category:** Profile
 - **Tier:** 2
 - **Implemented:** ✓
-- **Aliases:** `profiles inspect`
-- **Examples:**
-  - `prometheus prometheus profile inspect my-config`
-- **Related:** `profile list`
+- **Aliases:** `prof inspect`, `profiles inspect`
 
 ## `profile list`
-List all saved profiles.
+List all saved profiles
 - **Category:** Profile
 - **Tier:** 2
 - **Implemented:** ✓
-- **Aliases:** `profiles list`
-- **Examples:**
-  - `prometheus prometheus profile list`
-- **Related:** `profile current`, `profile save`, `profile switch`
+- **Aliases:** `prof list`, `profiles list`
 
 ## `profile save`
-Save current environment as a profile.
+Save current environment as a profile
 - **Category:** Profile
 - **Tier:** 2
 - **Implemented:** ✓
-- **Aliases:** `profiles save`
-- **Examples:**
-  - `prometheus prometheus profile save my-config`
-- **Related:** `profile list`, `profile switch`
+- **Aliases:** `prof save`, `profiles save`
 
 ## `profile switch`
-Switch to a saved profile.
+Switch to a saved profile
 - **Category:** Profile
 - **Tier:** 2
 - **Implemented:** ✓
-- **Aliases:** `profiles switch`
-- **Examples:**
-  - `prometheus prometheus profile switch my-config`
-- **Related:** `profile list`, `profile save`
+- **Aliases:** `prof switch`, `profiles switch`

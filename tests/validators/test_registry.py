@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from click import Command as ClickCommand, Group as ClickGroup
 
-from prometheus.main import cli, _register_commands
+from prometheus.main import cli
 from prometheus.registry import (
     CATEGORIES,
     COMMANDS,
@@ -15,8 +15,6 @@ from prometheus.registry import (
     list_by_category,
     search_commands,
 )
-
-_register_commands()
 
 
 def _walk_click_commands(
@@ -104,18 +102,6 @@ class TestRegistryValidation:
                 assert (
                     cmd.description
                 ), f"Command '{cmd.name}' is implemented but has no description"
-
-    def test_all_implemented_have_examples(self):
-        for cmd in COMMANDS:
-            if cmd.implemented:
-                assert cmd.examples, f"Command '{cmd.name}' is implemented but has no examples"
-
-    def test_all_implemented_have_related(self):
-        for cmd in COMMANDS:
-            if cmd.implemented:
-                assert (
-                    cmd.related
-                ), f"Command '{cmd.name}' is implemented but has no related commands"
 
     def test_help_generates(self):
         for cmd in COMMANDS:

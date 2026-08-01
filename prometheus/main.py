@@ -85,6 +85,7 @@ def _register_commands():
         doctor_cmd,
         version_cmd,
         daemon_cmd,
+        docs_cmd,
         workspace,
         agent,
         mission,
@@ -92,6 +93,8 @@ def _register_commands():
         provider,
         config,
         plugin,
+        deploy,
+        profile,
         evaluate,
         memory,
         planner,
@@ -105,6 +108,8 @@ def _register_commands():
     cli.add_command(provider)
     cli.add_command(config)
     cli.add_command(plugin)
+    cli.add_command(deploy)
+    cli.add_command(profile)
     cli.add_command(evaluate)
     cli.add_command(memory)
     cli.add_command(planner)
@@ -115,6 +120,7 @@ def _register_commands():
     cli.add_command(version_cmd)
     cli.add_command(help_cmd)
     cli.add_command(daemon_cmd)
+    cli.add_command(docs_cmd)
 
 
 @click.group(
@@ -133,9 +139,8 @@ def _register_commands():
         "eval": "evaluate",
         "mem": "memory",
         "plan": "planner",
-        # Convenience shortcuts
-        "new": "mission new",
-        "start": "mission new",
+        "dep": "deploy",
+        "prof": "profile",
     },
     context_settings=dict(help_option_names=[]),
 )

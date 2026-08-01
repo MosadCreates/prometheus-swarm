@@ -1,38 +1,29 @@
 # Deploy Commands
 
 ## `deploy list`
-List deployed endpoints.
+List all deployed serving containers
 - **Category:** Deploy
-- **Tier:** 1
+- **Tier:** 2
 - **Implemented:** ✓
-- **Aliases:** `deploy ls`
-- **Examples:**
-  - `prometheus prometheus deploy list`
-- **Related:** `deploy test`, `deploy logs`
+- **Aliases:** `dep list`, `deploy ls`
 
 ## `deploy logs`
-Show deploy container logs.
+Show logs for a deployed serving container
 - **Category:** Deploy
-- **Tier:** 1
+- **Tier:** 2
 - **Implemented:** ✓
-- **Examples:**
-  - `prometheus prometheus deploy logs <container>`
-- **Related:** `deploy list`
+- **Aliases:** `dep logs`
 
 ## `deploy stop`
-Stop a deployed endpoint.
+Stop and remove a deployed serving container
 - **Category:** Deploy
-- **Tier:** 1
+- **Tier:** 2
 - **Implemented:** ✓
-- **Examples:**
-  - `prometheus prometheus deploy stop <container>`
-- **Related:** `deploy list`
+- **Aliases:** `dep stop`
 
 ## `deploy test`
-Test a deployed endpoint.
+Send test predictions to a deployed endpoint
 - **Category:** Deploy
-- **Tier:** 1
+- **Tier:** 2
 - **Implemented:** ✓
-- **Examples:**
-  - `prometheus prometheus deploy test http://localhost:8080 -i test.json`
-- **Related:** `deploy list`
+- **Aliases:** `dep test`
