@@ -209,11 +209,22 @@ def _validate_sandbox_env(job_id: str) -> None:
         raise RuntimeError(f"Scripts directory not found: {scripts_parent}")
 
 
-async def run_sandbox_test(script_path: str, job_id: str, max_epochs: int = 3) -> tuple[bool, str]:
-    """Run patched script in a Docker sandbox for up to max_epochs to verify it works.
+async def run_sandbox_test(
+    script_path: str, job_id: str, max_epochs: int = 3, timeout_s: int = 60
+) -> tuple[bool, str]:
+    """Run patched script in a Docker sandbox to verify it works.
 
     Uses the same training base image and volume layout as the real Furnace training
     container, ensuring the patch is tested in an environment identical to production.
+
+    Pass/fail policy:
+      - exit 0  -> PASS (script ran the pipeline cleanly to completion)
+      - exit != 0 -> FAIL
+      - timeout -> PASS only if the script demonstrably produced training
+        progress (structured JSON progress lines, [N]-prefixed eval-iteration
+        lines, or an epoch/metric marker) before the deadline — proof it ran
+        past the point that previously crashed. A timeout with NO output is a
+        suspected hang (e.g. an infinite-loop patch) and FAILS.
 
     Returns:
         (passed, output)
@@ -259,16 +270,53 @@ async def run_sandbox_test(script_path: str, job_id: str, max_epochs: int = 3) -
     except DockerException as e:
         return False, f"Failed to launch sandbox container: {e}"
 
+    def _shows_training_progress(text: str) -> bool:
+        """True if sandbox output proves the script entered the training loop."""
+        import re as _re
+
+        if "TRAINING_COMPLETE" in text:
+            return True
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("{") and '"progress"' in stripped:
+                return True
+            # LightGBM/XGBoost eval-iteration: "[10] valid's auc: 0.81" / "[3]-...:0.7"
+            if _re.match(r"\[\s*\d+\s*\]", stripped):
+                return True
+        return False
+
     try:
         try:
             result = await loop.run_in_executor(
                 None,
-                lambda: container.wait(timeout=60),
+                lambda: container.wait(timeout=timeout_s),
             )
             exit_code = result.get("StatusCode", -1)
         except Exception:
+            # Timed out. Harvest whatever it printed, then kill.
+            partial = ""
+            try:
+                partial = await loop.run_in_executor(
+                    None,
+                    lambda: container.logs(stdout=True, stderr=True).decode(
+                        "utf-8", errors="replace"
+                    ),
+                )
+            except Exception:
+                pass
             await loop.run_in_executor(None, lambda: container.kill())
-            return True, "Timed out after 60s (OK - training past max_epochs)"
+            if _shows_training_progress(partial):
+                return (
+                    True,
+                    partial + f"\n[sandbox] Timed out after {timeout_s}s "
+                    "AFTER training progress was observed — treating as PASS "
+                    "(patch cleared the original crash point)",
+                )
+            return (
+                False,
+                partial + f"\n[sandbox] Timed out after {timeout_s}s with no training progress "
+                "— suspected hang (e.g. infinite loop); patch REJECTED",
+            )
 
         logs = await loop.run_in_executor(
             None,

@@ -98,6 +98,25 @@ def _contract_n_features():
     return c.get("n_features", 0) if c else 0
 
 
+def _classifier_confidences(proba):
+    """Per-row confidence = max predicted probability.
+
+    Accepts either a 2D array / list-of-lists of class probabilities, or a list
+    of ``{{label: prob}}`` dicts (ONNX classifier output). Returns ``[]`` on failure
+    so callers can omit the field rather than crash.
+    """
+    try:
+        if isinstance(proba, list) and len(proba) > 0 and isinstance(proba[0], dict):
+            return [float(max(row.values())) for row in proba]
+        arr = np.asarray(proba, dtype=float)
+        if arr.ndim == 1:
+            return np.maximum(arr, 1.0 - arr).tolist()
+        return arr.max(axis=1).tolist()
+    except Exception as e:
+        logger.warning(f"Confidence computation failed: {{e}}")
+        return []
+
+
 def _apply_preprocessing(df):
     contract = _load_contract()
     if not contract:
@@ -170,6 +189,19 @@ def load_model():
                 )
             logger.info(f"ONNX model verified against contract n_features={{contract_n_features}}")
         logger.info("ONNX model loaded")
+    elif _model_format in ("torchscript", "torch"):
+        import torch
+        if _model_format == "torchscript":
+            _model = torch.jit.load(_model_path, map_location="cpu")
+        else:
+            raw = torch.load(_model_path, map_location="cpu")
+            if isinstance(raw, dict) and "model" in raw:
+                _model = raw["model"]
+            else:
+                _model = raw
+        if hasattr(_model, "eval"):
+            _model.eval()
+        logger.info("Torch model loaded")
     elif _model_format == "pickle":
         import joblib
         raw = joblib.load(_model_path)
@@ -315,18 +347,43 @@ async def predict(request: Request):
             if len(outputs) > 1:
                 try:
                     proba_output = outputs[1]
+                    proba_value = None
                     if isinstance(proba_output, list) and len(proba_output) > 0 and isinstance(proba_output[0], dict):
                         result["class_probabilities"] = proba_output
                         if len(proba_output[0]) == 2:
                             pos_class = max(proba_output[0].keys())
                             result["probability"] = [row[pos_class] for row in proba_output]
+                        proba_value = proba_output
                     else:
                         proba_arr = np.array(proba_output)
                         if proba_arr.ndim == 2 and proba_arr.shape[1] == 2:
                             result["probability"] = proba_arr[:, 1].tolist()
                         result["class_probabilities"] = proba_arr.tolist()
+                        proba_value = proba_arr
+                    confidences = _classifier_confidences(proba_value)
+                    if confidences:
+                        result["confidence"] = confidences
                 except Exception as proba_err:
                     logger.warning(f"Could not extract probabilities from ONNX output: {{proba_err}}")
+
+        elif _model_format in ("torchscript", "torch"):
+            import torch
+            input_array = _apply_preprocessing(df).astype(np.float32)
+            with torch.no_grad():
+                out = _model(torch.from_numpy(input_array))
+            proba = out.detach().cpu().numpy() if hasattr(out, "detach") else np.asarray(out)
+            pred_list = proba.tolist() if hasattr(proba, "tolist") else list(proba)
+            result = {{"predictions": pred_list}}
+
+            if proba.ndim == 2:
+                # Traced artifacts output class probabilities (softmax applied
+                # at export time) — expose confidence without model-specific logic.
+                result["class_probabilities"] = proba.tolist()
+                if proba.shape[1] == 2:
+                    result["probability"] = proba[:, 1].tolist()
+                confidences = _classifier_confidences(proba)
+                if confidences:
+                    result["confidence"] = confidences
 
         else:
             predictions = _model.predict(df).tolist()
@@ -340,6 +397,9 @@ async def predict(request: Request):
                     result["class_probabilities"] = proba.tolist()
                     if hasattr(_model, "classes_"):
                         result["classes"] = _model.classes_.tolist()
+                    confidences = _classifier_confidences(proba)
+                    if confidences:
+                        result["confidence"] = confidences
                 except Exception as proba_err:
                     logger.warning(f"predict_proba failed, returning class labels only: {{proba_err}}")
 

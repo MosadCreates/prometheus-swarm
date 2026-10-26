@@ -47,15 +47,16 @@ async def record_llm_interaction(
     """Record an LLM interaction for research and future template promotion."""
     import hashlib
 
-    fp = error_fingerprint or hashlib.md5(
-        f"{exception_type}::{exception_message[:200]}".encode("utf-8")
-    ).hexdigest()
+    fp = (
+        error_fingerprint
+        or hashlib.md5(f"{exception_type}::{exception_message[:200]}".encode("utf-8")).hexdigest()
+    )
 
     entry = {
         "type": "llm_interaction",
-        "timestamp": __import__("datetime").datetime.now(
-            __import__("datetime").timezone.utc
-        ).isoformat(),
+        "timestamp": __import__("datetime")
+        .datetime.now(__import__("datetime").timezone.utc)
+        .isoformat(),
         "job_id": job_id,
         "category": category,
         "exception_type": exception_type,
@@ -78,8 +79,7 @@ async def record_llm_interaction(
     try:
         await redis_client.rpush(REDIS_QUEUE_KEY, raw)
         logger.debug(
-            f"LLM knowledge recorded: job={job_id} category={category} "
-            f"accepted={accepted}"
+            f"LLM knowledge recorded: job={job_id} category={category} " f"accepted={accepted}"
         )
     except Exception as e:
         logger.warning(f"Failed to record LLM knowledge: {e}")

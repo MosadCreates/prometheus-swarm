@@ -94,7 +94,9 @@ async def record_outcome(
         meta = {
             "type": "outcome",
             "duration_seconds": str(duration_seconds),
-            "deployment_success": str(deployment_success) if deployment_success is not None else "unknown",
+            "deployment_success": (
+                str(deployment_success) if deployment_success is not None else "unknown"
+            ),
         }
         if peak_ram_mb is not None:
             meta["peak_ram_mb"] = str(peak_ram_mb)

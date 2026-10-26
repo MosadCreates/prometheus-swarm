@@ -1,0 +1,151 @@
+{
+  "brief": {
+    "schema_version": "1",
+    "job_id": "skill-install-smoke",
+    "problem_description": "Predict whether a passenger survived the Titanic disaster.",
+    "task_type": "classification",
+    "modality": "tabular",
+    "target_column": "Survived",
+    "evaluation_metric": "auc_roc",
+    "constraints": {
+      "schema_version": "1",
+      "max_latency_ms": 100,
+      "max_model_size_mb": 50,
+      "deployment_threshold": 0.85,
+      "deployment_operator": ">="
+    },
+    "deployment_threshold": 0.85,
+    "deployment_operator": ">=",
+    "dataset": {
+      "schema_version": "1",
+      "file_path": "C:/Users/moham/OneDrive/Desktop/prometheus-swarm/data/titanic.csv",
+      "num_rows": 891,
+      "num_columns": 12,
+      "column_types": {
+        "Survived": "categorical",
+        "Pclass": "categorical",
+        "Sex": "categorical",
+        "Age": "numeric",
+        "SibSp": "numeric",
+        "Parch": "numeric",
+        "Fare": "numeric",
+        "Embarked": "categorical",
+        "Name": "text",
+        "Ticket": "text",
+        "Cabin": "text",
+        "PassengerId": "numeric"
+      },
+      "delimiter": ","
+    },
+    "data_quality": {
+      "schema_version": "1",
+      "class_imbalance_ratio": 1.57,
+      "missing_value_rate": {
+        "Age": 0.199,
+        "Cabin": 0.774,
+        "Embarked": 0.002
+      },
+      "high_cardinality_columns": [
+        "Name",
+        "Ticket",
+        "Cabin"
+      ],
+      "data_warnings": [
+        "Cabin is 77.4% missing",
+        "Age has 19.9% missing values"
+      ]
+    },
+    "imbalance_strategy": "class_weight",
+    "recommended_architecture_family": "lightgbm",
+    "engineering_reasoning": {
+      "feature_engineering_level": "basic",
+      "handle_missing": "impute",
+      "scale_numeric": true
+    }
+  },
+  "spec": {
+    "schema_version": "2.0",
+    "spec_version": "2.0",
+    "job_id": "skill-install-smoke",
+    "objective": {
+      "predict": "Survived",
+      "task": "classification",
+      "metric": "auc_roc"
+    },
+    "dataset_analysis": {
+      "num_rows": 891,
+      "num_columns": 12,
+      "memory_usage_bytes": 1000000,
+      "duplicate_rows": 0
+    },
+    "data_quality": {
+      "missing_rate_overall": 0.086,
+      "imbalance_ratio": 1.57,
+      "cardinality": {
+        "Name": "high"
+      }
+    },
+    "leakage_analysis": {
+      "high_risk_columns": [
+        "PassengerId"
+      ],
+      "notes": "PassengerId is an identifier; exclude from features"
+    },
+    "risks": [
+      {
+        "level": "low",
+        "description": "Small dataset; expect cross-validation variance"
+      }
+    ],
+    "recommended_pipeline": {
+      "architecture": "lightgbm",
+      "preprocessing": [
+        "impute",
+        "label_encode",
+        "scale"
+      ],
+      "num_trials": 30
+    },
+    "candidate_models": {
+      "lightgbm": {
+        "family": "gbdt",
+        "default_metric": "auc_roc"
+      },
+      "xgboost": {
+        "family": "gbdt",
+        "default_metric": "auc_roc"
+      }
+    },
+    "engineering_decisions": {
+      "feature_engineering_level": "basic",
+      "handle_missing": "impute"
+    },
+    "feature_engineering": {
+      "proposed_features": [
+        "family_size"
+      ],
+      "drop": [
+        "PassengerId",
+        "Name",
+        "Ticket",
+        "Cabin"
+      ]
+    },
+    "outlier_strategy": "clip",
+    "confidence": {
+      "overall": 0.82,
+      "task_type": 0.95,
+      "modality": 0.99
+    },
+    "success_criteria": {
+      "metric": "auc_roc",
+      "threshold": 0.85,
+      "operator": ">="
+    }
+  },
+  "paths": {
+    "checkpoint_path": "C:/Users/moham/OneDrive/Desktop/prometheus-swarm/outputs/skill-install-smoke/checkpoints/",
+    "report_dir": "C:/Users/moham/OneDrive/Desktop/prometheus-swarm/outputs/skill-install-smoke/reports/",
+    "output_dir": "C:/Users/moham/OneDrive/Desktop/prometheus-swarm/outputs/skill-install-smoke"
+  }
+}

@@ -3,7 +3,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --retries 5 --timeout 60 \
     fastapi>=0.111.0 \
     uvicorn>=0.30.0 \
     onnxruntime>=1.18.0 \

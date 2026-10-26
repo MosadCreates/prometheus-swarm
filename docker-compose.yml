@@ -24,7 +24,11 @@ services:
     volumes:
       - chroma_data:/chroma/chroma
     environment:
-      - ALLOW_RESET=true
+      # SECURITY: memory collections (patch/architecture/experience) are the
+      # research corpus — never allow HTTP /reset. No production code calls
+      # reset; development resets must be a deliberate local override:
+      #   docker compose up -d --scale chromadb=0 && ALLOW_RESET=true docker compose up chromadb
+      - ALLOW_RESET=false
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
       interval: 5s

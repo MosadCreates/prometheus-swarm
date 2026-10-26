@@ -25,9 +25,11 @@ from transformers import DistilBertTokenizer, DistilBertForSequenceClassificatio
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import LabelEncoder
+
 warnings.filterwarnings("ignore")
 
 import random
+
 random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
@@ -49,22 +51,31 @@ num_labels = len(le.classes_)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
-model = DistilBertForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=num_labels)
+model = DistilBertForSequenceClassification.from_pretrained(
+    "distilbert-base-uncased", num_labels=num_labels
+)
 model.to(device)
 
 
 class TextDataset(Dataset):
     def __init__(self, texts, labels):
-        self.encodings = tokenizer(texts, truncation=True, padding=True, max_length=128, return_tensors="pt")
+        self.encodings = tokenizer(
+            texts, truncation=True, padding=True, max_length=128, return_tensors="pt"
+        )
         self.labels = torch.tensor(labels)
-    def __len__(self): return len(self.labels)
+
+    def __len__(self):
+        return len(self.labels)
+
     def __getitem__(self, idx):
         item = {k: v[idx] for k, v in self.encodings.items()}
         item["labels"] = self.labels[idx]
         return item
 
 
-train_texts, val_texts, train_labels, val_labels = train_test_split(texts, labels, test_size=0.2, random_state=42)
+train_texts, val_texts, train_labels, val_labels = train_test_split(
+    texts, labels, test_size=0.2, random_state=42
+)
 train_dataset = TextDataset(train_texts, train_labels)
 val_dataset = TextDataset(val_texts, val_labels)
 train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)

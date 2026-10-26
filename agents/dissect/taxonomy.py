@@ -375,20 +375,45 @@ TAXONOMY: list[TaxonomyEntry] = [
 ]
 
 
+def _candidate_types(exception_type: str, exception_message: str) -> list[str]:
+    """Types to try when regex-matching.
+
+    Furnace wraps container failures as ``RuntimeError: Container exit code N |
+    KeyError: "['Age_log'] not in index"`` — the original exception type only
+    survives inside the message. Without this, taxonomy entries gated on the
+    inner type (missing_column→KeyError) never regex-match and the crash falls
+    through to LLM classification.
+    """
+    types = [exception_type]
+    m = re.findall(r"\b([A-Z]\w*(?:Error|Exception))\b", exception_message)
+    for t in m:
+        if t not in types:
+            types.append(t)
+    return types
+
+
+def _regex_classify(exception_type: str, exception_message: str) -> tuple[str, float, str] | None:
+    for etype in _candidate_types(exception_type, exception_message):
+        for entry in TAXONOMY:
+            if entry.category == "novel_error":
+                continue
+            if etype not in entry.exception_types:
+                continue
+            for pattern in entry.message_patterns:
+                if re.search(pattern, exception_message, re.IGNORECASE):
+                    return entry.category, entry.confidence, "regex"
+    return None
+
+
 def classify_error(exception_type: str, exception_message: str) -> tuple[str, float, str]:
     """Classify an error into a taxonomy category.
 
     Returns:
         (category, confidence, match_method) where match_method is "regex" or "llm_classification"
     """
-    for entry in TAXONOMY:
-        if entry.category == "novel_error":
-            continue
-        if exception_type not in entry.exception_types:
-            continue
-        for pattern in entry.message_patterns:
-            if re.search(pattern, exception_message, re.IGNORECASE):
-                return entry.category, entry.confidence, "regex"
+    result = _regex_classify(exception_type, exception_message)
+    if result:
+        return result
 
     return "novel_error", 0.5, "llm_classification"
 
@@ -403,15 +428,10 @@ async def classify_error_async(
     Returns:
         (category, confidence, match_method) where match_method is "regex" or "llm"
     """
-    # Try regex first
-    for entry in TAXONOMY:
-        if entry.category == "novel_error":
-            continue
-        if exception_type not in entry.exception_types:
-            continue
-        for pattern in entry.message_patterns:
-            if re.search(pattern, exception_message, re.IGNORECASE):
-                return entry.category, entry.confidence, "regex"
+    # Try regex first (includes types quoted inside Furnace's wrapper message)
+    result = _regex_classify(exception_type, exception_message)
+    if result:
+        return result
 
     # Fall back to LLM classification
     try:

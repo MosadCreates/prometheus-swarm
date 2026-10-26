@@ -22,6 +22,7 @@ def save_evaluation_report(
     decision: DecisionResult,
     constraints: MissionConstraints,
     output_dir: str | None = None,
+    error_analysis: dict | None = None,
 ) -> str:
     """Save evaluation report to disk.
 
@@ -31,6 +32,7 @@ def save_evaluation_report(
         decision: Decision result with explanation.
         constraints: User-defined mission constraints.
         output_dir: Override output directory. Defaults to outputs/{job_id}.
+        error_analysis: Error-subset analysis dict from ``analyze_checkpoint_errors``.
 
     Returns:
         Path to the saved report file.
@@ -51,6 +53,7 @@ def save_evaluation_report(
         checkpoint_path=evaluation_result.checkpoint_path,
         explanation=decision.explanation,
         all_metrics=evaluation_result.all_metrics,
+        error_analysis=error_analysis or {},
     )
 
     report_dict = report.to_dict()
@@ -193,8 +196,6 @@ def save_evaluation_plots(
     os.makedirs(output_dir, exist_ok=True)
 
     try:
-        import io
-
         import numpy as np
         from matplotlib import pyplot as plt
     except ImportError:
@@ -232,7 +233,7 @@ def save_evaluation_plots(
         # ── ROC curve ───────────────────────────────────────────────────
         if y_prob is not None:
             try:
-                from sklearn.metrics import RocCurveDisplay, roc_curve
+                from sklearn.metrics import roc_curve
 
                 n_classes = len(np.unique(y_true_arr))
                 fig, ax = plt.subplots(figsize=(6, 5))
@@ -271,7 +272,7 @@ def save_evaluation_plots(
         # ── Precision-Recall curve ─────────────────────────────────────
         if y_prob is not None:
             try:
-                from sklearn.metrics import PrecisionRecallDisplay, precision_recall_curve
+                from sklearn.metrics import precision_recall_curve
 
                 n_classes = len(np.unique(y_true_arr))
                 fig, ax = plt.subplots(figsize=(6, 5))

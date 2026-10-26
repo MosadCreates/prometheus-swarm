@@ -16,7 +16,7 @@ from typing import Any
 from runtime.paths import get_job_paths
 
 import redis.asyncio as aioredis
-from contracts.state import MissionState, transition_and_save, canonical_phase
+from contracts.state import MissionState
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -135,7 +135,7 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
             json.dump(brief, f, indent=2, ensure_ascii=False, sort_keys=True)
 
         logger.info(
-            f"[job={job_id}] Scout done: " f"modality={brief['modality']} task={brief['task_type']}"
+            f"[job={job_id}] Scout done: modality={brief['modality']} task={brief['task_type']}"
         )
 
         # ── Phase 2: Forge ─────────────────────────────────────────────────
@@ -336,7 +336,7 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
             result.intervention_needed = True
 
         logger.info(
-            f"[job={job_id}] Arbiter done: " f"event={event_type} metric={result.metric_value:.4f}"
+            f"[job={job_id}] Arbiter done: event={event_type} metric={result.metric_value:.4f}"
         )
 
         # ── Phase 5: Harbor (only on PASS and if use_harbor=True) ──────────
@@ -364,7 +364,7 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
                         break
                 logger.info(f"[job={job_id}] Harbor done: {result.endpoint_url}")
             except asyncio.TimeoutError:
-                logger.warning(f"[job={job_id}] Harbor timed out — " "job still counted as pass")
+                logger.warning(f"[job={job_id}] Harbor timed out — job still counted as pass")
             except Exception as e:
                 logger.warning(f"[job={job_id}] Harbor error (non-fatal): {e}")
 
@@ -382,10 +382,19 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
                 pass
 
         # ── Read API cost ──────────────────────────────────────────────────
+        # base.py._log_api_cost writes per-call entries to the list key
+        # job:{id}:api_cost and maintains an aggregate hash under
+        # job:{id}:api_cost_summary. Reading the LIST as a JSON object used to
+        # silently return nothing → api_cost_usd was always 0.00.
         try:
-            cost_raw = await rc.get_json(f"job:{job_id}:api_cost")
-            if cost_raw:
-                result.api_cost_usd = float(cost_raw.get("total_cost_usd", 0))
+            summary = await rc.get_json(f"job:{job_id}:api_cost_summary")
+            if summary and "total_cost_usd" in summary:
+                result.api_cost_usd = float(summary.get("total_cost_usd", 0))
+            else:
+                entries = await rc.lrange(f"job:{job_id}:api_cost", 0, -1)
+                result.api_cost_usd = round(
+                    sum(float(json.loads(e).get("cost", 0)) for e in entries if e), 6
+                )
         except Exception:
             pass
 
@@ -409,9 +418,35 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
             except (asyncio.CancelledError, Exception):
                 pass
         try:
-            canonical = canonical_phase(result.status.upper())
-            await transition_and_save(redis_client, job_id, canonical, agent="JobRunner")
+            # run_job executes the pipeline sequentially without recording each
+            # intermediate phase, so a matrix-validated transition from the job's
+            # persisted phase is impossible here (it was previously attempted via
+            # transition_and_save and silently failed — the state stayed
+            # MISSION_CREATED for the whole run). Write the terminal phase
+            # directly instead, and map JobResult statuses explicitly
+            # ("CRASH"/"TIMEOUT" are not in LEGACY_STATUS_MAP).
+            phase_by_status = {
+                "pass": "MISSION_PASSED",
+                "crash": "MISSION_FAILED",
+                "escalate": "MISSION_FAILED",
+                "timeout": "MISSION_FAILED",
+                "error": "MISSION_FAILED",
+            }
+            final_phase = phase_by_status.get(result.status.lower(), "MISSION_FAILED")
+            state = await MissionState.load_from_redis(redis_client, job_id)
+            if state is None:
+                state = MissionState(job_id=job_id, phase=final_phase)
+            else:
+                state.phase = final_phase
+                state.phase_timestamps[final_phase] = state.updated_at
+            if result.error_detail:
+                state.add_timeline("JobRunner", f"Finished {result.status}: {result.error_detail}")
+            else:
+                state.add_timeline(
+                    "JobRunner", f"Job finished: {result.status} ({result.duration_seconds:.0f}s)"
+                )
+            await state.save_to_redis(redis_client)
         except Exception:
-            pass
+            logger.exception(f"[job={job_id}] Failed to persist final job phase")
 
     return result

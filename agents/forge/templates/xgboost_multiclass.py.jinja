@@ -134,6 +134,9 @@ with open(checkpoint_path, "wb") as f:
 print(f"Model saved to {checkpoint_path}")
 np.save(os.path.join(output_dir, "y_test.npy"), y_test)
 np.save(os.path.join(output_dir, "y_pred.npy"), y_pred)
+np.save(os.path.join(output_dir, "X_test.npy"), X_test)
+with open(os.path.join(output_dir, "feature_names.json"), "w") as _ff:
+    json.dump(list(X_test.columns) if hasattr(X_test, 'columns') else [], _ff)
 
 result = {"checkpoint_path": checkpoint_path, "val_score": float(acc), "metric": "accuracy"}
 with open(os.path.join(_outputs_dir, "result.json"), "w") as f:

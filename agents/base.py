@@ -11,6 +11,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from agents.llm_client import get_llm_response, get_llm_response_stream
+from agents.skills.registry import SkillRegistry
 from memory.redis_client import RedisClient
 from shared.metrics import record_agent_llm
 
@@ -36,6 +37,16 @@ class BaseAgent(ABC):
         self.job_id = job_id
         self.redis = RedisClient()
         self.logger = logging.getLogger(self.__class__.__name__)
+        # Skill platform (Phase 1): agent-scoped registry, hot-reloads on
+        # construction — the orchestrator builds agents per job, so a freshly
+        # installed skill is picked up by the next job's agents with no daemon
+        # restart. Bundled skills run in-process, installed skills in a
+        # subprocess worker; failures never raise to the agent (Cross-cutting
+        # contract #4), so the deterministic path stays authoritative until a
+        # skill proves stable. All six agents get this behind one call.
+        self.skills = SkillRegistry.for_agent(self.agent_name)
+        self.skills.redis_client = self._async_redis
+        self.skills.job_id = job_id
 
     @property
     @abstractmethod

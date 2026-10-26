@@ -124,6 +124,95 @@ class OrchestratorRuntime:
         rc._client = self.redis
         return rc
 
+    async def _safe_handle(
+        self,
+        stream: str,
+        msg_id: str,
+        data: dict,
+        handler,
+        source: str,
+    ) -> None:
+        """Run one event handler with per-message error isolation.
+
+        Success: ACK (consumed). Failure: log, dead-letter (escalate the job so
+        the user sees a JOB_FAILED instead of a silent stall), then ACK anyway.
+        ACKing on failure is deliberate: without it the message stays in the
+        group's PEL forever — nothing reclaims it, the stream tail poisons on
+        every restart, and the job hangs silently. The escalation is the
+        compensation for discarding the message.
+        """
+        job_id = data.get("job_id", "?") if isinstance(data, dict) else "?"
+        try:
+            await handler(data)
+        except Exception as e:
+            logger.error(f"[job={job_id}] {source} handler raised: {e}", exc_info=True)
+            try:
+                await self._handle_escalate(job_id, source, f"orchestrator handler error: {e}")
+            except Exception as e2:
+                logger.warning(f"[job={job_id}] dead-letter escalation failed: {e2}")
+        try:
+            await self.redis.xack(stream, GROUP_ORCHESTRATOR, msg_id)
+        except Exception as e:
+            logger.error(f"[job={job_id}] xack failed on {stream}: {e}")
+
+    async def _reclaim_stale_pending(self) -> None:
+        """On startup, dead-letter PEL entries older than 5 minutes.
+
+        These exist when a previous orchestrator process died mid-handler
+        (crash/kill) — no code path will ever ACK them. XAUTOCLAIM them to a
+        dedicated reclaim consumer and escalate each affected job, so a
+        restart clears the backlog instead of accumulating it.
+        """
+        streams = [
+            STREAM_SCOUT_OUTPUT,
+            STREAM_FORGE_OUTPUT,
+            STREAM_FURNACE_OUTPUT,
+            STREAM_FURNACE_CRASH,
+            STREAM_DISSECT_OUTPUT,
+            STREAM_ARBITER_OUTPUT,
+            STREAM_HARBOR_OUTPUT,
+        ]
+        total = 0
+        for stream in streams:
+            try:
+                cursor = "0-0"
+                while True:
+                    next_cursor, msgs, _deleted = await self.redis.xautoclaim(
+                        stream,
+                        GROUP_ORCHESTRATOR,
+                        "orchestrator-reclaimer",
+                        min_idle_time=300_000,
+                        start_id=cursor,
+                        count=10,
+                    )
+                    for msg_id, data in msgs:
+                        job_id = data.get("job_id", "?") if isinstance(data, dict) else "?"
+                        logger.error(
+                            f"[job={job_id}] Stale pending {data.get('event_type', '?')} "
+                            f"on {stream} reclaimed at startup — dead-lettering"
+                        )
+                        try:
+                            await self._handle_escalate(
+                                job_id,
+                                "Orchestrator",
+                                "Recovered abandoned message after orchestrator restart",
+                            )
+                        except Exception as e:
+                            logger.warning(f"[job={job_id}] reclaim escalation failed: {e}")
+                        try:
+                            await self.redis.xack(stream, GROUP_ORCHESTRATOR, msg_id)
+                            total += 1
+                        except Exception:
+                            pass
+                    if not next_cursor or next_cursor == "0-0":
+                        break
+                    cursor = next_cursor
+            except Exception as e:
+                # Old Redis / no group yet — non-fatal
+                logger.debug(f"reclaim skipped on {stream}: {e}")
+        if total:
+            logger.warning(f"Startup reclaim dead-lettered {total} stale pending messages")
+
     async def _ensure_consumer_groups(self) -> None:
         """Create all required consumer groups if they don't exist."""
         streams_groups = {
@@ -175,6 +264,8 @@ class OrchestratorRuntime:
         """Main event loop. Listens on all orchestrator streams in parallel."""
         self._running = True
         logger.info("Orchestrator runtime started")
+        # Clear any messages abandoned by a previous crashed process
+        await self._reclaim_stale_pending()
 
         consumers = [
             self._consume_scout(),
@@ -224,11 +315,12 @@ class OrchestratorRuntime:
                 if results:
                     for _stream, messages in results:
                         for msg_id, data in messages:
-                            await self._on_mission_brief_ready(data)
-                            await self.redis.xack(
+                            await self._safe_handle(
                                 STREAM_SCOUT_OUTPUT,
-                                GROUP_ORCHESTRATOR,
                                 msg_id,
+                                data,
+                                self._on_mission_brief_ready,
+                                "Scout",
                             )
             except Exception as e:
                 logger.error(f"Scout consumer error: {e}")
@@ -247,11 +339,12 @@ class OrchestratorRuntime:
                 if results:
                     for _stream, messages in results:
                         for msg_id, data in messages:
-                            await self._on_training_script_ready(data)
-                            await self.redis.xack(
+                            await self._safe_handle(
                                 STREAM_FORGE_OUTPUT,
-                                GROUP_ORCHESTRATOR,
                                 msg_id,
+                                data,
+                                self._on_training_script_ready,
+                                "Forge",
                             )
             except Exception as e:
                 logger.error(f"Forge consumer error: {e}")
@@ -270,11 +363,12 @@ class OrchestratorRuntime:
                 if results:
                     for _stream, messages in results:
                         for msg_id, data in messages:
-                            await self._on_training_complete(data)
-                            await self.redis.xack(
+                            await self._safe_handle(
                                 STREAM_FURNACE_OUTPUT,
-                                GROUP_ORCHESTRATOR,
                                 msg_id,
+                                data,
+                                self._on_training_complete,
+                                "Furnace",
                             )
             except Exception as e:
                 logger.error(f"Furnace consumer error: {e}")
@@ -296,12 +390,17 @@ class OrchestratorRuntime:
                         for msg_id, data in messages:
                             event_type = data.get("event_type", "")
                             if event_type == CRASH_EVENT:
-                                await self._on_crash_event(data)
-                            await self.redis.xack(
-                                STREAM_FURNACE_CRASH,
-                                GROUP_ORCHESTRATOR,
-                                msg_id,
-                            )
+                                await self._safe_handle(
+                                    STREAM_FURNACE_CRASH,
+                                    msg_id,
+                                    data,
+                                    self._on_crash_event,
+                                    "FurnaceCrash",
+                                )
+                            else:
+                                await self.redis.xack(
+                                    STREAM_FURNACE_CRASH, GROUP_ORCHESTRATOR, msg_id
+                                )
             except Exception as e:
                 logger.error(f"Furnace crash consumer error: {e}")
                 await asyncio.sleep(1)
@@ -319,39 +418,43 @@ class OrchestratorRuntime:
                 if results:
                     for _stream, messages in results:
                         for msg_id, data in messages:
-                            event_type = data.get("event_type", "")
-                            if event_type == RESUME_TRAINING:
-                                job_id = data.get("job_id", "?")
-                                logger.info(
-                                    f"[job={job_id}] Dissect RESUME_TRAINING. Transitioning state back to FURNACE_RUNNING."
-                                )
-                                # Two-step transition: DISSECT_RUNNING → DISSECT_COMPLETED → FURNACE_RUNNING
-                                current = await MissionState.load_from_redis(self.redis, job_id)
-                                if current and current.phase == "DISSECT_RUNNING":
-                                    await transition_and_save(
-                                        self.redis,
-                                        job_id,
-                                        "DISSECT_COMPLETED",
-                                        agent="Dissect",
-                                        message="Dissect patch successful, ready to resume",
-                                    )
-                                await transition_and_save(
-                                    self.redis,
-                                    job_id,
-                                    "FURNACE_RUNNING",
-                                    agent="Furnace",
-                                    message="Resuming training after Dissect patch",
-                                )
-                            elif event_type == ESCALATE:
-                                await self._on_escalate(data)
-                            await self.redis.xack(
+                            await self._safe_handle(
                                 STREAM_DISSECT_OUTPUT,
-                                GROUP_ORCHESTRATOR,
                                 msg_id,
+                                data,
+                                self._on_dissect_event,
+                                "Dissect",
                             )
             except Exception as e:
                 logger.error(f"Dissect consumer error: {e}")
                 await asyncio.sleep(1)
+
+    async def _on_dissect_event(self, data: dict) -> None:
+        event_type = data.get("event_type", "")
+        job_id = data.get("job_id", "?")
+        if event_type == RESUME_TRAINING:
+            logger.info(
+                f"[job={job_id}] Dissect RESUME_TRAINING. Transitioning state back to FURNACE_RUNNING."
+            )
+            # Two-step transition: DISSECT_RUNNING → DISSECT_COMPLETED → FURNACE_RUNNING
+            current = await MissionState.load_from_redis(self.redis, job_id)
+            if current and current.phase == "DISSECT_RUNNING":
+                await transition_and_save(
+                    self.redis,
+                    job_id,
+                    "DISSECT_COMPLETED",
+                    agent="Dissect",
+                    message="Dissect patch successful, ready to resume",
+                )
+            await transition_and_save(
+                self.redis,
+                job_id,
+                "FURNACE_RUNNING",
+                agent="Furnace",
+                message="Resuming training after Dissect patch",
+            )
+        elif event_type == ESCALATE:
+            await self._on_escalate(data)
 
     async def _consume_arbiter(self) -> None:
         while self._running:
@@ -372,12 +475,17 @@ class OrchestratorRuntime:
                                 EVALUATION_RETRY,
                                 ESCALATE,
                             ):
-                                await self._on_arbiter_decision(data)
-                            await self.redis.xack(
-                                STREAM_ARBITER_OUTPUT,
-                                GROUP_ORCHESTRATOR,
-                                msg_id,
-                            )
+                                await self._safe_handle(
+                                    STREAM_ARBITER_OUTPUT,
+                                    msg_id,
+                                    data,
+                                    self._on_arbiter_decision,
+                                    "Arbiter",
+                                )
+                            else:
+                                await self.redis.xack(
+                                    STREAM_ARBITER_OUTPUT, GROUP_ORCHESTRATOR, msg_id
+                                )
             except Exception as e:
                 logger.error(f"Arbiter consumer error: {e}")
                 await asyncio.sleep(1)
@@ -395,25 +503,29 @@ class OrchestratorRuntime:
                 if results:
                     for _stream, messages in results:
                         for msg_id, data in messages:
-                            event_type = data.get("event_type", "")
-                            if event_type == ENDPOINT_LIVE:
-                                await self._on_endpoint_live(data)
-                            elif event_type == DRIFT_ALERT:
-                                await self._on_drift_alert(data)
-                            elif event_type == JOB_FAILED:
-                                await self._handle_escalate(
-                                    data.get("job_id", "?"),
-                                    data.get("source_agent", "Harbor"),
-                                    data.get("reason", "Deployment failed"),
-                                )
-                            await self.redis.xack(
+                            await self._safe_handle(
                                 STREAM_HARBOR_OUTPUT,
-                                GROUP_ORCHESTRATOR,
                                 msg_id,
+                                data,
+                                self._on_harbor_event,
+                                "Harbor",
                             )
             except Exception as e:
                 logger.error(f"Harbor consumer error: {e}")
                 await asyncio.sleep(1)
+
+    async def _on_harbor_event(self, data: dict) -> None:
+        event_type = data.get("event_type", "")
+        if event_type == ENDPOINT_LIVE:
+            await self._on_endpoint_live(data)
+        elif event_type == DRIFT_ALERT:
+            await self._on_drift_alert(data)
+        elif event_type == JOB_FAILED:
+            await self._handle_escalate(
+                data.get("job_id", "?"),
+                data.get("source_agent", "Harbor"),
+                data.get("reason", "Deployment failed"),
+            )
 
     # ------------------------------------------------------------------
     # Event handlers — launch real agents
@@ -615,22 +727,28 @@ class OrchestratorRuntime:
 
     async def _mark_task_completed(
         self, job_id: str, task_id: str, condition: str | None = None
-    ) -> None:
-        """Mark a task as completed in plan state, then dispatch next ready tasks."""
+    ) -> bool:
+        """Mark a task as completed in plan state, then dispatch next ready tasks.
+
+        Returns True if a plan existed and dispatch ran, False otherwise
+        (no plan / unparseable plan) so callers can decide whether a manual
+        fallback launch is needed.
+        """
         state_key = f"job:{job_id}:plan_state"
         raw = await self.redis.get(state_key)
         if not raw:
-            return
+            return False
         try:
             state = json.loads(raw) if isinstance(raw, str) else raw
         except (json.JSONDecodeError, TypeError):
-            return
+            return False
 
         state[task_id] = "completed"
         await self.redis.set(state_key, json.dumps(state))
 
         # Dispatch next tasks from the plan
         await self._dispatch_from_plan(job_id, state, task_id, condition)
+        return True
 
     async def _dispatch_from_plan(
         self, job_id: str, state: dict[str, str], completed_task: str, condition: str | None = None
@@ -968,6 +1086,17 @@ class OrchestratorRuntime:
             logger.warning(f"[job={job_id}] Failed to store architecture outcome: {e}")
 
         if decision == "pass":
+            # Re-entry guard: a duplicate EVALUATION_PASS (e.g. the same job_id
+            # re-ran a condition, or event redelivery) must not re-run Harbor or
+            # raise into dead-lettering. If the job is already deployed/failed,
+            # the pass has been handled.
+            current = await MissionState.load_from_redis(self.redis, job_id)
+            if current and current.phase in ("HARBOR_DEPLOYING", "HARBOR_COMPLETED"):
+                logger.info(
+                    f"[job={job_id}] EVALUATION_PASS re-delivered at "
+                    f"phase={current.phase} — skipping (already handled)."
+                )
+                return
             # Advance via ARBITER_RUNNING → ARBITER_COMPLETED → MISSION_PASSED → HARBOR_DEPLOYING
             try:
                 await transition_and_save(self.redis, job_id, "ARBITER_COMPLETED", agent="Arbiter")
@@ -977,7 +1106,10 @@ class OrchestratorRuntime:
                 await transition_and_save(self.redis, job_id, "MISSION_PASSED", agent="Arbiter")
             except ValueError:
                 pass
-            await transition_and_save(self.redis, job_id, "HARBOR_DEPLOYING", agent="Harbor")
+            try:
+                await transition_and_save(self.redis, job_id, "HARBOR_DEPLOYING", agent="Harbor")
+            except ValueError:
+                pass
             harbor = HarborAgent(job_id=job_id)
             harbor.redis = self._make_redis_client()
             try:
@@ -993,19 +1125,96 @@ class OrchestratorRuntime:
             await self._mark_task_completed(job_id, "arbiter_evaluate", condition="pass")
 
         elif decision == "retry":
-            await transition_and_save(
-                self.redis,
-                job_id,
-                "RETRY_RUNNING",
-                agent="Forge",
-                message="Score within 15% threshold — retrying with new architecture",
-            )
+            # Retry budget check — MissionState.max_retries (default 3) bounds the
+            # RETRY_PENDING→RETRY_RUNNING→Forge loop. Without this bound, a model
+            # stuck within the 15% retry window would loop forever.
+            state = await MissionState.load_from_redis(self.redis, job_id)
+            budget = state.max_retries if state else 3
+            try:
+                used_raw = await self.redis.get(f"job:{job_id}:retry_count")
+                used = int(used_raw) if used_raw else 0
+            except (TypeError, ValueError):
+                used = 0
+            if used >= budget:
+                await self._handle_escalate(
+                    job_id,
+                    "Arbiter",
+                    f"Retry budget exhausted ({used}/{budget}) — best metric still below threshold",
+                )
+                return
+            # Legal path through the state matrix:
+            #   ARBITER_RUNNING → ARBITER_COMPLETED → RETRY_PENDING → RETRY_RUNNING
+            #   → FORGE_RUNNING
+            # (each guarded so re-delivery of this event can never raise ValueError,
+            #  which previously left the message un-ACKed and killed the retry.)
+            for phase, agent, msg in (
+                ("ARBITER_COMPLETED", "Arbiter", "Arbiter requested retry"),
+                ("RETRY_PENDING", "Arbiter", "Arbiter requested retry"),
+                ("RETRY_RUNNING", "Arbiter", "Score within 15% threshold — retry scheduled"),
+                ("FORGE_RUNNING", "Forge", "Retrying with new architecture"),
+            ):
+                try:
+                    await transition_and_save(self.redis, job_id, phase, agent=agent, message=msg)
+                except ValueError:
+                    pass
             # Increment retry counter so Forge can deprioritize previously-tried architectures
             await self.redis.incr(f"job:{job_id}:retry_count")
             logger.info(f"[job={job_id}] Score within 15% — retrying with new architecture")
-            # Use plan-based dispatch: mark arbiter_evaluate completed with "retry" condition
-            # The plan tells us the next task is forge_retry
-            await self._mark_task_completed(job_id, "arbiter_evaluate", condition="retry")
+            # Launch Forge inline (same pattern as the brief-ready path). From
+            # FORGE_RUNNING the existing _on_training_script_ready guard passes,
+            # so Furnace → Arbiter → Harbor resumes without plan dependency.
+            # Build the retry strategy so Forge escalates the architecture /
+            # trials / features / imbalance dimensions instead of regenerating
+            # the identical first script (which would retry-loop pointlessly).
+            retry_ctx = None
+            try:
+                from runtime.retry_strategy import build_next_strategy_from_state
+
+                brief_dict = None
+                spec_dict = None
+                try:
+                    raw_brief = await self.redis.get(f"job:{job_id}:mission_brief")
+                    brief_dict = json.loads(raw_brief) if raw_brief else None
+                    raw_spec = await self.redis.get(f"job:{job_id}:mission_spec")
+                    spec_dict = json.loads(raw_spec) if raw_spec else None
+                except (json.JSONDecodeError, TypeError):
+                    pass
+                from contracts.domain import ScoutIntelligence
+
+                retry_ctx = build_next_strategy_from_state(
+                    attempt=min(used + 1, 4),
+                    current_architecture=(state.architecture if state else None),
+                    previous_imbalance=(state.imbalance_strategy if state else None),
+                    previous_metric_name=(state.metric_name if state else "auc_roc"),
+                    previous_metric_value=(state.metric_value if state else 0.0),
+                    used_architectures=list(state.tried_architectures) if state else None,
+                    max_attempts=budget,
+                    scout_intelligence=ScoutIntelligence.from_mission_data(brief_dict, spec_dict),
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[job={job_id}] Could not build retry strategy ({e}) — "
+                    "Forge will re-run with the original brief"
+                )
+            forge = ForgeAgent(job_id=job_id)
+            forge.redis = self._make_redis_client()
+            try:
+                await forge.run(retry_context=retry_ctx)
+                try:
+                    current = await MissionState.load_from_redis(self.redis, job_id)
+                    if current and current.phase in ("FORGE_RUNNING",):
+                        await transition_and_save(
+                            self.redis,
+                            job_id,
+                            "FORGE_COMPLETED",
+                            agent="Forge",
+                            message="Forge completed (retry)",
+                        )
+                except ValueError:
+                    pass
+            except Exception as e:
+                logger.error(f"[job={job_id}] Retry Forge failed: {e}")
+                await self._handle_escalate(job_id, "Forge", f"Retry execution failed: {e}")
 
         elif decision == "escalate":
             await self._handle_escalate(
@@ -1118,9 +1327,7 @@ class OrchestratorRuntime:
     async def _on_drift_alert(self, data: dict) -> None:
         job_id = data.get("job_id", "?")
         psi = data.get("psi_score", 0.0)
-        logger.warning(
-            f"[job={job_id}] Drift detected: PSI={psi}. " f"Starting new cycle via Scout."
-        )
+        logger.warning(f"[job={job_id}] Drift detected: PSI={psi}. Starting new cycle via Scout.")
         await transition_and_save(
             self.redis, job_id, "SCOUT_RETRAIN", agent="Scout", message=f"Drift detected: PSI={psi}"
         )
@@ -1129,8 +1336,7 @@ class OrchestratorRuntime:
         problem_description = await self.redis.get(f"job:{job_id}:problem_description")
         if not file_path:
             logger.error(
-                f"[job={job_id}] Cannot restart drift cycle: "
-                f"original file_path not found in Redis"
+                f"[job={job_id}] Cannot restart drift cycle: original file_path not found in Redis"
             )
             return
 
@@ -1149,7 +1355,7 @@ class OrchestratorRuntime:
         try:
             await scout.run()
         except Exception as e:
-            logger.error(f"[job={job_id}] Scout failed during " f"drift-triggered retrain: {e}")
+            logger.error(f"[job={job_id}] Scout failed during drift-triggered retrain: {e}")
             await self._handle_escalate(
                 job_id,
                 "Scout",

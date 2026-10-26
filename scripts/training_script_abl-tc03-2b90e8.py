@@ -1,10 +1,10 @@
 {
-  "fixed_script_path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\scripts\\training_script_abl-tc03-2b90e8.py",
-  "patch_id": "patch-abl-tc03-2b90e8-001",
-  "confidence_score": 0.92,
-  "error_category": "novel_error",
-  "repair_summary": "Fixed 5 syntax errors: (1) 'if true:' -> 'if True:' (Python bool literals), (2) 'if not false:' -> 'if not False:', (3) keyword argument in constructor call 'lgb.LGBMClassifier(**best_params, \"class_weight\": \"balanced\")' -> 'lgb.LGBMClassifier(**best_params, class_weight=\"balanced\")', (4) removed unreachable dead-code else branch that caused the positional-after-kwargs SyntaxError.",
-  "fixed_script": "SEE BELOW"
+    "fixed_script_path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\scripts\\training_script_abl-tc03-2b90e8.py",
+    "patch_id": "patch-abl-tc03-2b90e8-001",
+    "confidence_score": 0.92,
+    "error_category": "novel_error",
+    "repair_summary": "Fixed 5 syntax errors: (1) 'if true:' -> 'if True:' (Python bool literals), (2) 'if not false:' -> 'if not False:', (3) keyword argument in constructor call 'lgb.LGBMClassifier(**best_params, \"class_weight\": \"balanced\")' -> 'lgb.LGBMClassifier(**best_params, class_weight=\"balanced\")', (4) removed unreachable dead-code else branch that caused the positional-after-kwargs SyntaxError.",
+    "fixed_script": "SEE BELOW",
 }
 """
 Training script for job abl-tc03-2b90e8
@@ -43,6 +43,7 @@ _search_space_json = os.getenv("SEARCH_SPACE_JSON")
 _use_optuna = bool(_search_space_json)
 if _use_optuna:
     import optuna
+
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")
@@ -63,14 +64,21 @@ X_train, X_test, y_train, y_test = train_test_split(df, target, test_size=0.2, r
 numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolist()
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
-preprocessor = ColumnTransformer([
-    ("num", "passthrough", numeric_cols),
-    ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), categorical_cols),
-])
+preprocessor = ColumnTransformer(
+    [
+        ("num", "passthrough", numeric_cols),
+        (
+            "cat",
+            OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1),
+            categorical_cols,
+        ),
+    ]
+)
 
 if _use_optuna:
     # FIX 1: 'if true:' -> 'if True:' (Python bool literal is capitalised)
     if True:
+
         def _objective(trial):
             params = {}
             for _name, _spec in _search_space.items():
@@ -80,11 +88,15 @@ if _use_optuna:
                     params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
             params["random_state"] = 42
             params["verbosity"] = -1
-            _model = Pipeline([("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))])
+            _model = Pipeline(
+                [("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))]
+            )
             _model.fit(X_train, y_train)
             _y_pred = _model.predict(X_test)
             return accuracy_score(y_test, _y_pred)
+
     else:
+
         def _objective(trial):
             params = {}
             for _name, _spec in _search_space.items():
@@ -94,7 +106,9 @@ if _use_optuna:
                     params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
             params["random_state"] = 42
             params["verbosity"] = -1
-            _model = Pipeline([("preprocessor", preprocessor), ("estimator", lgb.LGBMRegressor(**params))])
+            _model = Pipeline(
+                [("preprocessor", preprocessor), ("estimator", lgb.LGBMRegressor(**params))]
+            )
             _model.fit(X_train, y_train)
             _y_pred = _model.predict(X_test)
             return float(mean_squared_error(y_test, _y_pred))
@@ -119,10 +133,12 @@ if not False:
         estimator = lgb.LGBMClassifier(class_weight="balanced", **best_params)
     else:
         estimator = lgb.LGBMRegressor(**best_params)
-    model = Pipeline([
-        ("preprocessor", preprocessor),
-        ("estimator", estimator),
-    ])
+    model = Pipeline(
+        [
+            ("preprocessor", preprocessor),
+            ("estimator", estimator),
+        ]
+    )
     model.fit(X_train, y_train)
 
     y_pred = model.predict(X_test)

@@ -1,4 +1,5 @@
 """One-time cleanup: remove stale p2-test prevention rules from Redis."""
+
 import os
 import redis as sync_redis
 from dotenv import load_dotenv

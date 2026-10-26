@@ -7,7 +7,6 @@ import os
 import shutil
 import socket
 import subprocess
-from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
@@ -22,14 +21,33 @@ from contracts.domain import PreprocessingContract, PreprocessingStep
 logger = logging.getLogger(__name__)
 
 
-def _detect_model_type(model: Any) -> str:
-    """Detect the model type for ONNX conversion.
+def _is_torch_model(model: Any) -> bool:
+    """Best-effort detection of a PyTorch model (raw nn.Module or TabNet)."""
+    module = getattr(model, "__module__", "").lower()
+    class_name = type(model).__name__
+    if "torch" in module or "pytorch" in module:
+        return True
+    if "TabNet" in class_name or "Module" in class_name:
+        return True
+    try:
+        import torch
 
-    Returns: "lightgbm", "xgboost", "sklearn_pipeline", or "sklearn_model"
+        return isinstance(model, torch.nn.Module)
+    except Exception:
+        return False
+
+
+def _detect_model_type(model: Any) -> str:
+    """Detect the model type for ONNX/TorchScript conversion.
+
+    Returns: "lightgbm", "xgboost", "sklearn_pipeline", "sklearn_model", or
+    "pytorch"
     """
     module = getattr(model, "__module__", "")
     class_name = type(model).__name__
 
+    if _is_torch_model(model):
+        return "pytorch"
     if hasattr(model, "steps") and "Pipeline" in class_name:
         return "sklearn_pipeline"
     if "lightgbm" in module.lower() or "LGBM" in class_name:
@@ -41,7 +59,7 @@ def _detect_model_type(model: Any) -> str:
 
 def _get_n_features(model: Any) -> int:
     """Safely get the number of features from a model."""
-    for attr in ["n_features_in_", "n_features_", "n_features"]:
+    for attr in ["n_features_in_", "n_features_", "n_features", "input_dim", "in_features"]:
         val = getattr(model, attr, None)
         if val is not None:
             return int(val)
@@ -79,8 +97,6 @@ def _extract_estimator_from_pipeline(model: Any) -> tuple[Any, dict]:
 
     if not hasattr(model, "steps"):
         return model, preprocess_config
-
-    from sklearn.preprocessing import FunctionTransformer
 
     estimator = model.steps[-1][1]
 
@@ -285,6 +301,10 @@ def serialize_to_onnx(
 
         detected_type = model_type or _detect_model_type(model)
 
+        if detected_type == "pytorch":
+            torch_path = output_path.replace(".onnx", ".pt")
+            return serialize_pytorch(model, torch_path)
+
         if detected_type == "sklearn_pipeline":
             estimator, preprocess_config = _extract_estimator_from_pipeline(model)
             n_features = _get_n_features(estimator)
@@ -320,6 +340,73 @@ def serialize_to_onnx(
 
     except Exception as e:
         return False, f"ONNX conversion failed: {e}"
+
+
+def serialize_pytorch(model: Any, output_path: str) -> tuple[bool, str]:
+    """Serialize a PyTorch model to a TorchScript artifact, with torch.save fallback.
+
+    The traced module wraps the raw network so its output is always class
+    probabilities for classifiers (softmax applied) or the raw regression value
+    otherwise — a stable contract the serving template can consume without
+    knowing the underlying architecture.
+
+    For pytorch-tabnet models the real ``nn.Module`` is ``model.network``;
+    the wrapper traces that (it handles 2D features + categorical embeddings in
+    a single forward pass) rather than the outer TabNet estimator.
+
+    Returns:
+        (success, message). On success ``message`` is the artifact path; the
+        extension distinguishes the format — ``.pt`` for TorchScript, ``.pth``
+        for the plain ``torch.save`` fallback.
+    """
+    try:
+        import torch
+    except ImportError as e:
+        return False, f"torch is not installed: {e}"
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    # Resolve the underlying nn.Module + task type.
+    net = model
+    task = getattr(model, "task", None)
+    if hasattr(model, "network") and isinstance(model.network, torch.nn.Module):
+        net = model.network
+        if task is None:
+            task = "classification" if "Classifier" in type(model).__name__ else "regression"
+    if task is None:
+        task = "regression"
+
+    class _InferenceWrapper(torch.nn.Module):
+        def __init__(self, inner: torch.nn.Module, classify: bool) -> None:
+            super().__init__()
+            self.inner = inner
+            self.classify = classify
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            out = self.inner(x)
+            if isinstance(out, (tuple, list)):
+                out = out[0]
+            if self.classify:
+                return torch.softmax(out, dim=1)
+            return out
+
+    try:
+        n_features = _get_n_features(model)
+        if n_features < 1:
+            n_features = 1
+        wrapper = _InferenceWrapper(net, classify=(task == "classification"))
+        dummy = torch.zeros(1, n_features, dtype=torch.float32)
+        traced = torch.jit.trace(wrapper, dummy)
+        torch.jit.save(traced, output_path)
+        return True, output_path
+    except Exception as e:
+        # Fallback: plain torch.save (loaded via torch.load at serve time).
+        fallback_path = output_path.replace(".pt", ".pth")
+        try:
+            torch.save(model, fallback_path)
+            return True, fallback_path
+        except Exception as e2:
+            return False, f"TorchScript export failed: {e}; torch.save fallback failed: {e2}"
 
 
 def generate_fastapi_app(
@@ -367,7 +454,6 @@ def generate_fastapi_app(
         contract_filename = "preprocessing_contract.json"
     else:
         # Try to auto-detect contract from model path
-        basename = os.path.basename(model_path)
         alt_variants = [
             model_path.replace(".onnx", "_contract.json"),
             model_path.replace(".pkl", "_contract.json"),
@@ -407,6 +493,8 @@ def generate_fastapi_app(
     ]
     if model_format == "pickle":
         base_reqs.extend(["joblib>=1.3.0", "scikit-learn>=1.4.2", "lightgbm>=4.3.0"])
+    elif model_format in ("torchscript", "torch"):
+        base_reqs.append("torch>=2.0.0")
     else:
         base_reqs.append("onnxruntime>=1.18.0")
     with open(requirements_path, "w", encoding="utf-8") as f:
@@ -434,7 +522,7 @@ async def build_docker_image(image_name: str, app_dir: str) -> tuple[bool, str]:
     dockerfile_content = (
         "FROM python:3.11-slim\n"
         "WORKDIR /app\n" + (apt_cmd + "\n" if apt_cmd else "") + "COPY . .\n"
-        "RUN pip install -r requirements.txt --quiet\n"
+        "RUN pip install --retries 5 --timeout 60 --no-cache-dir -r requirements.txt --quiet\n"
         "EXPOSE 8080\n"
         'CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]\n'
     )
@@ -442,25 +530,207 @@ async def build_docker_image(image_name: str, app_dir: str) -> tuple[bool, str]:
     with open(dockerfile_path, "w", encoding="utf-8") as f:
         f.write(dockerfile_content)
 
+    # Retry the build on transient failures — pip downloads inside the
+    # container can hit PyPI read timeouts on loaded hosts.
+    max_attempts = 3
+    last_error = ""
+    for attempt in range(1, max_attempts + 1):
+        try:
+            result = await asyncio.to_thread(
+                lambda: subprocess.run(
+                    ["docker", "build", "-t", image_name, app_dir],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+            )
+
+            if result.returncode == 0:
+                return True, f"Image built: {image_name}"
+            last_error = f"Docker build failed: {result.stderr}"
+        except subprocess.TimeoutExpired:
+            last_error = "Docker build timed out after 300s"
+        except Exception as e:
+            last_error = f"Docker build error: {e}"
+        if attempt < max_attempts:
+            await asyncio.sleep(2 * attempt)
+
+    return False, f"{last_error} (after {max_attempts} attempts)"
+
+
+async def push_image(
+    image_name: str,
+    registry_url: str,
+    tag: str = "latest",
+) -> tuple[bool, str]:
+    """Tag and push a locally built image to a container registry.
+
+    The image is pushed as ``{registry_url}/{image_name}:{tag}``. Registry
+    authentication is assumed to be configured out-of-band (``docker login`` /
+    gcloud auth, which this function intentionally does not trigger).
+
+    Args:
+        image_name: Local image name (e.g. ``prometheus-serving``).
+        registry_url: Registry host/path (e.g. ``gcr.io/nexora``).
+        tag: Image tag.
+
+    Returns:
+        (ok, message). ``ok`` is False if docker tag/push fails.
+    """
+    if not registry_url:
+        return False, "No registry_url configured. Set REGISTRY_URL in .env."
+
+    remote = f"{registry_url.rstrip('/')}/{image_name}:{tag}"
+
     try:
         result = await asyncio.to_thread(
             lambda: subprocess.run(
-                ["docker", "build", "-t", image_name, app_dir],
+                ["docker", "tag", image_name, remote],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        )
+        if result.returncode != 0:
+            return False, f"Docker tag failed: {result.stderr}"
+    except Exception as e:
+        return False, f"Docker tag error: {e}"
+
+    try:
+        result = await asyncio.to_thread(
+            lambda: subprocess.run(
+                ["docker", "push", remote],
                 capture_output=True,
                 text=True,
                 timeout=300,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         )
-
-        if result.returncode == 0:
-            return True, f"Image built: {image_name}"
-        else:
-            return False, f"Docker build failed: {result.stderr}"
-    except subprocess.TimeoutExpired:
-        return False, "Docker build timed out after 300s"
+        if result.returncode != 0:
+            return False, f"Docker push failed: {result.stderr}"
     except Exception as e:
-        return False, f"Docker build error: {e}"
+        return False, f"Docker push error: {e}"
+
+    return True, f"Image pushed: {remote}"
+
+
+def generate_k8s_manifests(
+    image: str,
+    name: str = "prometheus-serving",
+    namespace: str = "default",
+    replicas: int = 2,
+) -> dict[str, str]:
+    """Generate Kubernetes Deployment + Service YAML manifests.
+
+    Pure string generation (no cluster access) so it is unit-testable and can
+    be written to disk or fed straight to ``kubectl apply -f -``.
+
+    Returns:
+        dict keyed by filename → manifest YAML.
+    """
+    deployment = f"""---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {name}
+  namespace: {namespace}
+  labels:
+    app: {name}
+spec:
+  replicas: {replicas}
+  selector:
+    matchLabels:
+      app: {name}
+  template:
+    metadata:
+      labels:
+        app: {name}
+    spec:
+      containers:
+      - name: serving
+        image: {image}
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+"""
+    service = f"""---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {name}-service
+  namespace: {namespace}
+spec:
+  type: LoadBalancer
+  selector:
+    app: {name}
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+"""
+    return {
+        "deployment.yaml": deployment,
+        "service.yaml": service,
+    }
+
+
+async def deploy_gke(
+    chart_dir: str,
+    release_name: str = "prometheus-serving",
+    namespace: str = "default",
+    values: dict[str, Any] | None = None,
+) -> tuple[bool, str]:
+    """Deploy via Helm to GKE (best-effort, out-of-band cluster assumed).
+
+    Runs ``helm upgrade --install {release} {chart} -n {namespace}`` with
+    optional ``--set`` overrides derived from ``values``.
+
+    Args:
+        chart_dir: Path to the Helm chart directory.
+        release_name: Helm release name.
+        namespace: Kubernetes namespace.
+        values: Flat dict of ``key=value`` chart values.
+
+    Returns:
+        (ok, message).
+    """
+    cmd = [
+        "helm",
+        "upgrade",
+        "--install",
+        release_name,
+        chart_dir,
+        "-n",
+        namespace,
+        "--create-namespace",
+    ]
+    for k, v in (values or {}).items():
+        cmd += ["--set", f"{k}={v}"]
+
+    try:
+        result = await asyncio.to_thread(
+            lambda: subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        )
+        if result.returncode != 0:
+            return False, f"Helm deploy failed: {result.stderr}"
+    except Exception as e:
+        return False, f"Helm deploy error: {e}"
+
+    return True, f"Deployed via Helm: {release_name} in namespace {namespace}"
 
 
 _PORT_LOCK: dict[int, str] = {}
@@ -500,11 +770,11 @@ async def deploy_local_compose(
 
     await asyncio.to_thread(
         lambda: subprocess.run(
-            ["docker", "rm", "-f", container_name], 
-            capture_output=True, 
-            text=True, 
+            ["docker", "rm", "-f", container_name],
+            capture_output=True,
+            text=True,
             timeout=10,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     )
     try:

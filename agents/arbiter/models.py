@@ -83,6 +83,7 @@ class EvaluationReport:
     checkpoint_path: str
     explanation: str
     all_metrics: dict[str, float] = field(default_factory=dict)
+    error_analysis: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
@@ -95,5 +96,6 @@ class EvaluationReport:
             "checkpoint_path": self.checkpoint_path,
             "explanation": self.explanation,
             "all_metrics": self.all_metrics,
+            "error_analysis": self.error_analysis,
             "created_at": self.created_at,
         }

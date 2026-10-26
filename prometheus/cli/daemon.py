@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import click
@@ -71,6 +73,42 @@ def _is_orchestrator_alive(pid: int) -> bool:
         return False
 
 
+# The orchestrator writes orch:heartbeat every 5s once initialize() completes.
+HEARTBEAT_MAX_AGE = 15  # seconds — older means the orchestrator is down/zombie
+
+
+# The orchestrator binds its Prometheus metrics server on 9090 only after
+# initialize() succeeds — so "port 9090 bound" distinguishes a live orchestrator
+# from a ghost heartbeat left behind by one that just crashed.
+METRICS_PORT = 9090
+
+
+def _metrics_port_bound() -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", METRICS_PORT), timeout=1.0):
+            return True
+    except OSError:
+        return False
+
+
+def _heartbeat_is_fresh(value: str | None, max_age: int = HEARTBEAT_MAX_AGE) -> bool:
+    """True if the heartbeat value is present and newer than ``max_age`` seconds.
+
+    A stale heartbeat (e.g. left behind by a dead orchestrator) must NOT count
+    as "orchestrator running" — that is what previously caused missions to be
+    submitted to a dead orchestrator and hang at "waiting for Scout to begin".
+    """
+    if not value:
+        return False
+    try:
+        ts = datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        return False
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - ts).total_seconds() < max_age
+
+
 async def _check_redis_heartbeat() -> bool:
     try:
         from memory.redis_client import RedisClient
@@ -79,7 +117,7 @@ async def _check_redis_heartbeat() -> bool:
         await client.connect()
         result = await client.get_str(HEARTBEAT_KEY)
         await client.close()
-        return result is not None
+        return _heartbeat_is_fresh(result)
     except Exception:
         return False
 
@@ -89,6 +127,46 @@ def _check_redis_heartbeat_sync() -> bool:
         return asyncio.run(_check_redis_heartbeat())
     except Exception:
         return False
+
+
+async def wait_for_orchestrator_ready(timeout: float = 60.0, pid: int | None = None) -> bool:
+    """Poll the Redis heartbeat until the orchestrator is fresh or ``timeout``.
+
+    The orchestrator only writes its first heartbeat after ``initialize()``
+    finishes (which includes ChromaDB tool registration — ~30-40s on a cold
+    host), so a freshly spawned daemon takes a while before it becomes ready.
+    If ``pid`` is given and that process dies before readiness, return False
+    immediately so the caller can fall back without waiting out the timeout.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if await _check_redis_heartbeat():
+            return True
+        if pid is not None and not _is_orchestrator_alive(pid):
+            return False
+        await asyncio.sleep(1.0)
+    return False
+
+
+def tail_daemon_log(n: int = 10) -> str:
+    """Return the last ``n`` lines of the daemon log, indented for printing."""
+    if not LOG_FILE.exists():
+        return f"  (no daemon log found at {LOG_FILE})"
+    try:
+        lines = LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+        return "\n".join(f"  {line}" for line in lines[-n:])
+    except OSError as e:
+        return f"  (could not read daemon log: {e})"
+
+
+def daemon_pid() -> int | None:
+    """PID of the tracked orchestrator daemon, if any."""
+    return _read_pid()
+
+
+def is_daemon_alive(pid: int | None) -> bool:
+    """True if ``pid`` is present and refers to a live process."""
+    return bool(pid) and _is_orchestrator_alive(pid)
 
 
 def _resolve_python() -> Path:
@@ -123,22 +201,32 @@ def daemon_cmd() -> None:
     """Manage the orchestrator background daemon."""
 
 
-@daemon_cmd.command(name="start")
-@click.option("--log-file", default=str(LOG_FILE), help="Path to log file")
-@click.pass_context
-def daemon_start(ctx: click.Context, log_file: str) -> ExitCode:
-    """Start the orchestrator as a background daemon process."""
-    renderer = renderer_from_ctx(ctx)
+def start_orchestrator_daemon(log_file: str | None = None) -> tuple[bool, str]:
+    """Start the orchestrator as a background daemon process.
+
+    Reusable by both the ``daemon start`` command and ``mission new`` (which
+    auto-starts the daemon). Returns ``(ok, message)``:
+
+    - ``(True, "already running (PID n)")`` if a live daemon exists — never
+      spawns a second one (two orchestrators would fight over the metrics port).
+    - ``(True, "started (PID n)")`` on a fresh spawn.
+    - ``(False, reason)`` if the spawn failed.
+    """
+    _ensure_dir()
+    log_path = Path(log_file) if log_file else LOG_FILE
 
     pid = _read_pid()
     if pid and _is_orchestrator_alive(pid):
-        already_slug = f" (PID {pid})"
-        renderer.print(f"  Orchestrator is already running{already_slug}.")
-        renderer.print("  Use:  prometheus daemon stop")
-        return ExitCode.SUCCESS
+        return True, f"already running (PID {pid})"
 
-    _ensure_dir()
-    log_path = Path(log_file)
+    # Trust a live heartbeat over the PID file: an orchestrator started outside
+    # this mechanism (e.g. a different venv) won't be in the PID file, and two
+    # orchestrators would fight over the metrics port and the consumer groups.
+    # Require the metrics port to be bound too — a crashed daemon leaves a fresh
+    # heartbeat for up to ~15s, and refusing to spawn over that ghost would
+    # leave missions submitted to a dead orchestrator.
+    if _check_redis_heartbeat_sync() and _metrics_port_bound():
+        return True, "already running (heartbeat detected)"
 
     orchestrator_module = "orchestrator.runtime"
     python = _resolve_python()
@@ -158,15 +246,31 @@ def daemon_start(ctx: click.Context, log_file: str) -> ExitCode:
                 start_new_session=True,
             )
     except FileNotFoundError:
-        renderer.error(f"Python executable not found: {python}")
-        return ExitCode.ERROR
+        return False, f"Python executable not found: {python}"
     except Exception as e:
-        renderer.error(f"Failed to start daemon: {e}")
-        return ExitCode.ERROR
+        return False, f"Failed to start daemon: {e}"
 
     _write_pid(proc.pid)
-    renderer.print(f"  Orchestrator daemon started (PID {proc.pid}).")
-    renderer.print(f"  Logs: {log_path}")
+    return True, f"started (PID {proc.pid})"
+
+
+@daemon_cmd.command(name="start")
+@click.option("--log-file", default=str(LOG_FILE), help="Path to log file")
+@click.pass_context
+def daemon_start(ctx: click.Context, log_file: str) -> ExitCode:
+    """Start the orchestrator as a background daemon process."""
+    renderer = renderer_from_ctx(ctx)
+
+    ok, msg = start_orchestrator_daemon(log_file=log_file)
+    if not ok:
+        renderer.error(msg)
+        return ExitCode.ERROR
+
+    renderer.print(f"  Orchestrator daemon {msg}.")
+    if msg.startswith("already running"):
+        renderer.print("  Use:  prometheus daemon stop")
+        return ExitCode.SUCCESS
+    renderer.print(f"  Logs: {log_file}")
     renderer.print("  Use:  prometheus daemon status")
     renderer.print("        prometheus daemon stop")
     return ExitCode.SUCCESS
@@ -193,18 +297,25 @@ def daemon_stop(ctx: click.Context) -> ExitCode:
 
     try:
         if sys.platform == "win32":
-            os.kill(pid, signal.SIGTERM)
+            # /T kills the whole process tree. The tracked PID is the venv
+            # pythonw shim, whose *child* is the real interpreter running the
+            # orchestrator (uv venvs relay to the base interpreter). Killing
+            # only the shim would orphan the real orchestrator, which then
+            # holds the metrics port and reappears as a "duplicate" next start.
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                capture_output=True,
+                timeout=15,
+            )
         else:
             os.kill(pid, signal.SIGTERM)
-
-        for _ in range(10):
-            time.sleep(0.5)
-            if not _is_orchestrator_alive(pid):
-                break
-
-        if _is_orchestrator_alive(pid):
-            os.kill(pid, signal.SIGKILL)
-            time.sleep(0.5)
+            for _ in range(10):
+                time.sleep(0.5)
+                if not _is_orchestrator_alive(pid):
+                    break
+            if _is_orchestrator_alive(pid):
+                os.kill(pid, signal.SIGKILL)
+                time.sleep(0.5)
 
     except Exception as e:
         renderer.error(f"Failed to stop daemon: {e}")
@@ -246,8 +357,13 @@ def daemon_status(ctx: click.Context, check_redis: bool) -> ExitCode:
         renderer.print("  Status:  healthy")
         return ExitCode.SUCCESS
     elif alive:
-        renderer.print("  Status:  starting (no Redis heartbeat yet)")
+        renderer.print("  Status:  starting (no recent Redis heartbeat)")
         return ExitCode.ERROR
+    elif redis_alive:
+        renderer.print("  Status:  running (heartbeat) — PID untracked")
+        renderer.print("           find it with: Get-Process pythonw | sort StartTime")
+        renderer.print("           stop it manually, or run: prometheus daemon stop")
+        return ExitCode.SUCCESS
     else:
         renderer.print("  Status:  stopped")
         return ExitCode.ERROR

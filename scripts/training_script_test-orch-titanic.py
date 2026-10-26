@@ -32,17 +32,13 @@ os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 import random
-
 random.seed(42)
 np.random.seed(42)
 
 _search_space_json = os.getenv("SEARCH_SPACE_JSON")
-_use_optuna = bool(
-    _search_space_json and _search_space_json.strip() not in ("", "null", "false", "0")
-)
+_use_optuna = bool(_search_space_json and _search_space_json.strip() not in ("", "null", "false", "0"))
 if _use_optuna:
     import optuna
-
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     _search_space = json.loads(_search_space_json)
 
@@ -61,18 +57,14 @@ for _c in df.select_dtypes(include=["object"]).columns:
 
 # --- Target encoding: handle string labels like 'Yes'/'No', 'True'/'False' ---
 _target_encoder = _TargetLabelEncoder()
-if target.dtype == object or str(target.dtype) == "category":
+if target.dtype == object or str(target.dtype) == 'category':
     target = _target_encoder.fit_transform(target)
     _target_classes = _target_encoder.classes_.tolist()
 else:
     _target_encoder.fit(target)
     _target_classes = _target_encoder.classes_.tolist()
 
-_n_classes = (
-    len(set(target))
-    if not hasattr(target, "nunique")
-    else len(set(target.tolist() if hasattr(target, "tolist") else target))
-)
+_n_classes = len(set(target)) if not hasattr(target, 'nunique') else len(set(target.tolist() if hasattr(target, 'tolist') else target))
 _n_samples = len(target)
 if _n_samples < 2:
     print(f"WARNING: Dataset has {_n_samples} rows; using all data for train and test")
@@ -81,25 +73,23 @@ if _n_samples < 2:
 else:
     _use_stratify = _n_classes > 1 and _n_samples >= 4
     X_train, X_test, y_train, y_test = train_test_split(
-        df, target, test_size=0.2, random_state=42, stratify=target if _use_stratify else None
+        df, target, test_size=0.2, random_state=42,
+        stratify=target if _use_stratify else None
     )
 
 numeric_cols = X_train.select_dtypes(include="number").columns.tolist()
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
-preprocessor = ColumnTransformer(
-    [
-        ("num", "passthrough", numeric_cols),
-        (
-            "cat",
-            OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1),
-            categorical_cols,
-        ),
-    ]
-)
+preprocessor = ColumnTransformer([
+    ("num", "passthrough", numeric_cols),
+    ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), categorical_cols),
+])
+
+# Pre-transform data to avoid LightGBM pandas dtype check on raw DataFrame columns
+X_train_t = preprocessor.fit_transform(X_train)
+X_test_t = preprocessor.transform(X_test)
 
 if _use_optuna:
-
     def _objective(trial):
         params = {}
         for _name, _spec in _search_space.items():
@@ -109,9 +99,7 @@ if _use_optuna:
                 params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
         params["random_state"] = 42
         params["verbose"] = -1
-        _model = Pipeline(
-            [("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))]
-        )
+        _model = lgb.LGBMClassifier(**params)
         # FAILSAFE: column validation -- verify expected features exist
         _expected_cols = list(dict.fromkeys(numeric_cols + categorical_cols))
         _missing_cols = [c for c in _expected_cols if c not in X_train.columns]
@@ -120,15 +108,14 @@ if _use_optuna:
                 f"FAILSAFE: missing {len(_missing_cols)} expected columns: {_missing_cols} | "
                 f"available={list(X_train.columns)[:10]}..."
             )
-
+        
         # FAILSAFE: ensure X_train has rows after NaN filtering
         if len(X_train) == 0:
-            raise ValueError(
-                "FAILSAFE: X_train has 0 rows -- all data was dropped during NaN filtering"
-            )
+            raise ValueError("FAILSAFE: X_train has 0 rows -- all data was dropped during NaN filtering")
+        
 
-        _model.fit(X_train, y_train)
-        _y_pred = _model.predict_proba(X_test)[:, 1]
+        _model.fit(X_train_t, y_train)
+        _y_pred = _model.predict_proba(X_test_t)[:, 1]
         return roc_auc_score(y_test, _y_pred)
 
     study = optuna.create_study(direction="maximize")
@@ -140,13 +127,11 @@ else:
     best_params = {"n_estimators": 100, "random_state": 42, "verbose": -1}
 
 estimator = lgb.LGBMClassifier(**best_params)
-model = Pipeline(
-    [
-        ("preprocessor", preprocessor),
-        ("estimator", estimator),
-    ]
-)
-model.fit(X_train, y_train)
+estimator.fit(X_train_t, y_train, eval_set=[(X_test_t, y_test)], eval_metric='auc', callbacks=[lgb.log_evaluation(period=1)])
+model = Pipeline([
+    ("preprocessor", preprocessor),
+    ("estimator", estimator),
+])
 
 y_pred = model.predict(X_test)
 y_proba = model.predict_proba(X_test)[:, 1]
@@ -160,8 +145,6 @@ print(f"Accuracy: {acc:.4f}")
 print(f"AUC: {auc:.4f}")
 
 _outputs_dir = os.getenv("OUTPUTS_DIR", "./outputs")
-# OUTPUTS_DIR is already job-scoped by the Furnace volume mount,
-# so we write directly to "checkpoints/" without nesting job_id.
 output_dir = os.path.join(_outputs_dir, "checkpoints")
 os.makedirs(output_dir, exist_ok=True)
 checkpoint_path = os.path.join(output_dir, "best.ckpt")
@@ -169,7 +152,7 @@ _checkpoint = {
     "model": model,
     "target_encoder": _target_encoder,
     "target_classes": _target_classes,
-    "feature_names": list(X_train.columns) if hasattr(X_train, "columns") else [],
+    "feature_names": list(X_train.columns) if hasattr(X_train, 'columns') else [],
 }
 with open(checkpoint_path, "wb") as f:
     pickle.dump(_checkpoint, f)
@@ -177,6 +160,9 @@ print(f"Model saved to {checkpoint_path}")
 np.save(os.path.join(output_dir, "y_test.npy"), y_test)
 np.save(os.path.join(output_dir, "y_pred.npy"), y_pred)
 np.save(os.path.join(output_dir, "y_prob.npy"), y_proba)
+np.save(os.path.join(output_dir, "X_test.npy"), X_test)
+with open(os.path.join(output_dir, "feature_names.json"), "w") as _ff:
+    json.dump(list(X_test.columns) if hasattr(X_test, 'columns') else [], _ff)
 
 result = {"checkpoint_path": checkpoint_path, "val_score": float(auc), "metric": "auc_roc"}
 with open(os.path.join(_outputs_dir, "result.json"), "w") as f:

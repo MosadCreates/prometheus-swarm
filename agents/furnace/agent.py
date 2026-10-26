@@ -13,6 +13,11 @@ from pathlib import Path
 from typing import Any
 
 from agents.base import BaseAgent
+from agents.furnace.detectors import (
+    detect_divergence,
+    detect_overfitting,
+    detect_plateau,
+)
 from agents.furnace.prompts import FURNACE_SYSTEM_PROMPT
 from bus.agent_events import AgentEventTracker, emit_subaction_progress
 from bus.events import (
@@ -53,12 +58,20 @@ class FurnaceAgent(BaseAgent):
         self.docker = DockerManager()
         self._best_val_metric: float = 0.0
         self._epoch_count: int = 0
+        self._max_epochs: int = 0
+        self._epoch_source: str | None = None
         self._crashes_recovered: int = 0
         self._current_trial: int = 0
         self._total_trials: int = 0
         self._start_time: float = 0.0
         self._container_error_log: str = ""
         self._output_dir_override: str | None = None
+        # Rolling per-run metric history for training-health diagnostics.
+        # JSON progress lines are emitted by the NN templates (single fit, no
+        # Optuna trials), so a single history per job is the right scope.
+        self._metric_history: list[float] = []
+        self._train_loss_history: list[float] = []
+        self._val_loss_history: list[float] = []
 
     @property
     def agent_name(self) -> str:
@@ -143,11 +156,26 @@ class FurnaceAgent(BaseAgent):
                     },
                 )
 
+                # Emit an authoritative final epoch detail BEFORE `done` so the
+                # stream renderer never finalizes on a stale mid-training
+                # snapshot. Awaited (not fire-and-forget) so it lands in the
+                # stream immediately ahead of the `done` event.
+                if self._epoch_count:
+                    final_max = self._max_epochs or self._epoch_count
+                    await self._emit_epoch_detail(
+                        epoch=self._epoch_count,
+                        total_epochs=self._epoch_count,
+                        metric_value=self._best_val_metric,
+                        best_score=self._best_val_metric,
+                        max_epochs=final_max,
+                    )
+
                 await self._agent_tracker.done(
                     "Training complete",
                     detail={
                         "best_metric": self._best_val_metric,
                         "epochs": self._epoch_count,
+                        "max_epochs": self._max_epochs,
                         "crashes_recovered": self._crashes_recovered,
                     },
                 )
@@ -254,8 +282,6 @@ class FurnaceAgent(BaseAgent):
 
         if progress_callback:
             progress_callback("Launching Docker container...")
-
-        container_name = f"prometheus-train-{self.job_id}"
 
         jp = get_job_paths(self.job_id)
         if self._output_dir_override:
@@ -446,10 +472,15 @@ class FurnaceAgent(BaseAgent):
 
         # 2. Eval-iteration output: [N] <dataset>'s <metric>: <value>  (LightGBM)
         #    or [N] <dataset>-<metric>:<value>  (XGBoost)
-        eval_iter_match = re.search(r"\[\d+\].*?(\w[\w_]*)\s*[:\-]\s*(\d+\.?\d*)", stripped)
+        #    The leading [N] is the iteration (== epoch) number; it is the
+        #    authoritative per-epoch source, so the count is set to the max N
+        #    seen rather than incremented per matching line (a single run can
+        #    print lines that merely mention an eval metric without a new round).
+        eval_iter_match = re.search(r"\[\s*(\d+)\s*\].*?(\w[\w_]*)\s*[:\-]\s*(\d+\.?\d*)", stripped)
         if eval_iter_match:
-            metric_name = eval_iter_match.group(1)
-            metric_value = float(eval_iter_match.group(2))
+            iter_no = int(eval_iter_match.group(1))
+            metric_name = eval_iter_match.group(2)
+            metric_value = float(eval_iter_match.group(3))
             # Only accept known metric names to avoid false positives
             if metric_name.lower() in (
                 "auc",
@@ -461,7 +492,9 @@ class FurnaceAgent(BaseAgent):
                 "acc",
                 "f1",
             ):
-                self._epoch_count += 1
+                self._epoch_count = max(self._epoch_count, iter_no)
+                self._max_epochs = max(self._max_epochs, iter_no)
+                self._epoch_source = "iter"
                 self._track_metric(metric_name, metric_value)
                 # Emit structured detail for epoch
                 asyncio.create_task(
@@ -522,7 +555,16 @@ class FurnaceAgent(BaseAgent):
         if metric_match:
             metric_name = metric_match.group(1).upper()
             metric_value = float(metric_match.group(2))
-            self._epoch_count += 1
+            # A bare metric line counts as an epoch ONLY when no authoritative
+            # per-epoch source has been seen yet. The tabular templates print
+            # post-training summaries (`Accuracy:` / `AUC:` / `RMSE:`) after the
+            # loop; counting those on top of the [N] iterations inflated the
+            # count past the real max (100 real epochs -> 100+2 = 102). The
+            # multiclass/regression templates have no [N]/JSON epochs, so their
+            # single summary line remains the fallback epoch signal.
+            if self._epoch_source is None:
+                self._epoch_count += 1
+                self._max_epochs = max(self._max_epochs, self._epoch_count)
             self._track_metric(metric_name, metric_value)
             # Emit structured detail for epoch
             asyncio.create_task(
@@ -559,8 +601,18 @@ class FurnaceAgent(BaseAgent):
         metric = payload.get("metric", "")
         value = payload.get("value", 0.0)
         self._epoch_count = max(self._epoch_count, epoch)
+        self._max_epochs = max(self._max_epochs, max_epochs)
+        self._epoch_source = "json"
         if metric and value:
             metric_key = metric.upper()
+            # Feed the training-health detectors (divergence/plateau/overfit).
+            self._metric_history.append(float(value))
+            train_loss = payload.get("train_loss")
+            val_loss = payload.get("val_loss")
+            if train_loss is not None:
+                self._train_loss_history.append(float(train_loss))
+            if val_loss is not None:
+                self._val_loss_history.append(float(val_loss))
             self._track_metric(metric_key, float(value))
             FURNACE_EPOCHS.labels(job_id=self.job_id).inc()
             FURNACE_BEST_VAL_METRIC.labels(job_id=self.job_id, metric_type=metric.lower()).set(
@@ -586,6 +638,60 @@ class FurnaceAgent(BaseAgent):
                     progress=progress_ratio,
                 )
             )
+
+            # ── Training-health diagnostics (pure, report-only) ──
+            higher = metric_key not in ("RMSE", "MAE", "LOGLOSS", "MSE")
+            asyncio.create_task(
+                self._run_training_health_check(epoch, max_epochs, metric_key, higher)
+            )
+
+    async def _run_training_health_check(
+        self,
+        epoch: int,
+        max_epochs: int,
+        metric_name: str,
+        higher_is_better: bool,
+    ) -> None:
+        """Run divergence/plateau/overfit detectors and emit warnings.
+
+        Pure report-only by default.  When ``FURNACE_AUTO_EARLY_STOP=1`` the
+        agent will request the training process to stop, but that flag is off
+        by default to avoid silently killing runs.
+        """
+        warnings: list[str] = []
+
+        if detect_divergence(self._metric_history, higher_is_better=higher_is_better):
+            warnings.append(f"⚠ Divergence detected on {metric_name} at epoch {epoch}/{max_epochs}")
+
+        if detect_plateau(self._metric_history, higher_is_better=higher_is_better):
+            warnings.append(f"⚠ Plateau detected on {metric_name} at epoch {epoch}/{max_epochs}")
+
+        if (
+            self._train_loss_history
+            and self._val_loss_history
+            and len(self._train_loss_history) == len(self._val_loss_history)
+        ):
+            if detect_overfitting(
+                self._train_loss_history,
+                self._val_loss_history,
+                lower_is_better=True,
+            ):
+                warnings.append(
+                    f"⚠ Overfitting detected (train/val gap) at epoch {epoch}/{max_epochs}"
+                )
+
+        for msg in warnings:
+            self.logger.warning(f"[Furnace][job={self.job_id}] {msg}")
+            try:
+                await emit_subaction_progress(
+                    self.redis._client,
+                    self.job_id,
+                    "Furnace",
+                    msg,
+                    progress=epoch / max(max_epochs, 1),
+                )
+            except Exception:
+                pass  # best-effort — don't crash the training loop
 
     async def _emit_epoch_detail(
         self,
@@ -793,7 +899,7 @@ class FurnaceAgent(BaseAgent):
             import pickle
 
             with open(latest_checkpoint, "rb") as f:
-                ckpt_data = pickle.load(f)
+                ckpt_data = pickle.load(f)  # nosec B301 — loading Furnace's own checkpoint
             self.logger.info(
                 f"[job={self.job_id}] Checkpoint verified: readable ({os.path.getsize(latest_checkpoint)} bytes)"
             )

@@ -23,9 +23,7 @@ _MIN_EVIDENCE = 3
 _MAX_HISTORICAL_WEIGHT = 0.7
 
 
-async def compute_planning_hints(
-    spec: dict[str, Any], redis: Any, job_id: str
-) -> PlanningHints:
+async def compute_planning_hints(spec: dict[str, Any], redis: Any, job_id: str) -> PlanningHints:
     """Produce PlanningHints from historical outcomes similar to the given spec.
 
     Args:
@@ -70,26 +68,34 @@ async def compute_planning_hints(
     hints.evidence_count = len(outcomes)
 
     # Duration
-    durations = [o.get("actual_training_minutes") or o.get("duration_seconds", 0) / 60.0
-                 for o in outcomes if (o.get("actual_training_minutes") or o.get("duration_seconds"))]
+    durations = [
+        o.get("actual_training_minutes") or o.get("duration_seconds", 0) / 60.0
+        for o in outcomes
+        if (o.get("actual_training_minutes") or o.get("duration_seconds"))
+    ]
     if durations:
         hints.estimated_duration_minutes = round(statistics.median(durations))
 
     # RAM
-    rams = [float(o["peak_ram_mb"]) for o in outcomes
-            if o.get("peak_ram_mb") and o["peak_ram_mb"] != "none"]
+    rams = [
+        float(o["peak_ram_mb"])
+        for o in outcomes
+        if o.get("peak_ram_mb") and o["peak_ram_mb"] != "none"
+    ]
     if rams:
         hints.estimated_ram_mb = round(statistics.median(rams))
 
     # VRAM
-    vrams = [float(o["peak_gpu_mb"]) for o in outcomes
-             if o.get("peak_gpu_mb") and o["peak_gpu_mb"] != "none"]
+    vrams = [
+        float(o["peak_gpu_mb"])
+        for o in outcomes
+        if o.get("peak_gpu_mb") and o["peak_gpu_mb"] != "none"
+    ]
     if vrams:
         hints.estimated_vram_mb = round(statistics.median(vrams))
 
     # GPU recommendation
-    gpu_counts = [o.get("gpu_used", False) for o in outcomes
-                  if o.get("gpu_used") is not None]
+    gpu_counts = [o.get("gpu_used", False) for o in outcomes if o.get("gpu_used") is not None]
     if gpu_counts:
         gpu_ratio = sum(gpu_counts) / len(gpu_counts)
         hints.gpu_recommended = gpu_ratio > 0.5
@@ -98,12 +104,11 @@ async def compute_planning_hints(
     hints.fallback_models = _rank_fallback_models(outcomes, architecture)
 
     # Prediction error from all available
-    errors = [float(o["prediction_error"]) for o in outcomes
-              if o.get("prediction_error") is not None]
+    errors = [
+        float(o["prediction_error"]) for o in outcomes if o.get("prediction_error") is not None
+    ]
     if errors:
-        hints.last_prediction_error_pct = round(
-            statistics.median(errors) * 100, 1
-        )
+        hints.last_prediction_error_pct = round(statistics.median(errors) * 100, 1)
 
     logger.info(
         f"PlanningHints: {architecture} n={hints.evidence_count} "
@@ -141,9 +146,7 @@ async def _fetch_similar_outcomes(
         return []
 
 
-def _rank_fallback_models(
-    outcomes: list[dict[str, Any]], current_arch: str
-) -> list[str] | None:
+def _rank_fallback_models(outcomes: list[dict[str, Any]], current_arch: str) -> list[str] | None:
     """Rank architectures by pass rate from historical outcomes, excluding current.
 
     Returns ordered list of architectures with highest pass rate first.
@@ -189,33 +192,27 @@ def compute_prediction_error(
     if predicted_duration_minutes and actual_duration_min > 0:
         errors["duration_error_pct"] = round(
             abs(actual_duration_min - predicted_duration_minutes)
-            / predicted_duration_minutes * 100, 1
+            / predicted_duration_minutes
+            * 100,
+            1,
         )
         errors["duration_bias"] = round(
-            (actual_duration_min - predicted_duration_minutes)
-            / predicted_duration_minutes * 100, 1
+            (actual_duration_min - predicted_duration_minutes) / predicted_duration_minutes * 100, 1
         )
 
     if predicted_ram_mb and actual_ram_mb and actual_ram_mb > 0:
         errors["ram_error_pct"] = round(
-            abs(actual_ram_mb - predicted_ram_mb)
-            / predicted_ram_mb * 100, 1
+            abs(actual_ram_mb - predicted_ram_mb) / predicted_ram_mb * 100, 1
         )
-        errors["ram_bias"] = round(
-            (actual_ram_mb - predicted_ram_mb)
-            / predicted_ram_mb * 100, 1
-        )
+        errors["ram_bias"] = round((actual_ram_mb - predicted_ram_mb) / predicted_ram_mb * 100, 1)
 
     if predicted_vram_mb and actual_vram_mb and actual_vram_mb > 0:
         errors["vram_error_pct"] = round(
-            abs(actual_vram_mb - predicted_vram_mb)
-            / predicted_vram_mb * 100, 1
+            abs(actual_vram_mb - predicted_vram_mb) / predicted_vram_mb * 100, 1
         )
 
     errors["retries_accuracy"] = (
-        "exact" if actual_retries == 0
-        else "over" if actual_retries > 0
-        else "under"
+        "exact" if actual_retries == 0 else "over" if actual_retries > 0 else "under"
     )
 
     if actual_deployment_success is not None:
@@ -224,9 +221,7 @@ def compute_prediction_error(
     return errors
 
 
-async def store_prediction_error(
-    redis: Any, job_id: str, errors: dict[str, Any]
-) -> None:
+async def store_prediction_error(redis: Any, job_id: str, errors: dict[str, Any]) -> None:
     """Store prediction error in Redis for CLI observability."""
     key = f"job:{job_id}:prediction_error"
     try:
@@ -259,9 +254,7 @@ async def get_execution_stats(redis: Any) -> dict[str, Any]:
     try:
         from memory.collections.experience_memory import query_similar_experiences
 
-        results = query_similar_experiences(
-            modality="", task_type="", num_rows=0, k=200
-        )
+        results = query_similar_experiences(modality="", task_type="", num_rows=0, k=200)
     except Exception as e:
         logger.warning(f"Failed to query experience memory for stats: {e}")
         return {}

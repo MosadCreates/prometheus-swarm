@@ -1,0 +1,6 @@
+apiVersion: v2
+name: prometheus-serving
+description: Prometheus Swarm model serving deployment (FastAPI + ONNX runtime)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

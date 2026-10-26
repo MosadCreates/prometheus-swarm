@@ -163,20 +163,6 @@ async def test_furnace_dissect_crash_recovery():
 
         await dissect.handle_crash(crash_event)
 
-        # Direct rpush test via dissect's resources
-        import json as _json
-
-        await dissect.redis.rpush("patch_log_queue", _json.dumps({"test": "direct"}))
-        _qlen = await dissect_redis.llen("patch_log_queue")
-        _qtype = await dissect_redis.type("patch_log_queue")
-        _items = await dissect_redis.lrange("patch_log_queue", 0, -1)
-        print(f"\n[POST_HANDLE] dissect_redis.llen={_qlen} type={_qtype} items={_items}")
-        _test_rpush = await dissect_redis.rpush("patch_log_queue", _json.dumps({"raw": True}))
-        _qlen2 = await dissect_redis.llen("patch_log_queue")
-        print(
-            f"[POST_HANDLE] raw rpush result={_test_rpush} llen={_qlen2} items={await dissect_redis.lrange('patch_log_queue', 0, -1)}"
-        )
-
         resume_event = None
         for _ in range(12):
             results = await test_redis.xreadgroup(
@@ -212,17 +198,17 @@ async def test_furnace_dissect_crash_recovery():
 
         assert resume_event, "Dissect did not publish RESUME_TRAINING within 60s"
         assert resume_event.get("job_id") == JOB_ID
-        assert (
-            resume_event.get("patched_script_path") == SCRIPT_PATH
-        ), f"Expected {SCRIPT_PATH}, got {resume_event.get('patched_script_path')}"
+        assert resume_event.get("patched_script_path") == SCRIPT_PATH, (
+            f"Expected {SCRIPT_PATH}, got {resume_event.get('patched_script_path')}"
+        )
         assert resume_event.get("patch_id"), "RESUME_TRAINING should include patch_id"
 
         with open(SCRIPT_PATH) as f:
             content = f.read()
         assert "Age_log" in content, "Patched script should contain Age_log column derivation"
-        assert (
-            "np.log" in content or "np.log10" in content or "np.log1p" in content
-        ), "Patched script should use a log transform for Age_log"
+        assert "np.log" in content or "np.log10" in content or "np.log1p" in content, (
+            "Patched script should use a log transform for Age_log"
+        )
 
         try:
             await asyncio.wait_for(furnace_task, timeout=60)
@@ -259,9 +245,10 @@ async def test_furnace_dissect_crash_recovery():
 
         patch_id_to_find = resume_event.get("patch_id", "")
         found_match = False
-        patch_log_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "../../research/patch_log.jsonl")
-        )
+        # Verify the patch-log entry on the queue WITHOUT writing it to
+        # research/patch_log.jsonl — that file is the research corpus (the
+        # paper's evidence), and a test writing synthetic success entries into
+        # it is data pollution. The patch_log_writer owns the queue→file drain.
         for _ in range(10):
             result = await test_redis.blpop("patch_log_queue", timeout=3)
             if result is None:
@@ -269,23 +256,12 @@ async def test_furnace_dissect_crash_recovery():
             _list_key, log_entry_raw = result
             log_entry = json.loads(log_entry_raw)
             if log_entry.get("patch_id") == patch_id_to_find:
-                assert (
-                    log_entry.get("patch_outcome") == "success"
-                ), f"Expected patch_outcome=success, got: {log_entry.get('patch_outcome')}"
+                assert log_entry.get("patch_outcome") == "success", (
+                    f"Expected patch_outcome=success, got: {log_entry.get('patch_outcome')}"
+                )
                 found_match = True
-                os.makedirs(os.path.dirname(patch_log_path), exist_ok=True)
-                with open(patch_log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_entry, separators=(",", ":")) + "\n")
                 break
         assert found_match, f"No patch_log entry found matching patch_id={patch_id_to_find}"
-
-        while True:
-            result = await test_redis.blpop("patch_log_queue", timeout=1)
-            if result is None:
-                break
-            _list_key, log_entry_raw = result
-            with open(patch_log_path, "a", encoding="utf-8") as f:
-                f.write(log_entry_raw + "\n")
 
     finally:
         if furnace_task:

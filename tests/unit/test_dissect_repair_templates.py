@@ -298,7 +298,9 @@ class TestRepairTemplate:
 class TestValidateTemplate:
     def test_valid_template_passes(self):
         t = RepairTemplate(**VALID_TEMPLATE_DATA)
-        report = validate_template(t, sample_script="original", sample_exception_message="shape mismatch")
+        report = validate_template(
+            t, sample_script="original", sample_exception_message="shape mismatch"
+        )
         assert report.passed
 
     def test_invalid_syntax_fails(self):
@@ -339,7 +341,9 @@ class TestValidateTemplate:
 
     def test_apply_check_with_sample(self, sample_script):
         t = RepairTemplate(**VALID_TEMPLATE_DATA)
-        report = validate_template(t, sample_script=sample_script, sample_exception_message="shape mismatch")
+        report = validate_template(
+            t, sample_script=sample_script, sample_exception_message="shape mismatch"
+        )
         apply_checks = [c for c in report.checks if "Apply" in c.message]
         assert all(c.passed for c in apply_checks)
 
@@ -395,7 +399,9 @@ class TestFindMatchingTemplates:
         assert len(_registry) == 0
         t = RepairTemplate(**VALID_TEMPLATE_DATA)
         _registry.append(t)
-        matches = find_matching_templates("ValueError", "Shape mismatch: expected 40 got 45", "shape_mismatch")
+        matches = find_matching_templates(
+            "ValueError", "Shape mismatch: expected 40 got 45", "shape_mismatch"
+        )
         assert len(matches) >= 1
         assert any(m.template_id == "tpl-test-0001" for m in matches)
 

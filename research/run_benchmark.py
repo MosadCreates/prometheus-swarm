@@ -90,6 +90,7 @@ def make_result(
     error: str | None = None,
     decision: str = "",
     patches: int = 0,
+    api_cost_usd: float = 0.0,
 ) -> dict:
     return {
         "problem_id": problem["id"],
@@ -97,13 +98,36 @@ def make_result(
         "status": status,
         "job_id": job_id,
         "best_val_metric": _best_metric(metrics, problem),
+        "evaluation_metric": problem.get("evaluation_metric", "auc_roc"),
         "decision": decision,
         "duration_seconds": round(duration, 2),
         "crash_count": patches,
         "human_interventions": 0 if status == "pass" else 1,
         "architecture": problem.get("expected_architecture", "unknown"),
+        "api_cost_usd": round(api_cost_usd, 6),
         "error": error[:500] if error else None,
     }
+
+
+async def _read_api_cost(job_id: str) -> float:
+    """Metered (not estimated) LLM cost for a job, from BaseAgent cost logging."""
+    from memory.redis_client import RedisClient
+
+    rc = RedisClient()
+    try:
+        await rc.connect()
+        summary = await rc.get_json(f"job:{job_id}:api_cost_summary")
+        if summary and "total_cost_usd" in summary:
+            return float(summary.get("total_cost_usd", 0))
+        entries = await rc.lrange(f"job:{job_id}:api_cost", 0, -1)
+        return round(sum(float(json.loads(e).get("cost", 0)) for e in entries if e), 6)
+    except Exception:
+        return 0.0
+    finally:
+        try:
+            await rc.close()
+        except Exception:
+            pass
 
 
 def _best_metric(metrics: dict | None, problem: dict) -> float:
@@ -111,6 +135,15 @@ def _best_metric(metrics: dict | None, problem: dict) -> float:
         return 0.0
     metric_name = problem.get("evaluation_metric", "auc_roc")
     return metrics.get(metric_name, metrics.get("auc_roc", metrics.get("rmse", 0.0)))
+
+
+def _effective_conditions(condition_arg: str) -> set[str]:
+    """Map the --condition CLI value to the set of conditions to run."""
+    if condition_arg == "all":
+        return {"A", "B", "C"}
+    if condition_arg == "both":
+        return {"B", "C"}
+    return {condition_arg}
 
 
 def timeout_for_modality(modality: str) -> int:
@@ -368,7 +401,9 @@ def print_result(result: dict):
     status_color = (
         "PASS"
         if result["status"] == "pass"
-        else "CRASH" if result["status"] == "crash" else "ESCALATE"
+        else "CRASH"
+        if result["status"] == "crash"
+        else "ESCALATE"
     )
     metric = result["best_val_metric"]
     print(
@@ -464,79 +499,70 @@ async def evaluate(job_id: str, problem: dict) -> dict | None:
     return result
 
 
+HUMAN_BASELINE_SCRIPT = PROJECT_ROOT / "research" / "baselines" / "human_baseline.py"
+
+
 async def run_condition_a(
     problem: dict,
     job_id: str,
     timeout: int,
 ) -> dict:
-    """Condition A: Human-written baseline training.
+    """Condition A: genuine human-written baseline (research/baselines/human_baseline.py).
 
-    Simulates a human providing a well-tuned training script by using
-    the generated script directly and evaluating the result.
+    Hand-coded by an engineer: library choice, cleaning policy, split, and
+    hyperparameters are fixed human judgment — NOT Scout reasoning, NOT Optuna,
+    NOT the swarm's memory or LLM. The npy artifacts it writes are evaluated by
+    the exact same run_arbiter_eval() contract used for B/C, so the comparison
+    isolates the pipeline's decisions from the evaluation.
+
+    Scope: tabular tasks only (the hand script is LightGBM); text/image problems
+    are reported as 'escalate' with a clear reason and excluded from metric tests.
     """
     t0 = time.time()
-
-    from agents.scout.agent import ScoutAgent
-    from agents.forge.agent import ForgeAgent
-
-    scout = ScoutAgent(job_id=job_id)
-    await scout.redis.connect()
-    try:
-        dataset_path = resolve_dataset_path(problem)
-        dataset_path = ensure_csv(dataset_path)
-        brief = await scout.run_with_data(
-            problem_description=problem["problem_description"],
-            file_path=dataset_path,
-            target_column=problem["target_column"],
-            modality_override=problem.get("modality"),
+    if problem.get("modality") != "tabular":
+        return make_result(
+            problem,
+            "A_human_baseline",
+            "escalate",
+            job_id,
+            duration=time.time() - t0,
+            error="Condition A baseline is tabular-only (hand-written LightGBM script)",
         )
-    except Exception as e:
-        await scout.redis.close()
+
+    dataset_path = resolve_dataset_path(problem)
+    dataset_path = ensure_csv(dataset_path)
+    if not Path(dataset_path).exists():
         return make_result(
             problem,
             "A_human_baseline",
             "crash",
             job_id,
             duration=time.time() - t0,
-            error=f"Scout failed: {e}",
+            error=f"Dataset not found: {dataset_path}",
         )
 
-    forge = ForgeAgent(job_id=job_id)
-    await forge.redis.connect()
-    try:
-        script_path = await forge.run_with_brief(brief)
-        abs_path = PROJECT_ROOT / script_path
-        if not abs_path.exists():
-            return make_result(
-                problem,
-                "A_human_baseline",
-                "crash",
-                job_id,
-                duration=time.time() - t0,
-                error="Script not found",
-            )
-    except Exception as e:
-        await forge.redis.close()
-        await scout.redis.close()
+    jp = get_job_paths(job_id)
+    os.makedirs(str(jp.checkpoints_dir), exist_ok=True)
+    env = os.environ.copy()
+    env.update(
+        {
+            "JOB_ID": job_id,
+            "PYTHONUNBUFFERED": "1",
+            "HUMAN_BASELINE_DATASET": str(dataset_path),
+            "HUMAN_BASELINE_TARGET": str(problem.get("target_column", "")),
+            "HUMAN_BASELINE_TASK": str(problem.get("task_type", "classification")),
+            "HUMAN_BASELINE_OUT_DIR": str(jp.checkpoints_dir),
+        }
+    )
+    rc, stdout, stderr = await _run_subprocess(
+        [sys.executable, str(HUMAN_BASELINE_SCRIPT)], timeout=timeout, env=env
+    )
+    if rc != 0:
+        exc_type, exc_msg = _parse_exception(stderr or stdout)
         return make_result(
             problem,
             "A_human_baseline",
-            "crash",
-            job_id,
-            duration=time.time() - t0,
-            error=f"Forge failed: {e}",
-        )
-    finally:
-        await forge.redis.close()
-        await scout.redis.close()
-
-    ok, stdout, stderr = await run_training_script(str(abs_path), job_id, timeout=timeout)
-    if not ok:
-        exc_type, exc_msg = _parse_exception(stderr)
-        return make_result(
-            problem,
-            "A_human_baseline",
-            "crash",
+            "crash" if rc != -1 else "timeout",
             job_id,
             duration=time.time() - t0,
             error=f"{exc_type}: {exc_msg}",
@@ -561,6 +587,7 @@ async def run_condition_a(
         duration=time.time() - t0,
         metrics=eval_result["metrics"],
         decision=eval_result["decision"],
+        api_cost_usd=0.0,  # zero LLM usage by construction
     )
 
 
@@ -611,6 +638,7 @@ async def run_condition_b(
             duration=job_result.duration_seconds,
             metrics={problem.get("evaluation_metric", "auc_roc"): metric},
             error=job_result.crash_message or job_result.error_detail,
+            api_cost_usd=job_result.api_cost_usd,
         )
     finally:
         try:
@@ -668,6 +696,7 @@ async def run_condition_c(
             metrics={problem.get("evaluation_metric", "auc_roc"): metric},
             error=job_result.crash_message or job_result.error_detail,
             patches=job_result.dissect_patch_attempts,
+            api_cost_usd=job_result.api_cost_usd,
         )
     finally:
         try:
@@ -725,17 +754,24 @@ async def main():
             )
         except Exception as e:
             logger.error(f"[{job_id}] Unhandled error: {e}", exc_info=True)
-            for cond in ["B_no_dissect", "C_with_dissect"]:
-                r = make_result(problem, cond, "crash", job_id, error=f"Benchmark error: {e}")
-                if "B" in args.condition:
-                    results_b.append(r)
-                if "C" in args.condition:
-                    results_c.append(r)
+            conds = _effective_conditions(args.condition)
+            if "B" in conds:
+                results_b.append(
+                    make_result(
+                        problem, "B_no_dissect", "crash", job_id, error=f"Benchmark error: {e}"
+                    )
+                )
+            if "C" in conds:
+                results_c.append(
+                    make_result(
+                        problem, "C_with_dissect", "crash", job_id, error=f"Benchmark error: {e}"
+                    )
+                )
             continue
 
     # If --output specified, write combined baseline JSON
     if args.output:
-        _write_combined_baseline(args.output, results_b, results_c, batch)
+        _write_combined_baseline(args.output, results_b, results_c, batch, results_a)
 
 
 async def _run_single_problem(
@@ -751,17 +787,19 @@ async def _run_single_problem(
     local_path = await ensure_dataset_available(problem)
     if local_path is None:
         logger.warning(f"[{problem['id']}] Dataset not available locally, skipping")
-        for cond in ["B_no_dissect", "C_with_dissect"]:
+        conds = _effective_conditions(args.condition)
+        for cond in sorted(conds - {"A"}):
+            label = "B_no_dissect" if cond == "B" else "C_with_dissect"
             r = make_result(
                 problem,
-                cond,
+                label,
                 "escalate",
                 job_id,
                 error=f"Dataset unavailable - source={problem['dataset']['source']} file={dataset_path}",
             )
-            if "B" in args.condition:
+            if cond == "B":
                 results_b.append(r)
-            if "C" in args.condition:
+            else:
                 results_c.append(r)
         return
 
@@ -781,7 +819,9 @@ async def _run_single_problem(
     condition_effective = (
         {"A", "B", "C"}
         if args.condition == "all"
-        else {args.condition} if args.condition != "both" else {"B", "C"}
+        else {args.condition}
+        if args.condition != "both"
+        else {"B", "C"}
     )
 
     if "A" in condition_effective:
@@ -837,7 +877,11 @@ def _get_git_commit() -> str:
 
 
 def _write_combined_baseline(
-    output_path: str, results_b: list[dict], results_c: list[dict], batch: list[dict]
+    output_path: str,
+    results_b: list[dict],
+    results_c: list[dict],
+    batch: list[dict],
+    results_a: list[dict] | None = None,
 ):
     """Write a combined baseline_v1.json-style output with auto-metadata."""
 
@@ -862,6 +906,7 @@ def _write_combined_baseline(
             "avg_metric": round(avg_metric, 6),
             "avg_duration_seconds": round(avg_duration, 2),
             "total_human_interventions": sum(r.get("human_interventions", 0) for r in results),
+            "total_api_cost_usd": round(sum(r.get("api_cost_usd", 0) for r in results), 6),
             "results": results,
         }
 
@@ -888,6 +933,8 @@ def _write_combined_baseline(
         },
         "condition_b": _agg(results_b) if results_b else {},
         "condition_c": _agg(results_c) if results_c else {},
+        "condition_a": _agg(results_a) if results_a else {},
+        "problems": batch,
         "comparison": {
             "pass_rate_b": round(pass_rate_b, 4),
             "pass_rate_c": round(pass_rate_c, 4),

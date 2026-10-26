@@ -84,11 +84,20 @@ class TemplateValidationReport:
 
 
 _DANGEROUS_BUILTINS: set[str] = {
-    "exec", "eval", "compile", "__import__", "open",
+    "exec",
+    "eval",
+    "compile",
+    "__import__",
+    "open",
 }
 _DANGEROUS_IMPORTS: set[str] = {
-    "os.system", "os.popen", "subprocess", "shutil",
-    "pickle", "shelve", "marshal",
+    "os.system",
+    "os.popen",
+    "subprocess",
+    "shutil",
+    "pickle",
+    "shelve",
+    "marshal",
 }
 
 
@@ -157,9 +166,7 @@ def _check_safety(apply_source: str) -> ValidationResult:
     return ValidationResult(True, "Safety check passed")
 
 
-def _check_apply_return(
-    apply_source: str, script: str, exception_message: str
-) -> ValidationResult:
+def _check_apply_return(apply_source: str, script: str, exception_message: str) -> ValidationResult:
     """Check that apply() actually modifies the script and produces valid Python."""
     exec_globals: dict = {}
     try:
@@ -171,9 +178,7 @@ def _check_apply_return(
         if result is None:
             return ValidationResult(False, "apply() returned None (no change)")
         if result == script:
-            return ValidationResult(
-                False, "apply() returned unchanged script", severity="warning"
-            )
+            return ValidationResult(False, "apply() returned unchanged script", severity="warning")
         try:
             ast.parse(result)
             return ValidationResult(True, "Apply produced valid Python output")
@@ -214,9 +219,7 @@ def validate_template(
 
     if sample_script and sample_exception_message:
         report.add(
-            _check_apply_return(
-                template.apply_fn_source, sample_script, sample_exception_message
-            )
+            _check_apply_return(template.apply_fn_source, sample_script, sample_exception_message)
         )
 
     logger.info(report.summary())

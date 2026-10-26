@@ -10,8 +10,6 @@ from runtime.models import (
     MissionState,
     RetryAttemptRecord as RetryAttemptRecord,
     RetryPlan as RetryPlan,
-    save_mission_state as save_retry_state,
-    load_mission_state as load_retry_state,
 )
 from runtime.retry_orchestrator import MAX_RETRY_ATTEMPTS as MAX_RETRY_ATTEMPTS
 from runtime.paths import get_job_paths
@@ -159,18 +157,39 @@ class RetryState:
 # Backward-compatible aliases
 RetryHistoryEntry = RetryAttemptRecord
 
-# Keep original module-level functions for tests
-from runtime.models import (  # noqa: F811
-    save_mission_state,
-    load_mission_state,
-)
-
-import os as _os
-import json as _json
+import os as _os  # noqa: E402
+import json as _json  # noqa: E402
 
 
 def retry_state_path(job_id: str) -> str:
     return str(get_job_paths(job_id).job_dir / "retry_state.json")
 
 
+# ── RetryState persistence ─────────────────────────────────────────────
+# These used to alias runtime.models.save/load_mission_state, which (a) wrote
+# a different file (mission_state.json) and (b) returned a bare MissionState
+# without the RetryState API (attempt_number, current_architecture, history)
+# that callers like agents.arbiter.report consume — breaking RetryState
+# round-trips. They now (de)serialize RetryState.to_dict()/from_dict().
 
+
+def save_retry_state(state: RetryState) -> str:
+    """Persist a RetryState to outputs/{job_id}/retry_state.json."""
+    path = retry_state_path(state.job_id)
+    _os.makedirs(_os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        _json.dump(state.to_dict(), f, indent=2)
+    return path
+
+
+def load_retry_state(job_id: str) -> RetryState | None:
+    """Load a RetryState from disk; None when absent or unreadable."""
+    path = retry_state_path(job_id)
+    if not _os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = _json.load(f)
+        return RetryState.from_dict(data)
+    except (ValueError, KeyError, TypeError):
+        return None

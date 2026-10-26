@@ -82,6 +82,10 @@ async def test_forge_writes_valid_training_script():
         mission_brief=mission_brief,
         job_id="test-titanic",
         scripts_dir="scripts",
+        # Contract (agents/forge/tools.py): write_training_script requires the
+        # caller to select architecture explicitly. Scout's brief here
+        # recommends lightgbm; ForgeAgent.run passes the same decision.
+        architecture="lightgbm",
     )
     assert os.path.exists(script_path)
     assert "test-titanic" in script_path

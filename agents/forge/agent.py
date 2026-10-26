@@ -31,11 +31,7 @@ from shared.metrics import (
 from prometheus.ui.detail_types import (
     ForgeArchitectureDetail,
     ForgeCandidatesDetail,
-    ForgeRationaleDetail,
-    ForgeScriptDetail,
     ForgeSearchSpaceDetail,
-    ForgeValidationDetail,
-    ForgeImbalanceDetail,
 )
 
 
@@ -177,7 +173,12 @@ def _validate_python_script(
                     import pandas as pd
 
                     try:
-                        df = pd.read_csv(str(file_path), nrows=0)
+                        # Sniff the delimiter exactly like Scout's EDA does —
+                        # semicolon-delimited CSVs read with the default comma
+                        # engine land as a single mangled column, which made
+                        # this check reject valid targets (e.g. TC06 bank
+                        # marketing).
+                        df = pd.read_csv(str(file_path), nrows=0, sep=None, engine="python")
                         if target_column not in df.columns:
                             logger.error(
                                 f"[job={job_id}] Target column '{target_column}' "
@@ -189,8 +190,7 @@ def _validate_python_script(
                                 f"Available columns: {list(df.columns)}"
                             )
                         logger.info(
-                            f"[job={job_id}] Target column '{target_column}' "
-                            f"confirmed in dataset"
+                            f"[job={job_id}] Target column '{target_column}' confirmed in dataset"
                         )
                     except ValueError:
                         raise
@@ -214,7 +214,21 @@ class ForgeAgent(BaseAgent):
 
     @property
     def system_prompt(self) -> str:
-        return FORGE_SYSTEM_PROMPT
+        prompt = FORGE_SYSTEM_PROMPT
+        # Installed instruction skills (trusted only) ride on the system
+        # prompt. Forge's current generation path is deterministic
+        # (template/cache/f-string — no LLM call), so this is the ready
+        # injection point: the moment a Forge LLM strategy exists, trusted
+        # skill guidance is already in the prompt.
+        skills = getattr(self, "skills", None)
+        if skills is not None:
+            try:
+                guidance = skills.instruction_text()
+            except Exception:
+                guidance = ""
+            if guidance:
+                prompt = f"{prompt}\n\n{guidance}"
+        return prompt
 
     def _validate_retry_contract(self, retry_context: Any, caller: str = "") -> None:
         if retry_context is None:
@@ -436,8 +450,7 @@ class ForgeAgent(BaseAgent):
                         old_trials = hp.get("max_trials", "?")
                         hp["max_trials"] = rc_trials
                         self.logger.info(
-                            f"[job={self.job_id}] Overriding max_trials: "
-                            f"{old_trials} → {rc_trials}"
+                            f"[job={self.job_id}] Overriding max_trials: {old_trials} → {rc_trials}"
                         )
             plan_summary = format_plan_summary(plan)
             await self.redis.set_json(plan_key, plan)
@@ -462,6 +475,29 @@ class ForgeAgent(BaseAgent):
             "acting", "Generating training script...", detail={"architecture": architecture}
         )
 
+        # ── Tool-memory retrieval (flag-gated, off by default) ────────────
+        # Query ChromaDB tool memory for past tools relevant to this mission and
+        # inject their docstrings into the script header. No-op unless the
+        # collection has been populated via register_agent_tools().
+        tool_memory_hints = None
+        if os.environ.get("TOOL_MEMORY_ENABLED", "0") == "1":
+            try:
+                from memory.collections.tool_memory import (
+                    format_tool_hints,
+                    register_agent_tools,
+                    retrieve_relevant_tools,
+                )
+
+                register_agent_tools("Forge", "agents.forge.tools")
+                task_desc = brief_raw.get("problem_description") or brief_raw.get(
+                    "task_description", ""
+                )
+                if task_desc:
+                    tools = retrieve_relevant_tools("Forge", str(task_desc), k=3)
+                    tool_memory_hints = format_tool_hints(tools)
+            except Exception as e:
+                self.logger.warning(f"[job={self.job_id}] Tool-memory retrieval disabled: {e}")
+
         _start = asyncio.get_event_loop().time()
         jp = get_job_paths(self.job_id)
         script_path = write_training_script(
@@ -473,6 +509,7 @@ class ForgeAgent(BaseAgent):
             engineering_plan=plan,
             redis_client=self.redis,
             confidence=confidence,
+            tool_memory_hints=tool_memory_hints,
         )
         _elapsed = asyncio.get_event_loop().time() - _start
         FORGE_SCRIPTS_GENERATED.labels(architecture=architecture, job_id=self.job_id).inc()

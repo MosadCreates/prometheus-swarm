@@ -1,9 +1,9 @@
 {
-  "fixed_script_path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\scripts\\training_script_abl-tc01-8a84a3.py",
-  "patch_id": "patch-abl-tc01-8a84a3-001",
-  "confidence_score": 0.97,
-  "error_category": "novel_error",
-  "note": "Replaced Python-invalid lowercase boolean literals true/false with True/False throughout script."
+    "fixed_script_path": "C:\\Users\\moham\\OneDrive\\Desktop\\prometheus-swarm\\scripts\\training_script_abl-tc01-8a84a3.py",
+    "patch_id": "patch-abl-tc01-8a84a3-001",
+    "confidence_score": 0.97,
+    "error_category": "novel_error",
+    "note": "Replaced Python-invalid lowercase boolean literals true/false with True/False throughout script.",
 }
 """
 Training script for job abl-tc01-8a84a3
@@ -42,6 +42,7 @@ _search_space_json = os.getenv("SEARCH_SPACE_JSON")
 _use_optuna = bool(_search_space_json)
 if _use_optuna:
     import optuna
+
     _search_space = json.loads(_search_space_json)
 
 _data_dir = os.getenv("DATA_DIR", "./data")
@@ -62,13 +63,20 @@ X_train, X_test, y_train, y_test = train_test_split(df, target, test_size=0.2, r
 numeric_cols = X_train.select_dtypes(include=["int64", "float64"]).columns.tolist()
 categorical_cols = X_train.select_dtypes(include=["object"]).columns.tolist()
 
-preprocessor = ColumnTransformer([
-    ("num", "passthrough", numeric_cols),
-    ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), categorical_cols),
-])
+preprocessor = ColumnTransformer(
+    [
+        ("num", "passthrough", numeric_cols),
+        (
+            "cat",
+            OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1),
+            categorical_cols,
+        ),
+    ]
+)
 
 if _use_optuna:
     if True:
+
         def _objective(trial):
             params = {}
             for _name, _spec in _search_space.items():
@@ -78,11 +86,15 @@ if _use_optuna:
                     params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
             params["random_state"] = 42
             params["verbosity"] = -1
-            _model = Pipeline([("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))])
+            _model = Pipeline(
+                [("preprocessor", preprocessor), ("estimator", lgb.LGBMClassifier(**params))]
+            )
             _model.fit(X_train, y_train)
             _y_pred = _model.predict(X_test)
             return accuracy_score(y_test, _y_pred)
+
     else:
+
         def _objective(trial):
             params = {}
             for _name, _spec in _search_space.items():
@@ -92,7 +104,9 @@ if _use_optuna:
                     params[_name] = trial.suggest_float(_name, _spec["low"], _spec["high"])
             params["random_state"] = 42
             params["verbosity"] = -1
-            _model = Pipeline([("preprocessor", preprocessor), ("estimator", lgb.LGBMRegressor(**params))])
+            _model = Pipeline(
+                [("preprocessor", preprocessor), ("estimator", lgb.LGBMRegressor(**params))]
+            )
             _model.fit(X_train, y_train)
             _y_pred = _model.predict(X_test)
             return float(mean_squared_error(y_test, _y_pred))
@@ -111,10 +125,12 @@ if not False:
         estimator = lgb.LGBMClassifier(**best_params)
     else:
         estimator = lgb.LGBMRegressor(**best_params)
-    model = Pipeline([
-        ("preprocessor", preprocessor),
-        ("estimator", estimator),
-    ])
+    model = Pipeline(
+        [
+            ("preprocessor", preprocessor),
+            ("estimator", estimator),
+        ]
+    )
     model.fit(X_train, y_train)
 
     y_pred = model.predict(X_test)

@@ -1,0 +1,124 @@
+"""Installed demo of the bundled ``crash_localizer`` — with a next-action hint.
+
+Deterministic, pure, drop-in compatible: parses the traceback (falling back to
+the exception message) to find the script-local frame, then adds a
+``suggestion`` field so the researcher sees *what to do next* based on how
+confidently the crash site was located. Always returns ``ok=True`` — a
+non-locatable crash is a successful negative, not a failure.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Any
+
+from agents.skills.base import Skill
+from agents.skills.context import SkillContext, SkillResult
+
+#   File "C:/.../scripts/training_script_abc.py", line 42, in <module>
+_FRAME_RE = re.compile(r'File "([^"]+)", line (\d+), in (.+)$')
+#   line 42, in train
+_LINE_RE = re.compile(r"line (\d+), in ([^ ]+)$")
+
+
+def _script_basename(path: str) -> str:
+    try:
+        return Path(path).name
+    except Exception:
+        return ""
+
+
+def _suggest(located_in_script: bool, line: int | None) -> str:
+    if located_in_script:
+        return f"inspect the call around line {line} — add a try/except with logging and rerun"
+    if line is not None:
+        return "traceback was lost; wrap the entry point so the frame survives"
+    return "rerun with PYTHONFAULTHANDLER=1 (or a full traceback) to capture the crash site"
+
+
+class CrashLocalizerPlusSkill(Skill):
+    name = "crash_localizer"
+    description = "Locate the failing script frame/line and suggest a next action"
+    category = "debugging"
+    agents = ("dissect",)
+    deterministic = True
+
+    async def run(self, ctx: SkillContext, **kwargs: Any) -> SkillResult:
+        script_path = ctx.paths.get("script_path") or ctx.kwargs.get("script_path", "") or ""
+        traceback_text = ctx.kwargs.get("traceback", "") or ""
+        exc_message = ctx.kwargs.get("exception_message", "") or ""
+        script_snippet = ctx.kwargs.get("script_snippet", "") or ""
+
+        frames = self._parse_frames(traceback_text)
+        target = _script_basename(script_path)
+
+        chosen = None
+        for f in frames:
+            if target and _script_basename(f["file"]) == target:
+                chosen = f
+                break
+        if chosen is None and frames:
+            chosen = frames[-1]
+
+        if chosen is not None:
+            in_script = _script_basename(chosen["file"]) == target
+            return SkillResult(
+                skill=self.name,
+                ok=True,
+                detail={
+                    "locatable": True,
+                    "file": chosen["file"],
+                    "line": chosen["line"],
+                    "function": chosen["function"],
+                    "snippet": self._snippet_for(script_snippet, chosen["line"]),
+                    "confidence": 0.9 if in_script else 0.6,
+                    "suggestion": _suggest(in_script, chosen["line"]),
+                },
+            )
+
+        m = _LINE_RE.search(exc_message)
+        if m:
+            return SkillResult(
+                skill=self.name,
+                ok=True,
+                detail={
+                    "locatable": True,
+                    "file": "",
+                    "line": int(m.group(1)),
+                    "function": m.group(2),
+                    "snippet": "",
+                    "confidence": 0.4,
+                    "suggestion": _suggest(False, int(m.group(1))),
+                },
+            )
+        return SkillResult(
+            skill=self.name,
+            ok=True,
+            detail={
+                "locatable": False,
+                "line": None,
+                "function": None,
+                "snippet": "",
+                "confidence": 0.0,
+                "suggestion": _suggest(False, None),
+            },
+        )
+
+    @staticmethod
+    def _parse_frames(traceback_text: str) -> list[dict[str, Any]]:
+        frames = []
+        for line in traceback_text.splitlines():
+            m = _FRAME_RE.match(line.strip())
+            if m:
+                frames.append({"file": m.group(1), "line": int(m.group(2)), "function": m.group(3)})
+        return frames
+
+    @staticmethod
+    def _snippet_for(script_snippet: str, line: int) -> str:
+        if not script_snippet:
+            return ""
+        lines = script_snippet.splitlines()
+        if 1 <= line <= len(lines):
+            return lines[line - 1].strip()[:120]
+        return ""

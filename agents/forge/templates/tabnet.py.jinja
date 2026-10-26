@@ -159,6 +159,39 @@ _checkpoint = {
 with open(checkpoint_path, "wb") as f:
     pickle.dump(_checkpoint, f)
 print(f"Model saved to {checkpoint_path}")
+
+# ── TorchScript artifact (best-effort; never fails the job) ──────────────────
+# Emits model.pt — a traced module whose output is class probabilities (softmax
+# applied) or the raw regression value, so Harbor can serve it without knowing
+# the TabNet architecture. Any export failure is logged, not fatal.
+try:
+    model.network.eval()
+
+    class _InferenceWrapper(torch.nn.Module):
+        def __init__(self, inner, classify):
+            super().__init__()
+            self.inner = inner
+            self.classify = classify
+
+        def forward(self, x):
+            out = self.inner(x)
+            if isinstance(out, (tuple, list)):
+                out = out[0]
+            if self.classify:
+                return torch.softmax(out, dim=1)
+            return out
+
+    _script_path = os.path.join(output_dir, "model.pt")
+    _wrapper = _InferenceWrapper(
+        model.network, {{ "True" if task_type in ("binary", "multiclass") else "False" }}
+    )
+    _dummy = torch.zeros(1, X_train.shape[1], dtype=torch.float32)
+    _traced = torch.jit.trace(_wrapper, _dummy)
+    torch.jit.save(_traced, _script_path)
+    print(f"TorchScript artifact saved to {_script_path}")
+except Exception as _export_err:
+    print(f"WARNING: TorchScript export failed (non-fatal): {_export_err}")
+
 np.save(os.path.join(output_dir, "y_test.npy"), y_test.values if hasattr(y_test, 'values') else y_test)
 np.save(os.path.join(output_dir, "y_pred.npy"), y_pred)
 {% if task_type in ("binary", "multiclass") %}

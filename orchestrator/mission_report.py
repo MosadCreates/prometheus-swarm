@@ -550,7 +550,9 @@ def _compute_prediction_vs_actual(data: dict[str, Any]) -> dict[str, Any]:
             else (
                 "overconfident"
                 if overall_conf >= 0.7 and outcome in ("escalate", "retry")
-                else "underconfident" if overall_conf < 0.5 and outcome == "pass" else "neutral"
+                else "underconfident"
+                if overall_conf < 0.5 and outcome == "pass"
+                else "neutral"
             )
         )
         comparisons.append(
@@ -782,7 +784,7 @@ def _render_markdown(data: dict[str, Any]) -> str:
             if hcc:
                 lines.append(
                     f"- High cardinality columns: {', '.join(hcc[:5])}"
-                    + (f" (+{len(hcc)-5} more)" if len(hcc) > 5 else "")
+                    + (f" (+{len(hcc) - 5} more)" if len(hcc) > 5 else "")
                 )
             dups = dq.get("duplicate_rows", 0)
             if dups:
@@ -843,7 +845,7 @@ def _render_markdown(data: dict[str, Any]) -> str:
             lines.append("**Alternatives Considered:**")
             for a in alts:
                 amr = a.get("expected_metric_range")
-                amr_lo, amr_hi = _to_float(amr[0]), _to_float(amr[1])
+                amr_lo, amr_hi = (_to_float(amr[0]), _to_float(amr[1])) if amr else (None, None)
                 amr_str = (
                     f" [{amr_lo:.2f}, {amr_hi:.2f}]"
                     if (amr and amr_lo is not None and amr_hi is not None)

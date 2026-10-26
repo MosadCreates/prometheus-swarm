@@ -72,6 +72,14 @@ class AppContext:
             self._load_plugins()
         return self._services["plugins"]
 
+    @property
+    def skills(self):
+        if "skills" not in self._services:
+            from prometheus.services.skill_service import SkillService
+
+            self._services["skills"] = SkillService()
+        return self._services["skills"]
+
     def _load_plugins(self) -> None:
         import importlib
         import pkgutil

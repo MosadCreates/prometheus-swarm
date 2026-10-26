@@ -7,13 +7,11 @@ brief, and publishes the decision event.
 
 import json
 import logging
-from datetime import datetime, timezone
 
 from agents.arbiter.decision import make_decision
-from agents.arbiter.evaluator import evaluate, load_checkpoint_data
+from agents.arbiter.evaluator import analyze_checkpoint_errors, evaluate, load_checkpoint_data
 from agents.arbiter.models import (
     DecisionResult,
-    EvaluationResult,
     MissionConstraints,
 )
 from agents.arbiter.report import (
@@ -26,7 +24,6 @@ from bus.events import (
     EVALUATION_FAILED,
     EVALUATION_PASS,
     EVALUATION_RETRY,
-    EVALUATION_STARTED,
     STREAM_ARBITER_OUTPUT,
 )
 from bus.publisher import publish
@@ -139,7 +136,7 @@ async def run_evaluation(
     except FileNotFoundError as e:
         logger.error(f"[job={job_id}] {e}")
         if renderer:
-            from agents.arbiter.ui import show_checkpoint_missing, show_error
+            from agents.arbiter.ui import show_checkpoint_missing
 
             show_checkpoint_missing(renderer, str(e))
         await _publish_failed(job_id, redis_client, str(e))
@@ -164,11 +161,15 @@ async def run_evaluation(
     decision = make_decision(evaluation_result, constraints)
 
     # Step 5: Save reports — always evaluation.json, metrics.csv, decision.json
+    error_analysis = analyze_checkpoint_errors(
+        job_id, task_type=task_type, checkpoint_dir=checkpoint_dir
+    )
     report_path = save_evaluation_report(
         job_id,
         evaluation_result,
         decision,
         constraints,
+        error_analysis=error_analysis,
     )
     save_metrics_csv(job_id, evaluation_result.all_metrics)
     save_decision_report(job_id, decision)

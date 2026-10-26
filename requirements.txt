@@ -44,6 +44,10 @@ pygments==2.20.0            # syntax highlighting in report rendering
 pyyaml==6.0.3               # YAML output rendering
 packaging==26.2             # version comparison in doctor/compat checks
 
+# Skill system (agents/skills/)
+psutil==7.2.2                # subprocess RSS memory cap (no resource.setrlimit on Windows)
+cryptography==49.0.0         # ed25519 detached signatures for skill authenticity
+
 # Figures
 matplotlib>=3.8.0
 

@@ -1,5 +1,6 @@
 """Evaluation metrics computation. No CLI rendering, no file I/O beyond loading arrays."""
 
+import json
 import logging
 import os
 from typing import Any
@@ -25,7 +26,9 @@ def load_checkpoint_data(
         checkpoint_dir: Override directory. Defaults to outputs/{job_id}/checkpoints.
 
     Returns:
-        dict with keys: y_true, y_pred, y_prob, checkpoint_path, num_samples
+        dict with keys: y_true, y_pred, y_prob, X_test, feature_names,
+        checkpoint_path, num_samples. ``X_test``/``feature_names`` are None when
+        the training script did not save them (e.g. text/image runs).
     """
     if checkpoint_dir is None:
         from runtime.paths import get_job_paths
@@ -62,10 +65,36 @@ def load_checkpoint_data(
     if os.path.exists(y_prob_path):
         y_prob = np.load(y_prob_path, allow_pickle=True)
 
+    # Optional feature matrix + column names — saved by the tabular training
+    # templates for Arbiter's error-subset analysis. Absent for text/image runs.
+    x_test = None
+    feature_names = None
+    x_test_path = os.path.join(checkpoint_dir, "X_test.npy")
+    if os.path.exists(x_test_path):
+        try:
+            x_test = np.load(x_test_path, allow_pickle=True)
+            if x_test.shape[0] == len(y_true) and x_test.ndim == 2:
+                x_test = x_test.tolist()
+            else:
+                x_test = None
+        except Exception:
+            x_test = None
+    feature_names_path = os.path.join(checkpoint_dir, "feature_names.json")
+    if os.path.exists(feature_names_path):
+        try:
+            with open(feature_names_path, encoding="utf-8") as f:
+                feature_names = json.load(f)
+            if not isinstance(feature_names, list):
+                feature_names = None
+        except Exception:
+            feature_names = None
+
     return {
         "y_true": y_true.tolist(),
         "y_pred": y_pred.tolist(),
         "y_prob": y_prob.tolist() if y_prob is not None else None,
+        "X_test": x_test,
+        "feature_names": feature_names,
         "checkpoint_path": checkpoint_path,
         "num_samples": len(y_true),
     }
@@ -253,4 +282,36 @@ def evaluate(
         task_type=task_type,
         checkpoint_path=data["checkpoint_path"],
         num_samples=data["num_samples"],
+    )
+
+
+def analyze_checkpoint_errors(
+    job_id: str,
+    task_type: str = "classification",
+    checkpoint_dir: str | None = None,
+) -> dict[str, Any]:
+    """Identify the data subsets the model gets wrong.
+
+    Loads the checkpoint test artifacts (y_true/y_pred + optional X_test) and
+    runs :func:`agents.arbiter.tools.analyze_error_subset`. Degrades gracefully
+    to a label-level analysis when the feature matrix was not saved.
+
+    Returns:
+        The analysis dict from ``analyze_error_subset``, or a dict with
+        ``error`` set if the checkpoint data is unavailable.
+    """
+    try:
+        data = load_checkpoint_data(job_id, checkpoint_dir=checkpoint_dir)
+    except FileNotFoundError as e:
+        logger.warning(f"[job={job_id}] Error-subset analysis skipped: {e}")
+        return {"error": str(e), "segments": [], "labels": [], "summary": ""}
+
+    from agents.arbiter.tools import analyze_error_subset
+
+    return analyze_error_subset(
+        X_test=data.get("X_test"),
+        y_true=data["y_true"],
+        y_pred=data["y_pred"],
+        task_type=task_type,
+        feature_names=data.get("feature_names"),
     )

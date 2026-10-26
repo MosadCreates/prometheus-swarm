@@ -92,43 +92,80 @@ def mission_new(
 
     description = problem or f"Train on dataset at {dataset}"
 
+    # Fail fast on a missing dataset. Scout would otherwise escalate at its
+    # first validation step and the mission dies in ~0s with the reason buried
+    # in the daemon log / diagnostic file. Catch it here, before starting the
+    # orchestrator or submitting anything.
+    if dataset and not Path(dataset).is_file():
+        renderer.error(f"Dataset not found: {dataset}")
+        renderer.print(
+            "  The dataset must exist on disk before the mission starts. "
+            "Check the path, or point --dataset at a real file (e.g. data/titanic.csv)."
+        )
+        return ExitCode.ERROR
+
     # --block runs synchronously via job_runner, no daemon needed
     if block:
         return _run_blocking(
             renderer, description, dataset, target, budget, time_limit, quiet=quiet
         )
 
-    # Check if orchestrator daemon is running before submitting
-    async def _check_orch() -> bool:
-        try:
-            from memory.redis_client import RedisClient
-
-            c = RedisClient()
-            await c.connect()
-            hb = await c.get_str("orch:heartbeat")
-            await c.close()
-            return hb is not None
-        except Exception:
-            return False
-
+    # Ensure the orchestrator daemon is running before submitting. If it's down
+    # (or its heartbeat is stale — a zombie left by a dead daemon), auto-start
+    # it and wait for readiness so the mission runs in the background.
     import asyncio as _asyncio
 
-    orch_alive = _asyncio.run(_check_orch())
+    from prometheus.cli.daemon import (
+        daemon_pid,
+        is_daemon_alive,
+        start_orchestrator_daemon,
+        tail_daemon_log,
+        wait_for_orchestrator_ready,
+    )
+    from prometheus.ui.components import Spinner
 
-    if not orch_alive and watch:
-        console.print("  [bold yellow]Orchestrator not running — running pipeline directly[/]")
-        console.print()
-        return _run_blocking(
-            renderer, description, dataset, target, budget, time_limit, quiet=quiet
-        )
+    orch_ready = _asyncio.run(wait_for_orchestrator_ready(timeout=1.0))
+    started_pid = None
+    if not orch_ready:
+        ok, msg = start_orchestrator_daemon()
+        if ok:
+            started_pid = daemon_pid()
+            console.print(f"  Orchestrator not running — started daemon ({msg}).")
+            with Spinner("Waiting for orchestrator to be ready…"):
+                orch_ready = _asyncio.run(
+                    wait_for_orchestrator_ready(timeout=90.0, pid=started_pid)
+                )
+        else:
+            console.print(f"  [red]Failed to start orchestrator daemon: {msg}[/]")
+            console.print(tail_daemon_log())
+
+    if not orch_ready:
+        # Never run in-process while a daemon is alive — it would also consume
+        # this job's events and double-drive it (duplicate deploys). Fall back
+        # only when there is genuinely no daemon: spawn failed or it died.
+        if is_daemon_alive(started_pid):
+            console.print()
+            console.print(
+                "  [yellow]Orchestrator is still starting — job queued; the mission will"
+                " begin once it is ready.[/]"
+            )
+            console.print()
+        else:
+            console.print()
+            console.print(
+                "  [bold yellow]Orchestrator unavailable — running pipeline in this"
+                " terminal instead.[/]"
+            )
+            console.print()
+            return _run_blocking(
+                renderer, description, dataset, target, budget, time_limit, quiet=quiet
+            )
 
     # Submit to the orchestrator via Redis bus
     from contextlib import nullcontext
     from orchestrator.job_queue import submit_job
 
     if watch:
-        from prometheus.ui.components import Spinner
-
         submit_status = Spinner("Submitting mission...")
     else:
         console.print("  [dim]Submitting mission...[/dim]")
@@ -161,12 +198,6 @@ def mission_new(
 
     slug = uuid_to_slug(job_id)
     console.print(f"  Mission created: {slug}")
-
-    if not orch_alive:
-        console.print("  [dim]\u26a0 Orchestrator is not running. [/dim]")
-        console.print(
-            "  [dim]Submit with --block to run synchronously, or start the daemon:  prometheus daemon start[/dim]"
-        )
 
     if watch and cockpit:
         console.print("  watching now --- press p at any time to detach")

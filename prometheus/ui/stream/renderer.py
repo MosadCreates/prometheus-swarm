@@ -616,6 +616,10 @@ class StreamRenderer:
     ) -> None:
         """Update Furnace's progress bar from event data."""
         agent = self._agents[name]
+        if agent.status == "done":
+            # Already finalized — a late epoch event racing the done event
+            # must not overwrite the authoritative final epoch/best-metric.
+            return
 
         epoch = detail.get("epoch")
         total_epochs = detail.get("total_epochs")
@@ -685,11 +689,30 @@ class StreamRenderer:
                 if k in detail:
                     agent.details[k] = detail[k]
         elif name == "Furnace":
+            # Already finalized: done's `epochs`/`best_metric` are the
+            # authoritative final values. Late fire-and-forget epoch events
+            # (from the training stream) must NOT clobber them.
+            if agent.status == "done":
+                return
             if "epoch" in detail and "total_epochs" in detail:
                 e = min(int(detail["epoch"]), int(detail["total_epochs"]))
                 agent.details["epoch"] = f"{e}/{detail['total_epochs']}"
             if "metric_value" in detail:
                 agent.details["best_metric"] = f"{float(detail['metric_value']):.4f}"
+            # The done event carries the final epoch count + best metric.
+            # The denominator is the configured max_epochs when Furnace reported
+            # it (so an early-stopped run shows e.g. 40/100, not 40/40);
+            # otherwise fall back to the epoch count itself.
+            if isinstance(detail.get("epochs"), int):
+                n = detail["epochs"]
+                if n > 0:
+                    m = detail.get("max_epochs")
+                    if isinstance(m, int) and m > 0:
+                        agent.details["epoch"] = f"{n}/{m}"
+                    else:
+                        agent.details["epoch"] = f"{n}/{n}"
+            if isinstance(detail.get("best_metric"), (int, float)):
+                agent.details["best_metric"] = f"{float(detail['best_metric']):.4f}"
         elif name == "Arbiter":
             for k in ("metric_name", "val_metric", "threshold", "operator", "decision"):
                 if k in detail:
@@ -811,6 +834,28 @@ class StreamRenderer:
             except Exception:
                 health_status = "unreachable"
 
+        # Find failed agent + reason for the error summary. Prefer live
+        # agent_events state; fall back to the orchestrator's diagnostic
+        # report. On instant failures the renderer can poll job status ==
+        # MISSION_FAILED before it consumes the agent error event carrying the
+        # reason, so outputs/<id>/diagnostic_<id>.json is the durable source.
+        failed_agent = ""
+        error_detail = ""
+        if not is_success:
+            for name in AGENT_ORDER:
+                if self._agent_states.get(name) == "error":
+                    failed_agent = name
+                    error_detail = self._agents[name].summary
+                    break
+            if not failed_agent:
+                failed = self._load_diagnostic_failure()
+                if failed:
+                    failed_agent, error_detail = failed
+                    for name in AGENT_ORDER:
+                        if name.lower() == failed_agent.lower():
+                            self._agent_states[name] = "error"
+                            break
+
         # Build summary data
         data = SummaryData(
             mission_id=self._mission_id,
@@ -833,14 +878,8 @@ class StreamRenderer:
             dissect_categories=self._summary_data.get("dissect_categories", []),
             agent_states=dict(self._agent_states),
         )
-
-        # Find failed agent for error summary
-        if not is_success:
-            for name in AGENT_ORDER:
-                if self._agent_states.get(name) == "error":
-                    data.failed_agent = name
-                    data.error_detail = self._agents[name].summary
-                    break
+        data.failed_agent = failed_agent
+        data.error_detail = error_detail
 
         # Print the summary card
         self._emit_permanent("")
@@ -867,6 +906,28 @@ class StreamRenderer:
 
         # Terminal bell
         emit_bell()
+
+    def _load_diagnostic_failure(self) -> tuple[str, str] | None:
+        """Failure reason from the orchestrator's diagnostic report.
+
+        The orchestrator writes ``{job_id, source_agent, reason, escalated}``
+        to ``outputs/<id>/diagnostic_<id>.json`` when it escalates a mission
+        (``orchestrator/runtime.py``). Durable fallback for the summary card
+        when the agent_events stream hasn't been consumed yet. Returns
+        ``(source_agent, reason)`` or ``None`` if absent/unreadable.
+        """
+        try:
+            from runtime.paths import get_job_paths
+
+            path = get_job_paths(self._mission_id).diagnostic_report_path
+            data = json.loads(path.read_text(encoding="utf-8"))
+            agent = str(data.get("source_agent", "")).strip()
+            reason = str(data.get("reason", "")).strip()
+        except Exception:
+            return None
+        if not agent or not reason:
+            return None
+        return agent, reason
 
     # ── Event polling ────────────────────────────────────────────────────
 

@@ -22,6 +22,7 @@ from agents.dissect.budget import RepairBudget
 # Test 1 — Duplicate Fingerprint
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestDuplicateFingerprint:
     """Same failure twice → 1 LLM call, not 2."""
 
@@ -29,14 +30,18 @@ class TestDuplicateFingerprint:
         redis = AsyncMock()
         redis.sismember = AsyncMock(return_value=False)
         store = FingerprintStore(redis, "job-test-1")
-        fp = compute_fingerprint("missing_column", "income_log not found in DataFrame", "model.fit(X, y)\n", "training")
+        fp = compute_fingerprint(
+            "missing_column", "income_log not found in DataFrame", "model.fit(X, y)\n", "training"
+        )
         assert await store.is_new(fp) is True
 
     async def test_is_new_returns_false_second_time(self):
         redis = AsyncMock()
         redis.sismember = AsyncMock(return_value=True)
         store = FingerprintStore(redis, "job-test-2")
-        fp = compute_fingerprint("missing_column", "income_log not found in DataFrame", "model.fit(X, y)\n", "training")
+        fp = compute_fingerprint(
+            "missing_column", "income_log not found in DataFrame", "model.fit(X, y)\n", "training"
+        )
         assert await store.is_new(fp) is False
 
     async def test_dedup_triggers_escalation(self):
@@ -53,24 +58,39 @@ class TestDuplicateFingerprint:
         redis.pipeline = MagicMock(return_value=mock_pipe)
 
         store = FingerprintStore(redis, "job-test-3")
-        fp = compute_fingerprint("dtype_mismatch", "could not convert string to float", "df = pd.read_csv('data.csv')\n", "training")
+        fp = compute_fingerprint(
+            "dtype_mismatch",
+            "could not convert string to float",
+            "df = pd.read_csv('data.csv')\n",
+            "training",
+        )
 
         first_seen = await store.is_new(fp)
         assert first_seen is True
 
-        await store.register(fp, "dtype_mismatch", "training", compute_script_hash("df = pd.read_csv('data.csv')\n"))
+        await store.register(
+            fp, "dtype_mismatch", "training", compute_script_hash("df = pd.read_csv('data.csv')\n")
+        )
 
         second_seen = await store.is_new(fp)
         assert second_seen is False
 
     def test_compute_fingerprint_is_deterministic(self):
-        fp1 = compute_fingerprint("missing_column", "income_log not found", "script_content", "training")
-        fp2 = compute_fingerprint("missing_column", "income_log not found", "script_content", "training")
+        fp1 = compute_fingerprint(
+            "missing_column", "income_log not found", "script_content", "training"
+        )
+        fp2 = compute_fingerprint(
+            "missing_column", "income_log not found", "script_content", "training"
+        )
         assert fp1 == fp2
 
     def test_compute_fingerprint_differs_by_category(self):
-        fp1 = compute_fingerprint("missing_column", "income_log not found", "script_content", "training")
-        fp2 = compute_fingerprint("dtype_mismatch", "income_log not found", "script_content", "training")
+        fp1 = compute_fingerprint(
+            "missing_column", "income_log not found", "script_content", "training"
+        )
+        fp2 = compute_fingerprint(
+            "dtype_mismatch", "income_log not found", "script_content", "training"
+        )
         assert fp1 != fp2
 
 
@@ -78,22 +98,29 @@ class TestDuplicateFingerprint:
 # Test 2 — Budget Governor
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestBudgetGovernor:
     """Per-fingerprint budget blocks 2nd LLM call."""
 
     def test_can_call_llm_returns_true_initially(self):
-        fp = compute_fingerprint("oom", "cannot allocate array", "model = LGBMClassifier()\n", "training")
+        fp = compute_fingerprint(
+            "oom", "cannot allocate array", "model = LGBMClassifier()\n", "training"
+        )
         budget = FingerprintBudget(fingerprint=fp)
         assert budget.can_call_llm() is True
 
     def test_blocks_second_llm_call(self):
-        fp = compute_fingerprint("oom", "cannot allocate array", "model = LGBMClassifier()\n", "training")
+        fp = compute_fingerprint(
+            "oom", "cannot allocate array", "model = LGBMClassifier()\n", "training"
+        )
         budget = FingerprintBudget(fingerprint=fp, max_llm_calls=1)
         budget.record_llm_call(cost=0.01, tokens=100)
         assert budget.can_call_llm() is False
 
     def test_exhausted_reason_is_llm_calls(self):
-        fp = compute_fingerprint("oom", "cannot allocate array", "model = LGBMClassifier()\n", "training")
+        fp = compute_fingerprint(
+            "oom", "cannot allocate array", "model = LGBMClassifier()\n", "training"
+        )
         budget = FingerprintBudget(fingerprint=fp, max_llm_calls=1)
         budget.record_llm_call(cost=0.01, tokens=100)
         assert budget.can_call_llm() is False
@@ -102,19 +129,25 @@ class TestBudgetGovernor:
         assert isinstance(reason, str)
 
     def test_blocks_by_cost(self):
-        fp = compute_fingerprint("oom", "cannot allocate array", "model = LGBMClassifier()\n", "training")
+        fp = compute_fingerprint(
+            "oom", "cannot allocate array", "model = LGBMClassifier()\n", "training"
+        )
         budget = FingerprintBudget(fingerprint=fp, max_cost=0.05)
         budget.record_llm_call(cost=0.06, tokens=100)
         assert budget.can_call_llm() is False
 
     def test_blocks_by_tokens(self):
-        fp = compute_fingerprint("oom", "cannot allocate array", "model = LGBMClassifier()\n", "training")
+        fp = compute_fingerprint(
+            "oom", "cannot allocate array", "model = LGBMClassifier()\n", "training"
+        )
         budget = FingerprintBudget(fingerprint=fp, max_tokens=1000)
         budget.record_llm_call(cost=0.01, tokens=1500)
         assert budget.can_call_llm() is False
 
     def test_blocks_by_time(self):
-        fp = compute_fingerprint("oom", "cannot allocate array", "model = LGBMClassifier()\n", "training")
+        fp = compute_fingerprint(
+            "oom", "cannot allocate array", "model = LGBMClassifier()\n", "training"
+        )
         budget = FingerprintBudget(fingerprint=fp, max_seconds=0.01)
         time.sleep(0.02)
         assert budget.can_call_llm() is False
@@ -131,7 +164,7 @@ class TestBudgetGovernor:
         governor.record_llm_call(fp1, cost=0.05, tokens=500)  # exhausts fp1
 
         assert governor.can_call_llm(fp1) is False  # exhausted
-        assert governor.can_call_llm(fp2) is True    # fresh
+        assert governor.can_call_llm(fp2) is True  # fresh
 
     def test_exhausted_reason_is_non_empty(self):
         fp = compute_fingerprint("oom", "cannot allocate array", "script", "training")
@@ -145,6 +178,7 @@ class TestBudgetGovernor:
 # ═══════════════════════════════════════════════════════════════════════
 # Test 3 — Terminal Error
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TestTerminalError:
     """Terminal errors must bypass LLM entirely and escalate immediately."""
@@ -175,6 +209,7 @@ class TestTerminalError:
 # Test 4 — No-Progress Detector
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestNoProgressDetector:
     """Same error repeated with no state change → escalate via no_progress_loop."""
 
@@ -188,22 +223,26 @@ class TestNoProgressDetector:
     async def test_no_progress_when_nothing_changed(self):
         redis = AsyncMock()
         sh = compute_script_hash("model.fit(X, y)\n")
-        redis.hgetall = AsyncMock(return_value={
-            "script_hash": sh,
-            "error_category": "missing_column",
-            "pipeline_stage": "training",
-        })
+        redis.hgetall = AsyncMock(
+            return_value={
+                "script_hash": sh,
+                "error_category": "missing_column",
+                "pipeline_stage": "training",
+            }
+        )
         store = FingerprintStore(redis, "job-np-2")
         assert await store.has_progress(sh, "missing_column", "training") is False
 
     async def test_progress_when_category_changes(self):
         redis = AsyncMock()
         sh = compute_script_hash("model.fit(X, y)\n")
-        redis.hgetall = AsyncMock(return_value={
-            "script_hash": sh,
-            "error_category": "missing_column",
-            "pipeline_stage": "training",
-        })
+        redis.hgetall = AsyncMock(
+            return_value={
+                "script_hash": sh,
+                "error_category": "missing_column",
+                "pipeline_stage": "training",
+            }
+        )
         store = FingerprintStore(redis, "job-np-3")
         assert await store.has_progress(sh, "dtype_mismatch", "training") is True
 
@@ -211,11 +250,13 @@ class TestNoProgressDetector:
         redis = AsyncMock()
         old_sh = compute_script_hash("model.fit(X, y)\n")
         new_sh = compute_script_hash("model.fit(X_train, y_train)\n")
-        redis.hgetall = AsyncMock(return_value={
-            "script_hash": old_sh,
-            "error_category": "missing_column",
-            "pipeline_stage": "training",
-        })
+        redis.hgetall = AsyncMock(
+            return_value={
+                "script_hash": old_sh,
+                "error_category": "missing_column",
+                "pipeline_stage": "training",
+            }
+        )
         store = FingerprintStore(redis, "job-np-4")
         assert await store.has_progress(new_sh, "missing_column", "training") is True
 
@@ -223,6 +264,7 @@ class TestNoProgressDetector:
 # ═══════════════════════════════════════════════════════════════════════
 # Test 5 — Progress Detector
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TestProgressDetector:
     """Different errors → progress detected → system continues."""
@@ -232,11 +274,13 @@ class TestProgressDetector:
         sh_syntax = compute_script_hash("def f(:\n")
         sh_runtime = compute_script_hash("def f():\n    1/0\n")
 
-        redis.hgetall = AsyncMock(return_value={
-            "script_hash": sh_syntax,
-            "error_category": "syntax_error",
-            "pipeline_stage": "training",
-        })
+        redis.hgetall = AsyncMock(
+            return_value={
+                "script_hash": sh_syntax,
+                "error_category": "syntax_error",
+                "pipeline_stage": "training",
+            }
+        )
         store = FingerprintStore(redis, "job-prog-1")
         assert await store.has_progress(sh_runtime, "runtime_error", "training") is True
 
@@ -257,11 +301,13 @@ class TestProgressDetector:
 
         await store.record_state(sh, "syntax_error", "training")
 
-        redis.hgetall = AsyncMock(return_value={
-            "script_hash": sh,
-            "error_category": "syntax_error",
-            "pipeline_stage": "training",
-        })
+        redis.hgetall = AsyncMock(
+            return_value={
+                "script_hash": sh,
+                "error_category": "syntax_error",
+                "pipeline_stage": "training",
+            }
+        )
         assert await store.has_progress(sh, "syntax_error", "training") is False
         assert await store.has_progress(sh, "runtime_error", "training") is True
 
@@ -269,6 +315,7 @@ class TestProgressDetector:
 # ═══════════════════════════════════════════════════════════════════════
 # Test 6 — Preferred Strategy Routing
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TestPreferredStrategy:
     """Every taxonomy category routes directly to its preferred strategy level."""
@@ -300,33 +347,69 @@ class TestPreferredStrategy:
     def test_every_category_has_strategy(self):
         """All known taxonomy entries must map to a non-empty preferred strategy."""
         known_categories = [
-            "shape_mismatch", "sparse_matrix", "oom", "cuda_oom",
-            "missing_column", "dtype_mismatch", "convergence_failure",
-            "import_error", "nan_propagation", "checkpoint_corruption",
-            "feature_mismatch", "index_error", "zero_division",
-            "empty_dataset", "invalid_axis", "optimizer_divergence",
-            "encoding_error", "permission_error", "label_mismatch",
-            "pickle_version_mismatch", "name_error", "syntax_error",
+            "shape_mismatch",
+            "sparse_matrix",
+            "oom",
+            "cuda_oom",
+            "missing_column",
+            "dtype_mismatch",
+            "convergence_failure",
+            "import_error",
+            "nan_propagation",
+            "checkpoint_corruption",
+            "feature_mismatch",
+            "index_error",
+            "zero_division",
+            "empty_dataset",
+            "invalid_axis",
+            "optimizer_divergence",
+            "encoding_error",
+            "permission_error",
+            "label_mismatch",
+            "pickle_version_mismatch",
+            "name_error",
+            "syntax_error",
             "novel_error",
         ]
         for cat in known_categories:
             strategy = get_preferred_strategy(cat)
             assert strategy is not None, f"{cat} has no preferred strategy"
             assert strategy != "", f"{cat} has empty preferred strategy"
-            assert strategy in ("rule", "template", "cache", "memory", "llm", "cascade", "terminal"), (
-                f"{cat} has invalid preferred strategy: {strategy}"
-            )
+            assert strategy in (
+                "rule",
+                "template",
+                "cache",
+                "memory",
+                "llm",
+                "cascade",
+                "terminal",
+            ), f"{cat} has invalid preferred strategy: {strategy}"
 
     def test_repair_strategy_never_empty(self):
         """Every category also has a human-readable repair strategy."""
         known_categories = [
-            "shape_mismatch", "sparse_matrix", "oom", "cuda_oom",
-            "missing_column", "dtype_mismatch", "convergence_failure",
-            "import_error", "nan_propagation", "checkpoint_corruption",
-            "feature_mismatch", "index_error", "zero_division",
-            "empty_dataset", "invalid_axis", "optimizer_divergence",
-            "encoding_error", "permission_error", "label_mismatch",
-            "pickle_version_mismatch", "name_error", "syntax_error",
+            "shape_mismatch",
+            "sparse_matrix",
+            "oom",
+            "cuda_oom",
+            "missing_column",
+            "dtype_mismatch",
+            "convergence_failure",
+            "import_error",
+            "nan_propagation",
+            "checkpoint_corruption",
+            "feature_mismatch",
+            "index_error",
+            "zero_division",
+            "empty_dataset",
+            "invalid_axis",
+            "optimizer_divergence",
+            "encoding_error",
+            "permission_error",
+            "label_mismatch",
+            "pickle_version_mismatch",
+            "name_error",
+            "syntax_error",
             "novel_error",
         ]
         for cat in known_categories:
@@ -340,6 +423,7 @@ class TestPreferredStrategy:
 # Test 7 — Cache Replay Count Increments
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestCacheReplayCount:
     """cache_increment returns 1, 2, 3 on successive replays."""
 
@@ -347,9 +431,13 @@ class TestCacheReplayCount:
         redis = AsyncMock()
         redis.setex = AsyncMock()
         await cache_store(
-            redis, "data/train.csv", "ValueError",
-            "X has 45 features", "shape_mismatch",
-            "diff", "success",
+            redis,
+            "data/train.csv",
+            "ValueError",
+            "X has 45 features",
+            "shape_mismatch",
+            "diff",
+            "success",
         )
         call_args = redis.setex.call_args
         stored = json.loads(call_args[0][2])
@@ -397,11 +485,13 @@ class TestCacheReplayCount:
 # Test 8 — Escalation Reason Always Populated
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class TestEscalationReasons:
     """Every escalate must have a non-empty reason."""
 
     def test_all_escalation_reasons_are_non_empty(self):
         from agents.dissect.agent import ESCALATION_REASONS
+
         for key, value in ESCALATION_REASONS.items():
             assert key != "", "Escalation reason key is empty"
             assert value != "", f"Escalation reason description for {key} is empty"
@@ -421,6 +511,7 @@ class TestEscalationReasons:
 # ═══════════════════════════════════════════════════════════════════════
 # Test 9 — No Duplicate LLM for Identical Fingerprint
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TestNoDuplicateLLM:
     """Same fingerprint → second occurrence escalates before LLM is called."""
@@ -448,6 +539,7 @@ class TestNoDuplicateLLM:
 # ═══════════════════════════════════════════════════════════════════════
 # Test 10 — RepairBudget Compatibility
 # ═══════════════════════════════════════════════════════════════════════
+
 
 class TestRepairBudget:
     """Legacy RepairBudget (job-scoped) still works alongside new governor."""

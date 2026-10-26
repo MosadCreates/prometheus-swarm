@@ -5,13 +5,77 @@ LLM Client ? Anthropic Claude Sonnet interface for all agents.
 import os
 import asyncio
 import logging
+from pathlib import Path
 from typing import Any
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 
 load_dotenv()
 logger = logging.getLogger(__name__)
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
-LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "300"))
+
+# ---------------------------------------------------------------------------
+# Configuration precedence
+# ---------------------------------------------------------------------------
+# ``load_dotenv()`` deliberately does NOT override variables that already
+# exist in the process environment.  That is normally convenient, but it means
+# any ``ANTHROPIC_*`` variable exported by a shell profile or launcher script
+# (a local proxy, a different model name, a different account's key) silently
+# shadows the project's own ``.env``.  Prometheus's agents must run against
+# the credentials and endpoint declared in ``.env``, so the settings that
+# decide *which account and which API* a call reaches are resolved from the
+# ``.env`` file FIRST, with the process environment only as a fallback.
+#
+# The resolved values are never logged or printed; the API key is used and
+# discarded.
+
+
+def _project_env_file() -> Path | None:
+    """Locate the project ``.env`` by walking up from this module."""
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / ".env"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _load_project_env() -> dict[str, str]:
+    """Read ``.env`` directly, bypassing ``load_dotenv``'s no-override rule."""
+    env_file = _project_env_file()
+    if env_file is None:
+        return {}
+    try:
+        return {
+            k: v
+            for k, v in dotenv_values(env_file).items()
+            if v is not None and v != ""
+        }
+    except Exception as e:  # malformed .env must not break imports
+        logger.warning("Could not parse %s: %s", env_file, e)
+        return {}
+
+
+_PROJECT_ENV = _load_project_env()
+
+
+def _resolve(name: str, default: str | None = None) -> str | None:
+    """Project ``.env`` value, else process environment, else ``default``."""
+    value = _PROJECT_ENV.get(name)
+    if value is None:
+        value = os.getenv(name)
+    return value if value is not None else default
+
+
+ANTHROPIC_MODEL = _resolve("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+LLM_TIMEOUT = int(_resolve("LLM_TIMEOUT", "300") or "300")
+
+# Anthropic's canonical endpoint.  Passed explicitly to every client
+# construction so that an inherited ``ANTHROPIC_BASE_URL`` (e.g. a local
+# proxy exported by a shell profile or launcher script) cannot redirect
+# Prometheus's traffic away from the API the ``ANTHROPIC_API_KEY`` in
+# ``.env`` actually belongs to.  The SDK only falls back to the env var
+# when ``base_url`` is left as ``None``, so this must never be ``None``.
+ANTHROPIC_BASE_URL = _resolve(
+    "PROMETHEUS_ANTHROPIC_BASE_URL", "https://api.anthropic.com"
+)
 
 
 async def get_llm_response(
@@ -24,10 +88,10 @@ async def get_llm_response(
 ) -> dict[str, Any]:
     import anthropic
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = _resolve("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set in .env")
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    client = anthropic.AsyncAnthropic(api_key=api_key, base_url=ANTHROPIC_BASE_URL)
     for attempt in range(max_retries):
         try:
             kwargs: dict[str, Any] = {
@@ -89,10 +153,10 @@ async def get_llm_response_stream(
     """
     import anthropic
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = _resolve("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set in .env")
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    client = anthropic.AsyncAnthropic(api_key=api_key, base_url=ANTHROPIC_BASE_URL)
 
     for attempt in range(max_retries):
         try:

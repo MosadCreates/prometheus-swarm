@@ -471,16 +471,16 @@ def generate_all_figures(data: dict) -> list[Path]:
 
 def main():
     data = load_ablation()
-    print(f"\n  {'='*60}")
+    print(f"\n  {'=' * 60}")
     print(f"  Ablation Analysis - {len(data['runs'])} runs across {len(data['problems'])} problems")
-    print(f"  {'='*60}\n")
+    print(f"  {'=' * 60}\n")
 
     # Per-config stats
     stats = compute_per_config_stats(data)
     print(
         f"  {'Config':<20} {'Success':>8} {'Crash':>8} {'Esc':>8} {'Rate':>8} {'Avg(s)':>8} {'Metric':>8}"
     )
-    print(f"  {'-'*20} {'-'*8} {'-'*8} {'-'*8} {'-'*8} {'-'*8} {'-'*8}")
+    print(f"  {'-' * 20} {'-' * 8} {'-' * 8} {'-' * 8} {'-' * 8} {'-' * 8} {'-' * 8}")
     for cid in sorted(data["configs"]):
         s = stats[str(cid)]
         print(
@@ -488,9 +488,9 @@ def main():
         )
 
     # Group comparisons
-    print(f"\n  {'-'*60}")
+    print(f"\n  {'-' * 60}")
     print("  Group Comparison: Dissect vs No-Dissect")
-    print(f"  {'-'*60}")
+    print(f"  {'-' * 60}")
 
     no_dissect = [r for c in CONFIG_GROUPS["no_dissect"] for r in config_runs(data, c)]
     with_dissect = [r for c in CONFIG_GROUPS["with_dissect"] for r in config_runs(data, c)]
@@ -503,9 +503,9 @@ def main():
     print(f"  With Dissect:   {wd_rate:.1f}% ({wd_success}/{len(with_dissect)})")
 
     # Hypothesis tests
-    print(f"\n  {'-'*60}")
+    print(f"\n  {'-' * 60}")
     print("  Hypothesis Tests (Mann-Whitney U)")
-    print(f"  {'-'*60}")
+    print(f"  {'-' * 60}")
     hyp_tests = compute_hypothesis_tests(data)
     hyp_defs = {
         "H1": "Planner reduces prediction error (C2 vs C1)",
@@ -524,9 +524,9 @@ def main():
         )
 
     # Figures
-    print(f"\n  {'-'*60}")
+    print(f"\n  {'-' * 60}")
     print("  Generating Figures")
-    print(f"  {'-'*60}")
+    print(f"  {'-' * 60}")
     fig_paths = generate_all_figures(data)
 
     # Save analysis report

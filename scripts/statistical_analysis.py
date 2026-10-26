@@ -160,11 +160,7 @@ results = {
         "interpretation": (
             "negligible"
             if effect_size_h < 0.2
-            else "small"
-            if effect_size_h < 0.5
-            else "medium"
-            if effect_size_h < 0.8
-            else "large"
+            else "small" if effect_size_h < 0.5 else "medium" if effect_size_h < 0.8 else "large"
         ),
     },
 }

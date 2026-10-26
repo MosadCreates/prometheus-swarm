@@ -130,7 +130,13 @@ def compute_run_metrics(patch_entries: list[dict], run_results: list[dict] | Non
             lev = "unknown"
         cascade[lev] = cascade.get(lev, 0) + 1
 
-    # Approximate token/cost estimation
+    # Metered LLM cost from benchmark result rows (job_runner api_cost_usd),
+    # when available. The fixed 3000/800-token estimate below is kept only as
+    # a fallback for analyze-mode runs over historical logs that predate
+    # cost metering.
+    metered_cost = round(sum(r.get("api_cost_usd", 0) or 0 for r in (run_results or [])), 6)
+
+    # Approximate token/cost estimation (fallback)
     input_tokens = llm_calls * 3000
     output_tokens = llm_calls * 800
     input_cost = input_tokens * 3.0 / 1_000_000
@@ -175,6 +181,8 @@ def compute_run_metrics(patch_entries: list[dict], run_results: list[dict] | Non
         "estimated_input_tokens": input_tokens,
         "estimated_output_tokens": output_tokens,
         "estimated_cost_usd": total_cost,
+        "metered_cost_usd": metered_cost,
+        "cost_source": "metered" if metered_cost > 0 else "estimated_fallback",
         "pass_count": pass_count,
         "fail_count": fail_count,
         "total_duration_s": round(total_duration, 2),
@@ -235,9 +243,9 @@ async def run_campaign_live(
     pre_patch_count = len(load_patch_log())
 
     for run_idx in range(1, num_runs + 1):
-        logger.info(f"\n{'='*60}")
+        logger.info(f"\n{'=' * 60}")
         logger.info(f"CAMPAIGN RUN {run_idx}/{num_runs}")
-        logger.info(f"{'='*60}")
+        logger.info(f"{'=' * 60}")
 
         run_results_cond: list[dict] = []
 
@@ -305,7 +313,13 @@ async def run_campaign_live(
         logger.info(f"\nRun {run_idx} metrics:")
         logger.info(f"  Pass rate: {metrics['pass_rate']:.1%}")
         logger.info(f"  LLM calls: {metrics['llm_calls']}")
-        logger.info(f"  Cost: ${metrics['estimated_cost_usd']:.4f}")
+        if metrics.get("metered_cost_usd", 0) > 0:
+            logger.info(
+                f"  Cost (metered): ${metrics['metered_cost_usd']:.4f} "
+                f"(est ${metrics['estimated_cost_usd']:.4f})"
+            )
+        else:
+            logger.info(f"  Cost (estimated): ${metrics['estimated_cost_usd']:.4f}")
         logger.info(f"  Cascade: {metrics['cascade_distribution']}")
 
 
@@ -430,7 +444,7 @@ def main():
         summary["trends"] = {
             "llm_calls": [m["llm_calls"] for m in run_metrics],
             "pass_rate": [m["pass_rate"] for m in run_metrics],
-            "cost": [m["estimated_cost_usd"] for m in run_metrics],
+            "cost": [m.get("metered_cost_usd") or m["estimated_cost_usd"] for m in run_metrics],
             "llm_fallback_rate": [m["llm_fallback_rate"] for m in run_metrics],
             "patch_success_rate": [m["patch_success_rate"] for m in run_metrics],
         }

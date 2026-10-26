@@ -72,7 +72,14 @@ def _verify_api_key(provider: str, api_key: str) -> tuple[bool, str]:
         try:
             import anthropic
 
-            client = anthropic.Anthropic(api_key=api_key)
+            # Pin the canonical endpoint explicitly.  The SDK only falls back
+            # to an inherited ANTHROPIC_BASE_URL when base_url is left as None,
+            # so without this an exported proxy URL would validate the .env key
+            # against the wrong service.  Mirrors agents/llm_client.py.
+            client = anthropic.Anthropic(
+                api_key=api_key,
+                base_url=os.getenv("PROMETHEUS_ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+            )
             client.models.list(limit=1)
             return True, "connected"
         except Exception as e:

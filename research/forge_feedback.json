@@ -3,15 +3,15 @@
     "unknown::shape_mismatch": {
       "architecture": "unknown",
       "category": "shape_mismatch",
-      "count": 689,
-      "last_seen": "2026-07-30T12:41:09.101556+00:00",
+      "count": 869,
+      "last_seen": "2026-09-15T17:53:40.281385+00:00",
       "recommendation": "Avoid errors of type shape_mismatch in unknown scripts"
     },
     "lightgbm::dtype_mismatch": {
       "architecture": "lightgbm",
       "category": "dtype_mismatch",
-      "count": 643,
-      "last_seen": "2026-07-30T12:41:19.247706+00:00",
+      "count": 738,
+      "last_seen": "2026-09-15T17:54:09.708196+00:00",
       "recommendation": "Add LabelEncoder/OrdinalEncoder for categorical columns during preprocessing; use pd.to_numeric with errors='coerce' for mixed-type columns"
     },
     "unknown::missing_column": {
@@ -59,14 +59,14 @@
     "lightgbm::missing_column": {
       "architecture": "lightgbm",
       "category": "missing_column",
-      "count": 25,
-      "last_seen": "2026-07-27T10:09:51.689977+00:00",
+      "count": 27,
+      "last_seen": "2026-09-19T17:18:19.349014+00:00",
       "recommendation": "Verify all column names used in script match actual dataset columns; use df.columns to list available columns before referencing them"
     }
   },
   "category_by_architecture": {
     "unknown": {
-      "shape_mismatch": 689,
+      "shape_mismatch": 869,
       "missing_column": 52,
       "name_error": 13,
       "syntax_error": 1,
@@ -75,19 +75,19 @@
       "checkpoint_corruption": 1
     },
     "lightgbm": {
-      "dtype_mismatch": 643,
-      "missing_column": 25
+      "dtype_mismatch": 738,
+      "missing_column": 27
     }
   },
   "top_failures": [
     {
       "key": "unknown::shape_mismatch",
-      "count": 689,
+      "count": 869,
       "recommendation": "Avoid errors of type shape_mismatch in unknown scripts"
     },
     {
       "key": "lightgbm::dtype_mismatch",
-      "count": 643,
+      "count": 738,
       "recommendation": "Add LabelEncoder/OrdinalEncoder for categorical columns during preprocessing; use pd.to_numeric with errors='coerce' for mixed-type columns"
     },
     {
@@ -97,7 +97,7 @@
     },
     {
       "key": "lightgbm::missing_column",
-      "count": 25,
+      "count": 27,
       "recommendation": "Verify all column names used in script match actual dataset columns; use df.columns to list available columns before referencing them"
     },
     {
@@ -126,6 +126,6 @@
       "recommendation": "Delete corrupt checkpoint; increase save frequency"
     }
   ],
-  "total_jobs_tracked": 1427,
-  "total_repairs_needed": 775
+  "total_jobs_tracked": 1704,
+  "total_repairs_needed": 922
 }

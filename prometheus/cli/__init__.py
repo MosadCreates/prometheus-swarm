@@ -8,6 +8,7 @@ from prometheus.cli.model import model
 from prometheus.cli.provider import provider
 from prometheus.cli.config import config
 from prometheus.cli.plugin import plugin
+from prometheus.cli.skill import skill
 from prometheus.cli.deploy import deploy
 from prometheus.cli.profile import profile
 from prometheus.cli.evaluate import evaluate
@@ -28,6 +29,7 @@ __all__ = [
     "provider",
     "config",
     "plugin",
+    "skill",
     "deploy",
     "profile",
     "evaluate",

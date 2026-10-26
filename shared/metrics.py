@@ -266,6 +266,19 @@ QUALITY_FEEDBACK_RECONNECTS_TOTAL = Counter(
     ["operation"],
 )
 
+# ─── Skill system metrics (agents/skills) ────────────────────────────────
+SKILL_RUNS = Counter(
+    "swarm_skill_runs_total",
+    "Skill invocations",
+    ["agent", "skill", "ok"],
+)
+SKILL_RUN_DURATION = Histogram(
+    "swarm_skill_run_duration_seconds",
+    "Duration of skill runs",
+    ["agent", "skill"],
+    buckets=(0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0),
+)
+
 # ─── Redis stream metrics ────────────────────────────────────────────────
 REDIS_STREAM_MESSAGES = Counter(
     "swarm_redis_stream_messages_total",
@@ -380,6 +393,8 @@ __all__ = [
     "PIPELINE_JOB_DURATION",
     "PIPELINE_ACTIVE_JOBS",
     "PIPELINE_GATE_STATUS",
+    "SKILL_RUNS",
+    "SKILL_RUN_DURATION",
     "REDIS_STREAM_MESSAGES",
     "REDIS_STREAM_LAG",
     "REDIS_STREAM_PENDING",

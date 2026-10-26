@@ -9,6 +9,7 @@ import uuid
 
 from evaluation import config as eval_config
 from agents.base import BaseAgent
+from agents.skills.context import SkillContext
 from agents.dissect.prompts import DISSECT_SYSTEM_PROMPT
 from agents.dissect.taxonomy import (
     classify_error_async,
@@ -154,6 +155,53 @@ class DissectAgent(BaseAgent):
             )
             self._classification_cache[cache_key] = (category, confidence, match_method)
 
+        # ── Bundled skills: localize the crash site + readable error signature ──
+        # Deterministic, in-process, never raise (Cross-cutting contract #4). If
+        # a skill cannot deliver, the pre-skill path below is unchanged.
+        crash_location: dict[str, Any] = {"locatable": False, "line": None, "function": None}
+        error_signature: dict[str, Any] = {}
+        _snippet = ""
+        try:
+            with open(script_path, encoding="utf-8") as f:
+                _snippet = f.read()[:2000]
+        except Exception:
+            pass
+        _loc = await self.skills.run(
+            "crash_localizer",
+            SkillContext(
+                job_id=self.job_id,
+                agent="dissect",
+                paths={"script_path": script_path},
+                kwargs={
+                    "exception_type": exception_type,
+                    "exception_message": exception_message,
+                    "traceback": crash_event.get("traceback", "") or "",
+                    "script_snippet": _snippet,
+                },
+            ),
+        )
+        if _loc.ok:
+            crash_location = _loc.detail
+        else:
+            await self.skills.record_fallback("crash_localizer")
+        _sig = await self.skills.run(
+            "error_signature_extractor",
+            SkillContext(
+                job_id=self.job_id,
+                agent="dissect",
+                kwargs={
+                    "category": category,
+                    "exception_type": exception_type,
+                    "exception_message": exception_message,
+                    "pipeline_stage": crash_event.get("pipeline_stage", "training"),
+                },
+            ),
+        )
+        if _sig.ok:
+            error_signature = _sig.detail
+        else:
+            await self.skills.record_fallback("error_signature_extractor")
+
         strategy = get_repair_strategy(category)
         DISSECT_ERROR_CLASSIFICATIONS.labels(category=category, job_id=self.job_id).inc()
 
@@ -169,9 +217,39 @@ class DissectAgent(BaseAgent):
             "Dissect",
             "planning",
             f"Error classified: {category}",
-            detail={"category": category, "confidence": confidence, "strategy": strategy},
+            detail={
+                "category": category,
+                "confidence": confidence,
+                "strategy": strategy,
+                "crash_location": crash_location,
+                "error_signature": error_signature.get("signature"),
+            },
             parent_event_id=_dissect_event_id or None,
         )
+
+        # ── Bundled skill: surface unseen error shapes at low confidence ──
+        if confidence < 0.5:
+            _tax = await self.skills.run(
+                "taxonomy_expander",
+                SkillContext(
+                    job_id=self.job_id,
+                    agent="dissect",
+                    kwargs={
+                        "exception_type": exception_type,
+                        "exception_message": exception_message,
+                        "category": category,
+                        "confidence": confidence,
+                    },
+                ),
+            )
+            if _tax.ok:
+                if _tax.detail and _tax.detail.get("suggested"):
+                    self.logger.info(
+                        f"[job={self.job_id}] Taxonomy suggestion: "
+                        f"{_tax.detail['suggested']} (matched at confidence {confidence:.2f})"
+                    )
+            else:
+                await self.skills.record_fallback("taxonomy_expander")
 
         if not os.path.exists(script_path):
             await self._escalate(crash_event, "script_not_found")
@@ -317,6 +395,26 @@ class DissectAgent(BaseAgent):
             parent_event_id=_dissect_event_id or None,
         )
 
+        # ── Bundled skill: compact cascade summary for the research log ──
+        _stats = await self.skills.run(
+            "cascade_stats",
+            SkillContext(
+                job_id=self.job_id,
+                agent="dissect",
+                kwargs={
+                    "level": cascade_result.level,
+                    "resolved": cascade_result.resolved,
+                    "is_terminal": cascade_result.is_terminal,
+                    "category": category,
+                    "cascade_path": getattr(cascade_result, "cascade_path", None) or [],
+                },
+            ),
+        )
+        if _stats.ok:
+            self.logger.info(f"[job={self.job_id}] {_stats.detail.get('summary', '')}")
+        else:
+            await self.skills.record_fallback("cascade_stats")
+
         # ── Terminal from cascade ──────────────────────────────────────
         if cascade_result.is_terminal:
             entry = self._build_log_entry(
@@ -455,6 +553,33 @@ class DissectAgent(BaseAgent):
                         f"[job={self.job_id}] Post-sandbox validation warnings: "
                         f"{[c['name'] for c in failed]} — accepting patch anyway"
                     )
+
+                # ── Bundled skill: structural post-conditions on the patched script ──
+                _pa = await self.skills.run(
+                    "patch_assertion_generator",
+                    SkillContext(
+                        job_id=self.job_id,
+                        agent="dissect",
+                        kwargs={
+                            "exception_type": exception_type,
+                            "exception_message": exception_message,
+                            "original_script": original_code,
+                            "patched_script": cascade_result.patched_script,
+                            "diff": diff,
+                        },
+                    ),
+                )
+                if _pa.ok:
+                    _failed_assertions = [
+                        a for a in _pa.detail.get("assertions", []) if not a.get("passed")
+                    ]
+                    if _failed_assertions:
+                        self.logger.warning(
+                            f"[job={self.job_id}] Skill assertions failed post-patch: "
+                            f"{[a['name'] for a in _failed_assertions]}"
+                        )
+                else:
+                    await self.skills.record_fallback("patch_assertion_generator")
 
                 DISSECT_PATCHES_GENERATED.labels(category=category, job_id=self.job_id).inc()
                 DISSECT_OUTCOMES.labels(outcome="resume", job_id=self.job_id).inc()
@@ -731,7 +856,30 @@ class DissectAgent(BaseAgent):
                     ),
                 )
 
-            from contracts.events import ResumeTrainingEvent
+                # ── Bundled skill: generalize this repair into a reusable rule ──
+                _rule = await self.skills.run(
+                    "rule_generalizer",
+                    SkillContext(
+                        job_id=self.job_id,
+                        agent="dissect",
+                        kwargs={
+                            "category": category,
+                            "exception_message": exception_message,
+                            "diff": diff,
+                            "patch_id": patch_id,
+                        },
+                    ),
+                )
+                if _rule.ok:
+                    if _rule.detail and _rule.detail.get("rule"):
+                        self.logger.info(
+                            f"[job={self.job_id}] Generalized rule: "
+                            f"{_rule.detail['rule'].get('message_pattern', '')}"
+                        )
+                else:
+                    await self.skills.record_fallback("rule_generalizer")
+
+                from contracts.events import ResumeTrainingEvent
 
             await emit_agent_event(
                 self.redis._client,
@@ -956,6 +1104,19 @@ class DissectAgent(BaseAgent):
             parts.append(cascade_path_str)
         if similar_patches_str:
             parts.append(similar_patches_str)
+
+        # ── Installed instruction skills (trusted only) ────────────────
+        # Guidance a user installed for this agent is appended to the LLM
+        # prompt; only trusted skills inject (deterministic paths never touch
+        # them). Empty when nothing is installed — append is a no-op.
+        try:
+            skills_guidance = self.skills.instruction_text()
+        except Exception:
+            skills_guidance = ""
+        if skills_guidance:
+            parts.append(
+                "Additional repair guidance from trusted installed skills:\n" + skills_guidance
+            )
 
         parts.append(
             "Fix the bug and output the COMPLETE fixed script. "

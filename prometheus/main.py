@@ -93,6 +93,7 @@ def _register_commands():
         provider,
         config,
         plugin,
+        skill,
         deploy,
         profile,
         evaluate,
@@ -108,6 +109,7 @@ def _register_commands():
     cli.add_command(provider)
     cli.add_command(config)
     cli.add_command(plugin)
+    cli.add_command(skill)
     cli.add_command(deploy)
     cli.add_command(profile)
     cli.add_command(evaluate)
@@ -135,6 +137,8 @@ def _register_commands():
         "prov": "provider",
         "mdl": "model",
         "plug": "plugin",
+        "skill": "skill",
+        "skills": "skill",
         "miss": "mission",
         "eval": "evaluate",
         "mem": "memory",

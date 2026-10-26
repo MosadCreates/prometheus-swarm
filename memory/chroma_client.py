@@ -61,7 +61,7 @@ class ChromaClient:
                 return self._client
             except Exception as e:
                 logger.warning(
-                    "ChromaDB connection stale — reconnecting " "(%s: %s)",
+                    "ChromaDB connection stale — reconnecting (%s: %s)",
                     type(e).__name__,
                     e,
                 )
@@ -85,3 +85,20 @@ class ChromaClient:
             return healthy.get_collection(name)
         except Exception:
             return healthy.create_collection(name)
+
+    def reset_collection(self, name: str) -> None:
+        """Explicitly wipe one collection — DESTRUCTIVE, guarded by ALLOW_RESET.
+
+        Production/agent code paths must never call this. Development scripts
+        may, but only with ALLOW_RESET=true set in the environment, mirroring
+        the server-side flag (docker-compose ships ALLOW_RESET=false). This is
+        the code guard behind the Phase-3 "silent data loss" incident.
+        """
+        if os.getenv("ALLOW_RESET", "").lower() not in {"1", "true", "yes"}:
+            raise RuntimeError(
+                f"Refusing to reset ChromaDB collection '{name}'. "
+                "Memory collections are the research corpus. If this reset is "
+                "intentional, set ALLOW_RESET=true in the environment first."
+            )
+        logger.warning(f"ALLOW_RESET=true — resetting collection '{name}'")
+        self._ensure_healthy().reset_collection(name)

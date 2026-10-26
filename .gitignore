@@ -50,12 +50,17 @@ tmp_test.py
 training_script_*.py
 
 # External / unrelated code
-src/
+/src/
+claude-code-proxy/
 
 # Generated deployment files
-Dockerfile
+/Dockerfile
 Prometheus_CLI_*.md
 deploy_update_app.py
+
+# Local build artifacts / backups
+*.bak
+frontend/tsconfig.tsbuildinfo
 
 # Reports
 reports/

@@ -4,14 +4,13 @@ import logging
 import os
 from typing import Any
 
-from agents.forge.decision_tree import select_architecture
-from agents.forge.template_renderer import select_and_render, has_template
+from agents.forge.template_renderer import select_and_render
 from agents.forge.script_fingerprint import (
     check_fingerprint,
     compute_fingerprint,
     record_fingerprint_pending,
 )
-from agents.forge.confidence_router import get_generation_strategy, Strategy
+from agents.forge.confidence_router import get_generation_strategy
 from shared.metrics import FORGE_TEMPLATES_USED, FORGE_STRATEGY_ROUTES
 
 logger = logging.getLogger(__name__)
@@ -76,6 +75,7 @@ def write_training_script(
     engineering_plan: dict | None = None,
     redis_client: Any | None = None,
     confidence: float | None = None,
+    tool_memory_hints: str | None = None,
 ) -> str:
     """Generate a training script respecting the engineering plan.
 
@@ -92,6 +92,10 @@ def write_training_script(
             ≥ 0.85 → deterministic template only (fast path)
             ≥ 0.55 → fingerprint cache → template → f-string (balanced)
             < 0.55 → skip template, f-string generators only (flexible path).
+        tool_memory_hints: Optional "available tools" text block retrieved from
+            ChromaDB tool memory (see ``memory.collections.tool_memory``).
+            Merged into the script header comment so prior-tool knowledge rides
+            into every generation strategy.
 
     Returns:
         Path to the written training script.
@@ -110,14 +114,11 @@ def write_training_script(
     validation_strategy = "train_val_split"
     imbalance_method = "none"
     max_trials = 20
-    gpu_required = False
-    expected_ram_mb = 512
 
     imbalance_method = mission_brief.get("imbalance_strategy", "none")
 
     if plan:
         hp = plan.get("hyperparameter_strategy", {})
-        budget = plan.get("computational_budget", {})
         pipeline = plan.get("preprocessing_pipeline", [])
 
         for step in pipeline:
@@ -136,6 +137,10 @@ def write_training_script(
                 break
 
         max_trials = hp.get("max_trials", 20) if hp else 20
+
+    # Tool-memory hints ride into every strategy via the header block.
+    if tool_memory_hints:
+        design_summary = f"{design_summary or ''}\n\n{tool_memory_hints}".strip()
 
     strategy = get_generation_strategy(confidence)
     FORGE_STRATEGY_ROUTES.labels(strategy=strategy, architecture=architecture, job_id=job_id).inc()
@@ -1228,17 +1233,11 @@ def _lookup_fingerprint(
     if redis_client is None:
         return None
     try:
-        from agents.forge.script_fingerprint import (
-            query_fingerprint_by_architecture,
-        )
-
         import asyncio
 
         loop = asyncio.get_event_loop()
         coro = _query_recent_successful_fingerprint(redis_client, architecture)
         if loop.is_running():
-            import concurrent.futures
-
             future = asyncio.run_coroutine_threadsafe(coro, loop)
             cached = future.result(timeout=5)
         else:
@@ -1294,8 +1293,6 @@ def _check_and_record_fingerprint(
         loop = asyncio.get_event_loop()
         coro_check = check_fingerprint(redis_client, fp)
         if loop.is_running():
-            import concurrent.futures
-
             future = asyncio.run_coroutine_threadsafe(coro_check, loop)
             cached = future.result(timeout=5)
         else:

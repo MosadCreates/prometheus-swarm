@@ -2,7 +2,6 @@
 
 import importlib
 import logging
-import os
 from typing import Any
 
 from memory.chroma_client import ChromaClient
@@ -103,6 +102,52 @@ def query_tools(
             )
 
     return tools
+
+
+def retrieve_relevant_tools(
+    agent_name: str,
+    task: str,
+    k: int = 5,
+) -> list[dict[str, Any]]:
+    """Retrieve the tools most relevant to a task, for a given agent.
+
+    Thin, failure-tolerant wrapper over :func:`query_tools` so callers (e.g.
+    Forge's LLM strategy) can inject retrieved tool docstrings into prompts or
+    generated-script headers without handling ChromaDB/embedding failures.
+
+    Args:
+        agent_name: Which agent the tools belong to (e.g. ``"Forge"``).
+        task: Natural-language description of what the agent is about to do.
+        k: Number of tools to retrieve.
+
+    Returns:
+        List of tool dicts (see :func:`query_tools`); ``[]`` on any failure.
+    """
+    try:
+        return query_tools(query=task, k=k)
+    except Exception as e:
+        logger.warning(f"[{agent_name}] tool_memory retrieval failed: {e}")
+        return []
+
+
+def format_tool_hints(tools: list[dict[str, Any]]) -> str:
+    """Format retrieved tools into a compact "available tools" text block.
+
+    Safe with empty lists — returns ``""`` so callers can append it to a header
+    without extra branching.
+    """
+    if not tools:
+        return ""
+    lines = []
+    for t in tools:
+        name = t.get("tool_name") or t.get("tool_id") or "tool"
+        agent = t.get("agent_name") or ""
+        doc = (t.get("docstring") or "").strip().splitlines()
+        doc_head = doc[0].strip() if doc else ""
+        sim = t.get("similarity_score")
+        sim_suffix = f" (sim {sim:.2f})" if isinstance(sim, (int, float)) else ""
+        lines.append(f"  - {name} [{agent}]{sim_suffix}: {doc_head}")
+    return "Available tools from tool memory:\n" + "\n".join(lines)
 
 
 def register_agent_tools(agent_name: str, module_path: str) -> int:

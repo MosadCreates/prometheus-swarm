@@ -47,17 +47,26 @@ def _git_commit() -> tuple[str, str, bool]:
     try:
         commit = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            capture_output=True, text=True, cwd=_REPO_ROOT, timeout=5,
+            capture_output=True,
+            text=True,
+            cwd=_REPO_ROOT,
+            timeout=5,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         ).stdout.strip()
         branch = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, cwd=_REPO_ROOT, timeout=5,
+            capture_output=True,
+            text=True,
+            cwd=_REPO_ROOT,
+            timeout=5,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         ).stdout.strip()
         status = subprocess.run(
             ["git", "status", "--porcelain"],
-            capture_output=True, text=True, cwd=_REPO_ROOT, timeout=5,
+            capture_output=True,
+            text=True,
+            cwd=_REPO_ROOT,
+            timeout=5,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         ).stdout.strip()
         return commit, branch, bool(status)
@@ -127,6 +136,7 @@ def _installed_versions() -> dict[str, str]:
         except (ImportError, AttributeError):
             try:
                 import importlib.metadata
+
                 ver = importlib.metadata.version(pkg)
                 versions[pkg] = ver
             except Exception:
@@ -266,9 +276,7 @@ async def gather_reproducibility_context(
     )
 
 
-async def record_reproducibility(
-    redis: Any, context: ReproducibilityContext
-) -> None:
+async def record_reproducibility(redis: Any, context: ReproducibilityContext) -> None:
     """Store reproducibility context in Redis.
 
     Args:

@@ -718,8 +718,8 @@ def _copy_to_clipboard_impl(text: str, *, console: Console) -> None:
     try:
         if sys.platform == "win32":
             proc = subprocess.Popen(
-                ["clip"], 
-                stdin=subprocess.PIPE, 
+                ["clip"],
+                stdin=subprocess.PIPE,
                 shell=True,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
@@ -731,7 +731,7 @@ def _copy_to_clipboard_impl(text: str, *, console: Console) -> None:
             for cmd in [["pbcopy"], ["xclip", "-selection", "clipboard"], ["xsel", "-b"]]:
                 try:
                     proc = subprocess.Popen(
-                        cmd, 
+                        cmd,
                         stdin=subprocess.PIPE,
                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                     )

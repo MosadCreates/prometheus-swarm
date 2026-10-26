@@ -76,9 +76,7 @@ class FingerprintStore:
     ) -> None:
         """Record that this fingerprint was attempted."""
         set_key = self.FINGERPRINT_SET_KEY.format(job_id=self._job_id)
-        data_key = self.FINGERPRINT_DATA_KEY.format(
-            job_id=self._job_id, fingerprint=fingerprint
-        )
+        data_key = self.FINGERPRINT_DATA_KEY.format(job_id=self._job_id, fingerprint=fingerprint)
         await self._redis.sadd(set_key, fingerprint)
         pipe = self._redis.pipeline()
         pipe.hsetnx(data_key, "error_category", error_category)
@@ -88,9 +86,7 @@ class FingerprintStore:
         await pipe.execute()
 
     async def attempt_count(self, fingerprint: str) -> int:
-        data_key = self.FINGERPRINT_DATA_KEY.format(
-            job_id=self._job_id, fingerprint=fingerprint
-        )
+        data_key = self.FINGERPRINT_DATA_KEY.format(job_id=self._job_id, fingerprint=fingerprint)
         val = await self._redis.get(f"{data_key}:attempt_count")
         return int(val) if val else 0
 
@@ -101,7 +97,11 @@ class FingerprintStore:
         key = self.LAST_STATE_KEY.format(job_id=self._job_id)
         await self._redis.hmset(
             key,
-            {"script_hash": script_hash, "error_category": error_category, "pipeline_stage": pipeline_stage},
+            {
+                "script_hash": script_hash,
+                "error_category": error_category,
+                "pipeline_stage": pipeline_stage,
+            },
         )
 
     async def last_state(self) -> dict[str, str] | None:
@@ -109,10 +109,15 @@ class FingerprintStore:
         key = self.LAST_STATE_KEY.format(job_id=self._job_id)
         data = await self._redis.hgetall(key)
         if data:
-            return {k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v for k, v in data.items()}
+            return {
+                k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v
+                for k, v in data.items()
+            }
         return None
 
-    async def has_progress(self, script_hash: str, error_category: str, pipeline_stage: str) -> bool:
+    async def has_progress(
+        self, script_hash: str, error_category: str, pipeline_stage: str
+    ) -> bool:
         """True if system state changed meaningfully since last repair.
 
         Progress means any of: script hash changed, error category changed,

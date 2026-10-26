@@ -23,6 +23,7 @@ from typing import Any
 from agents.dissect.rules import apply_rule
 from agents.dissect.repair_templates import find_matching_templates
 from agents.dissect.repair_cache import cache_lookup, cache_store, cache_increment
+from agents.dissect.validation import validate_patch_pre
 from bus.agent_events import emit_agent_event
 from agents.dissect.taxonomy import (
     get_cascade_level,
@@ -530,6 +531,69 @@ async def run_cascade(
                 "message": result.message,
             }
         )
+
+        # ── In-cascade pre-validation post-filter ───────────────────────────
+        # validate_patch_pre gates the patch that will actually be applied. It
+        # used to run only in the agent, *after* run_cascade had already
+        # returned — so a level whose patch failed a structural check aborted
+        # the whole cascade for a patch that a lower-priority level might well
+        # have produced. Filtering here lets a *soft* failure reject just that
+        # level and continue.
+        #
+        # Nothing is written to disk in this loop (level functions only ever
+        # touch a tempfile); the agent still applies the patch and still rolls
+        # back on rejection, so the safety invariant
+        # (apply -> validate -> rollback) is unchanged.
+        if result.resolved and result.patched_script:
+            pre = validate_patch_pre(
+                script_content,
+                result.patched_script,
+                result.diff_applied or "",
+            )
+            if not pre["valid"]:
+                reason = f"pre_validation: {pre['failed_checks'][0]}"
+                if pre["veto"] == "hard":
+                    # Unrunnable or unsafe patch (syntax error, exec/eval): no
+                    # other level can be blamed, so stop the cascade. The entry
+                    # stays "hit" and the result is returned as-is — byte-equal
+                    # to the previous behaviour, where the agent validated,
+                    # rolled back and escalated.
+                    result.cascade_path = cascade_path
+                    result.last_event_id = cascade_parent_id
+                    return result
+                # Soft veto (too large, or dropped a structural element): this
+                # patch is unusable, but a sibling level may not be. Record the
+                # rejection, surface it in cascade telemetry, try the next level.
+                cascade_path[-1] = {
+                    "level": target_level,
+                    "outcome": "rejected",
+                    "reason": reason,
+                    "message": result.message,
+                }
+                DISSECT_CASCADE_MISSES.labels(
+                    level=str(target_level), reason="pre_validation", job_id=job_id
+                ).inc()
+                logger.info(
+                    f"Level {target_level} ({level_name}) REJECTED | {reason} | "
+                    f"category={category} job={job_id}"
+                )
+                cascade_parent_id = await emit_agent_event(
+                    redis_client,
+                    job_id,
+                    "Dissect",
+                    "thinking",
+                    f"{CASCADE_LEVEL_FRIENDLY.get(target_level, level_name.lower())} "
+                    f"patch rejected — {reason}",
+                    detail={
+                        "cascade_level": target_level,
+                        "outcome": "rejected",
+                        "reason": reason,
+                        "failed_checks": pre["failed_checks"],
+                    },
+                    parent_event_id=cascade_parent_id,
+                )
+                continue
+
         if result.resolved:
             result.cascade_path = cascade_path
             cascade_parent_id = await emit_agent_event(

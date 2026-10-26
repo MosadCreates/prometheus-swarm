@@ -127,6 +127,6 @@ def generate_failure_report(
     )
 
     logger.info(
-        f"Failure report: {total_failed}/{total} failed across " f"{len(categories)} categories"
+        f"Failure report: {total_failed}/{total} failed across {len(categories)} categories"
     )
     return report

@@ -604,7 +604,9 @@ def write_dissect_improvements(summary: EngineeringSummary) -> Path:
             outcome_desc = (
                 "First attempt"
                 if attempt == "1"
-                else "Second attempt" if attempt == "2" else "Final attempt"
+                else "Second attempt"
+                if attempt == "2"
+                else "Final attempt"
             )
             lines.append(f"| {attempt} | {count} | {outcome_desc} |")
         lines.append("")

@@ -143,7 +143,6 @@ def make_result(
     uses_dissect: bool = False,
     llm_calls_used: int = 0,
     llm_cost: float = 0.0,
-    cascade_level_used: int = -1,
 ) -> dict:
     metric_name = problem.get("evaluation_metric", "auc_roc")
     best_val = 0.0
@@ -157,6 +156,7 @@ def make_result(
         "status": status,
         "decision": decision,
         "best_val_metric": best_val,
+        "evaluation_metric": metric_name,
         "duration_seconds": round(duration, 2),
         "crash_count": crash_count,
         "patch_successes": patch_successes,
@@ -167,7 +167,6 @@ def make_result(
         "uses_dissect": uses_dissect,
         "llm_calls_used": llm_calls_used,
         "llm_cost": round(llm_cost, 6),
-        "cascade_level_used": cascade_level_used,
     }
 
 
@@ -177,7 +176,17 @@ async def run_single_problem(
     job_id: str,
     timeout: int,
 ) -> dict:
-    """Run one problem under one ablation config."""
+    """Run one problem under one ablation config.
+
+    NOTE (research integrity): this harness runs agents at library level
+    (Scout → Forge → subprocess training → manual Dissect loop), NOT through
+    orchestrator/job_runner. It therefore measures the *presence of each
+    capability at the agent layer*, not the orchestrated end-to-end path that
+    conditions B/C in run_benchmark.py measure. Ablation numbers and benchmark
+    numbers answer different questions and must be reported as such.
+    The dissect axis is gated on DISABLE_DISSECT explicitly (set from the same
+    config) so the harness and the flag can never disagree.
+    """
     from research.run_benchmark import (
         ensure_dataset_available,
         evaluate,
@@ -244,7 +253,11 @@ async def run_single_problem(
     total_patch_successes = 0
     last_error = None
 
-    if config["uses_dissect"]:
+    if config["uses_dissect"] and os.environ.get("DISABLE_DISSECT", "") not in (
+        "1",
+        "true",
+        "yes",
+    ):
         # Condition C flow: training with Dissect recovery loop (up to 3 attempts)
         from agents.dissect.agent import DissectAgent
         from memory.redis_client import RedisClient
@@ -461,7 +474,7 @@ async def run_ablation(
     for i, problem in enumerate(batch):
         pid = problem["id"]
         job_id = f"abl-{pid.lower()}-{uuid.uuid4().hex[:6]}"
-        logger.info(f"[{i+1}/{total}] Problem {pid} — running 7 configs")
+        logger.info(f"[{i + 1}/{total}] Problem {pid} — running 7 configs")
 
         for config in ABLATION_CONFIGS:
             logger.info(f"  Config {config['id']} ({config['label']})")
@@ -511,17 +524,10 @@ async def run_ablation(
     results["convergence"] = {
         "total_llm_calls": sum(r.get("llm_calls_used", 0) for r in results["runs"]),
         "total_token_cost": sum(r.get("llm_cost", 0.0) for r in results["runs"]),
-        "cascade_level_counts": {},
+        "total_patch_successes": sum(r.get("patch_successes", 0) for r in results["runs"]),
         "dissect_problems": 0,
         "dissect_successes": 0,
     }
-    for r in results["runs"]:
-        cl = r.get("cascade_level_used", -1)
-        if cl >= 0:
-            key = str(cl)
-            results["convergence"]["cascade_level_counts"][key] = (
-                results["convergence"]["cascade_level_counts"].get(key, 0) + 1
-            )
     dissect_runs = [r for r in results["runs"] if r.get("uses_dissect", False)]
     results["convergence"]["dissect_problems"] = len(dissect_runs)
     results["convergence"]["dissect_successes"] = sum(
@@ -555,18 +561,18 @@ def main():
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, default=str)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("  Ablation Campaign Complete")
     print(
-        f"  Problems: {args.start}..{args.start+args.count-1} ({len(results['runs'])} total runs)"
+        f"  Problems: {args.start}..{args.start + args.count - 1} ({len(results['runs'])} total runs)"
     )
     print(f"  Configs: {len(results['configs'])}")
     print(f"  Output: {out_path}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(
         f"\n{'Config':<12} {'Success':>8} {'Crash':>8} {'Esc':>8} {'Skip':>8} {'Rate':>8} {'Avg(s)':>8}"
     )
-    print(f"{'-'*12} {'-'*8} {'-'*8} {'-'*8} {'-'*8} {'-'*8} {'-'*8}")
+    print(f"{'-' * 12} {'-' * 8} {'-' * 8} {'-' * 8} {'-' * 8} {'-' * 8} {'-' * 8}")
     for cid, s in sorted(results["summaries"].items(), key=lambda x: int(x[0])):
         print(
             f"  {s['config_label']:<10} {s['successes']:>8} {s['crashes']:>8} {s['escalations']:>8} {s['skipped']:>8} {s['success_rate']:>7}% {s['avg_duration_seconds']:>7.1f}"

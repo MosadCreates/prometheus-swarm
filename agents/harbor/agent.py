@@ -20,6 +20,8 @@ from agents.harbor.tools import (
     generate_fastapi_app,
     build_docker_image,
     deploy_local_compose,
+    push_image,
+    deploy_gke,
     configure_drift_monitor,
     start_drift_monitor_loop,
 )
@@ -34,7 +36,6 @@ from prometheus.ui.detail_types import (
     HarborDeployDetail,
     HarborEndpointDetail,
     HarborFormatDetail,
-    HarborHealthDetail,
     HarborDriftDetail,
     HarborSelfTestDetail,
 )
@@ -182,9 +183,17 @@ class HarborAgent(BaseAgent):
             job_id=self.job_id,
         )
 
-        model_format = "onnx" if onnx_success else "pickle"
+        # Torch models serialize to a TorchScript (.pt) or plain-torch (.pth)
+        # artifact; the returned path tells us which format we produced.
+        _serialized_path = str(onnx_result) if onnx_success else ""
+        if _serialized_path.endswith(".pt"):
+            model_format = "torchscript"
+        elif _serialized_path.endswith(".pth"):
+            model_format = "torch"
+        else:
+            model_format = "onnx" if onnx_success else "pickle"
 
-        # Emit structured detail for ONNX serialization
+        # Emit structured detail for serialization
         await emit_agent_event(
             self.redis._client,
             self.job_id,
@@ -199,9 +208,9 @@ class HarborAgent(BaseAgent):
         )
 
         await emit_subaction_progress(
-            self.redis._client, self.job_id, "Harbor", "Model serialized to ONNX", 0.3
+            self.redis._client, self.job_id, "Harbor", f"Model serialized ({model_format})", 0.3
         )
-        model_path = onnx_path if onnx_success else checkpoint_path
+        model_path = _serialized_path if onnx_success else checkpoint_path
 
         if not onnx_success:
             self.logger.warning(f"[job={self.job_id}] ONNX fallback to pickle: {onnx_result}")
@@ -322,29 +331,102 @@ class HarborAgent(BaseAgent):
             ).model_dump(),
         )
 
-        await emit_subaction_progress(
-            self.redis._client, self.job_id, "Harbor", "Starting container...", 0.7
-        )
+        harbor_target = os.environ.get("HARBOR_TARGET", "local").lower()
+        deployed_port = 8080
+        endpoint_url = ""
+        deploy_target_label = "local" if harbor_target != "gke" else "gke"
 
-        deploy_ok, deploy_msg = await deploy_local_compose(
-            image_name, container_name, host_port=None
-        )
-        if not deploy_ok:
-            HARBOR_DEPLOYS.labels(
-                job_id=self.job_id, framework=model_format, status="deploy_fail"
-            ).inc()
-            self.logger.error(f"[job={self.job_id}] Deploy failed: {deploy_msg}")
-            await emit_agent_event(
+        if harbor_target == "gke":
+            # ── GKE path: push image to registry, then Helm-deploy ──────────
+            registry_url = os.environ.get("REGISTRY_URL", "").strip()
+            await emit_subaction_progress(
                 self.redis._client,
                 self.job_id,
                 "Harbor",
-                "error",
-                "Container deploy failed",
-                detail={"error": deploy_msg},
-                parent_event_id=_harbor_event_id or None,
+                "Pushing image to registry...",
+                0.7,
             )
-            await self._publish_harbor_failed(f"Deploy failed: {deploy_msg}")
-            return
+            push_ok, push_msg = await push_image(image_name, registry_url)
+            if not push_ok:
+                HARBOR_DEPLOYS.labels(
+                    job_id=self.job_id, framework=model_format, status="push_fail"
+                ).inc()
+                self.logger.error(f"[job={self.job_id}] Registry push failed: {push_msg}")
+                await emit_agent_event(
+                    self.redis._client,
+                    self.job_id,
+                    "Harbor",
+                    "error",
+                    "Registry push failed",
+                    detail={"error": push_msg},
+                    parent_event_id=_harbor_event_id or None,
+                )
+                await self._publish_harbor_failed(f"Registry push failed: {push_msg}")
+                return
+
+            await emit_subaction_progress(
+                self.redis._client,
+                self.job_id,
+                "Harbor",
+                "Deploying to GKE via Helm...",
+                0.75,
+            )
+            remote_image = f"{registry_url.rstrip('/')}/{image_name}:latest"
+            chart_dir = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                "infra",
+                "helm",
+                "prometheus-serving",
+            )
+            deploy_ok, deploy_msg = await deploy_gke(
+                chart_dir,
+                release_name=container_name,
+                values={"image.repository": remote_image.rsplit(":", 1)[0], "image.tag": "latest"},
+            )
+            if not deploy_ok:
+                HARBOR_DEPLOYS.labels(
+                    job_id=self.job_id, framework=model_format, status="deploy_fail"
+                ).inc()
+                self.logger.error(f"[job={self.job_id}] GKE deploy failed: {deploy_msg}")
+                await emit_agent_event(
+                    self.redis._client,
+                    self.job_id,
+                    "Harbor",
+                    "error",
+                    "GKE deploy failed",
+                    detail={"error": deploy_msg},
+                    parent_event_id=_harbor_event_id or None,
+                )
+                await self._publish_harbor_failed(f"GKE deploy failed: {deploy_msg}")
+                return
+            endpoint_url = f"http://{container_name}-service"
+        else:
+            # ── Local path: docker run -d -p (unchanged) ─────────────────────
+            await emit_subaction_progress(
+                self.redis._client, self.job_id, "Harbor", "Starting container...", 0.7
+            )
+            deploy_ok, deploy_msg = await deploy_local_compose(
+                image_name, container_name, host_port=None
+            )
+            if not deploy_ok:
+                HARBOR_DEPLOYS.labels(
+                    job_id=self.job_id, framework=model_format, status="deploy_fail"
+                ).inc()
+                self.logger.error(f"[job={self.job_id}] Deploy failed: {deploy_msg}")
+                await emit_agent_event(
+                    self.redis._client,
+                    self.job_id,
+                    "Harbor",
+                    "error",
+                    "Container deploy failed",
+                    detail={"error": deploy_msg},
+                    parent_event_id=_harbor_event_id or None,
+                )
+                await self._publish_harbor_failed(f"Deploy failed: {deploy_msg}")
+                return
+            port_match = re.search(r"port (\d+)", deploy_msg)
+            deployed_port = int(port_match.group(1)) if port_match else 8080
+            endpoint_url = f"http://localhost:{deployed_port}"
 
         # Emit structured detail for deployment
         await emit_agent_event(
@@ -356,7 +438,7 @@ class HarborAgent(BaseAgent):
             detail=HarborDeployDetail(
                 stage="deploy",
                 progress=0.8,
-                message="Container deployed successfully",
+                message=f"Deployed to {deploy_target_label}",
             ).model_dump(),
         )
 
@@ -366,11 +448,6 @@ class HarborAgent(BaseAgent):
 
         HARBOR_DEPLOYS.labels(job_id=self.job_id, framework=model_format, status="success").inc()
         HARBOR_ACTIVE_DEPLOYMENTS.labels(job_id=self.job_id).inc()
-
-        port_match = re.search(r"port (\d+)", deploy_msg)
-        deployed_port = int(port_match.group(1)) if port_match else 8080
-
-        endpoint_url = f"http://localhost:{deployed_port}"
 
         _harbor_event_id = await emit_agent_event(
             self.redis._client,

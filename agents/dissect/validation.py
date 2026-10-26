@@ -21,12 +21,36 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 SAFE_IMPORTS = {
-    "os", "json", "pickle", "warnings", "numpy", "pandas", "torch",
-    "sklearn", "lightgbm", "xgboost", "optuna", "difflib",
-    "collections", "functools", "itertools", "math", "random",
-    "typing", "pathlib", "datetime", "time", "uuid",
-    "transformers", "datasets", "PIL", "torchvision",
-    "pytorch_tabnet", "imblearn", "onnx", "onnxruntime",
+    "os",
+    "json",
+    "pickle",
+    "warnings",
+    "numpy",
+    "pandas",
+    "torch",
+    "sklearn",
+    "lightgbm",
+    "xgboost",
+    "optuna",
+    "difflib",
+    "collections",
+    "functools",
+    "itertools",
+    "math",
+    "random",
+    "typing",
+    "pathlib",
+    "datetime",
+    "time",
+    "uuid",
+    "transformers",
+    "datasets",
+    "PIL",
+    "torchvision",
+    "pytorch_tabnet",
+    "imblearn",
+    "onnx",
+    "onnxruntime",
 }
 
 DANGEROUS_FUNCTIONS = {"exec", "eval", "__import__", "compile", "globals", "locals"}
@@ -37,6 +61,24 @@ CRITICAL_PATTERNS = {
     "result.json": r"result\.json",
 }
 
+# Pre-sandbox check names that veto the *cascade level*, not just the patch.
+#
+# "hard" — the patch itself is unrunnable/unsafe (syntax error, exec/eval). No
+#          other cascade level can be blamed for it, and retrying lower levels
+#          would only waste budget, so the cascade stops and escalates.
+# "soft" — this particular patch is unusable (too large, or it dropped a
+#          structural element such as train_test_split/result.json). A different
+#          level may well produce a valid patch, so the level is rejected and the
+#          cascade continues to the next one.
+#
+# Anything not listed here defaults to "soft".
+HARD_VETO_CHECKS = {"syntax", "import_safety"}
+
+
+def veto_class_for(check_name: str) -> str:
+    """Return the veto class ("hard" or "soft") for a pre-sandbox check name."""
+    return "hard" if check_name in HARD_VETO_CHECKS else "soft"
+
 
 def validate_patch_pre(
     original_script: str,
@@ -46,8 +88,20 @@ def validate_patch_pre(
     """Pre-sandbox validation of a patch.
 
     Returns dict with:
-        valid: bool — overall pass/fail
+        valid: bool — overall pass/fail (true iff every check passed)
         checks: list of check results
+        veto: "none" if valid, else the strongest failing class —
+              "hard" (syntax/import_safety: unrunnable or unsafe patch, no other
+              level can be blamed, so the cascade should stop and escalate) or
+              "soft" (diff_size / missing structural element: this patch is
+              unusable but another level may produce a valid one, so the cascade
+              should reject this level and continue)
+        failed_checks: names of every failing check
+        hard_failed: names of failing hard-veto checks
+        soft_failed: names of failing soft-veto checks
+
+    The last four keys are additive — callers that only read ``valid`` keep the
+    exact previous behaviour.
     """
     checks: list[dict[str, Any]] = []
 
@@ -59,27 +113,51 @@ def validate_patch_pre(
         checks.append({"name": "syntax", "passed": False, "message": f"Syntax error: {e}"})
 
     # 2. Diff sanity: at least 1 line changed, at most 50
-    lines_changed = sum(1 for line in diff_text.split("\n") if line.startswith("+") and not line.startswith("+++"))
-    deletions = sum(1 for line in diff_text.split("\n") if line.startswith("-") and not line.startswith("---"))
+    lines_changed = sum(
+        1 for line in diff_text.split("\n") if line.startswith("+") and not line.startswith("+++")
+    )
+    deletions = sum(
+        1 for line in diff_text.split("\n") if line.startswith("-") and not line.startswith("---")
+    )
     if lines_changed >= 1 and lines_changed <= 50:
-        checks.append({
-            "name": "diff_size", "passed": True,
-            "message": f"Diff changed {lines_changed} added + {deletions} deleted lines",
-        })
+        checks.append(
+            {
+                "name": "diff_size",
+                "passed": True,
+                "message": f"Diff changed {lines_changed} added + {deletions} deleted lines",
+            }
+        )
     elif lines_changed == 0:
-        checks.append({"name": "diff_size", "passed": False, "message": "No lines changed in patch"})
+        checks.append(
+            {"name": "diff_size", "passed": False, "message": "No lines changed in patch"}
+        )
     else:
-        checks.append({
-            "name": "diff_size", "passed": False,
-            "message": f"Patch too large: {lines_changed} lines added (max 50)",
-        })
+        checks.append(
+            {
+                "name": "diff_size",
+                "passed": False,
+                "message": f"Patch too large: {lines_changed} lines added (max 50)",
+            }
+        )
 
     # 3. Structural elements — check critical patterns exist in patched script
     for name, pattern in CRITICAL_PATTERNS.items():
         if re.search(pattern, patched_script, re.MULTILINE):
-            checks.append({"name": f"has_{name.replace('.', '_')}", "passed": True, "message": f"Found {name}()"})
+            checks.append(
+                {
+                    "name": f"has_{name.replace('.', '_')}",
+                    "passed": True,
+                    "message": f"Found {name}()",
+                }
+            )
         else:
-            checks.append({"name": f"has_{name.replace('.', '_')}", "passed": False, "message": f"Missing {name}()"})
+            checks.append(
+                {
+                    "name": f"has_{name.replace('.', '_')}",
+                    "passed": False,
+                    "message": f"Missing {name}()",
+                }
+            )
 
     # 4. Import safety — check for dangerous functions
     try:
@@ -93,17 +171,42 @@ def validate_patch_pre(
                 if node.func.attr == "__import__":
                     dangerous_used.add("__import__")
         if dangerous_used:
-            checks.append({
-                "name": "import_safety", "passed": False,
-                "message": f"Dangerous functions used: {dangerous_used}",
-            })
+            checks.append(
+                {
+                    "name": "import_safety",
+                    "passed": False,
+                    "message": f"Dangerous functions used: {dangerous_used}",
+                }
+            )
         else:
-            checks.append({"name": "import_safety", "passed": True, "message": "No dangerous functions"})
+            checks.append(
+                {"name": "import_safety", "passed": True, "message": "No dangerous functions"}
+            )
     except SyntaxError:
-        checks.append({"name": "import_safety", "passed": False, "message": "Cannot check imports — syntax error"})
+        checks.append(
+            {
+                "name": "import_safety",
+                "passed": False,
+                "message": "Cannot check imports — syntax error",
+            }
+        )
 
     valid = all(c["passed"] for c in checks)
-    return {"valid": valid, "checks": checks}
+    failed_checks = [c for c in checks if not c["passed"]]
+    hard_failed = [c["name"] for c in failed_checks if veto_class_for(c["name"]) == "hard"]
+    soft_failed = [c["name"] for c in failed_checks if veto_class_for(c["name"]) == "soft"]
+    return {
+        "valid": valid,
+        "checks": checks,
+        # Additive fields — existing callers read only "valid"/"checks".
+        # veto: "none" (clean patch)
+        #       | "soft" (reject this patch, let the cascade try the next level)
+        #       | "hard" (unrunnable/unsafe — stop the cascade and escalate)
+        "veto": "none" if valid else ("hard" if hard_failed else "soft"),
+        "failed_checks": [c["name"] for c in failed_checks],
+        "hard_failed": hard_failed,
+        "soft_failed": soft_failed,
+    }
 
 
 def validate_patch_post(
@@ -125,44 +228,68 @@ def validate_patch_post(
 
     # 1. Check TRAINING_COMPLETE in output
     has_complete = "TRAINING_COMPLETE" in sandbox_output
-    checks.append({
-        "name": "training_complete",
-        "passed": has_complete,
-        "message": "TRAINING_COMPLETE found in output" if has_complete else "TRAINING_COMPLETE NOT found in output",
-    })
+    checks.append(
+        {
+            "name": "training_complete",
+            "passed": has_complete,
+            "message": (
+                "TRAINING_COMPLETE found in output"
+                if has_complete
+                else "TRAINING_COMPLETE NOT found in output"
+            ),
+        }
+    )
 
     # 2. Check for common failure patterns in output
     failure_keywords = ["Traceback", "Error", "Exception", "failed", "FAILSAFE"]
     found_failures = [kw for kw in failure_keywords if kw in sandbox_output]
     if found_failures:
-        checks.append({
-            "name": "error_output",
-            "passed": False,
-            "message": f"Error keywords found in output: {found_failures[:3]}",
-        })
+        checks.append(
+            {
+                "name": "error_output",
+                "passed": False,
+                "message": f"Error keywords found in output: {found_failures[:3]}",
+            }
+        )
     else:
-        checks.append({"name": "error_output", "passed": True, "message": "No error keywords in output"})
+        checks.append(
+            {"name": "error_output", "passed": True, "message": "No error keywords in output"}
+        )
 
     # 3. Check checkpoint file created
     ckpt_path = os.path.join(outputs_dir, job_id, "checkpoints", "best.ckpt")
     if os.path.exists(ckpt_path):
-        checks.append({"name": "checkpoint", "passed": True, "message": f"Checkpoint exists at {ckpt_path}"})
+        checks.append(
+            {"name": "checkpoint", "passed": True, "message": f"Checkpoint exists at {ckpt_path}"}
+        )
     else:
-        checks.append({"name": "checkpoint", "passed": False, "message": f"Checkpoint not found at {ckpt_path}"})
+        checks.append(
+            {
+                "name": "checkpoint",
+                "passed": False,
+                "message": f"Checkpoint not found at {ckpt_path}",
+            }
+        )
 
     # 4. Check result.json written
     result_path = os.path.join(outputs_dir, job_id, "result.json")
     if os.path.exists(result_path):
         try:
             import json
+
             with open(result_path, encoding="utf-8") as f:
                 result = json.load(f)
-            checks.append({
-                "name": "result_json", "passed": True,
-                "message": f"result.json written with val_score={result.get('val_score', 'N/A')}",
-            })
+            checks.append(
+                {
+                    "name": "result_json",
+                    "passed": True,
+                    "message": f"result.json written with val_score={result.get('val_score', 'N/A')}",
+                }
+            )
         except Exception as e:
-            checks.append({"name": "result_json", "passed": False, "message": f"result.json unreadable: {e}"})
+            checks.append(
+                {"name": "result_json", "passed": False, "message": f"result.json unreadable: {e}"}
+            )
     else:
         checks.append({"name": "result_json", "passed": False, "message": "result.json not found"})
 
