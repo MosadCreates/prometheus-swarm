@@ -20,7 +20,7 @@ async def ensure_consumer_group(
     try:
         await redis_client.xgroup_create(stream_name, group_name, id=start_id, mkstream=True)
         logger.info(
-            f"Created consumer group {group_name} on stream {stream_name} " f"(start_id={start_id})"
+            f"Created consumer group {group_name} on stream {stream_name} (start_id={start_id})"
         )
     except aioredis.ResponseError as e:
         if "BUSYGROUP" in str(e):

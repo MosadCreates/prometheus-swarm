@@ -3,10 +3,7 @@
 import pytest
 
 from research.validation.models import (
-    ExperimentRun,
     ResearchHypothesis,
-    ResearchMetrics,
-    SystemMetrics,
 )
 from research.validation.runner import (
     _cleanup,
@@ -62,7 +59,6 @@ class TestRawToRun:
         import time
 
         t0 = time.time()
-        import time as time_module
 
         raw = {"status": "pass", "decision": "pass", "duration_seconds": 5.0}
         run = _raw_to_run({"id": "P4"}, "job-wall", ResearchHypothesis.H1, raw, t0)

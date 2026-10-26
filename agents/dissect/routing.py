@@ -27,17 +27,12 @@ from agents.dissect.validation import validate_patch_pre
 from bus.agent_events import emit_agent_event
 from agents.dissect.taxonomy import (
     get_cascade_level,
-    is_deterministic,
-    has_rule,
-    has_template,
     is_terminal,
     get_preferred_strategy,
 )
 from agents.dissect.budget import RepairBudget
 from agents.dissect.governor import BudgetGovernor
 from shared.metrics import (
-    DISSECT_PATCHES_GENERATED,
-    DISSECT_OUTCOMES,
     DISSECT_CASCADE_HITS,
     DISSECT_CASCADE_MISSES,
     DISSECT_CASCADE_ERRORS,
@@ -147,7 +142,7 @@ async def run_cascade_level_1(
         try:
             patched = template.apply(script_content, exception_message)
             if patched and patched != script_content:
-                from agents.dissect.tools import compute_diff, compute_diff as _diff_fn
+                from agents.dissect.tools import compute_diff
 
                 diff = compute_diff(script_content, patched)
 
@@ -202,7 +197,7 @@ async def run_cascade_level_2(
     """
     cached = await cache_lookup(redis_client, dataset_path, exception_type, exception_message)
     if cached and cached.get("diff_applied"):
-        from agents.dissect.tools import apply_unified_diff, compute_diff
+        from agents.dissect.tools import apply_unified_diff
         import tempfile
         import os
 
@@ -232,7 +227,6 @@ async def run_cascade_level_2(
                 if replay_count >= 2:
                     from agents.dissect.repair_templates import generalize_diff_to_template
 
-                    diff = compute_diff(script_content, patched)
                     template = generalize_diff_to_template(
                         category=category or cached.get("category", "unknown"),
                         original_script=script_content,
@@ -367,7 +361,7 @@ async def _run_level_safe(
             return result
     except Exception as e:
         logger.warning(
-            f"Level {level} ({level_name}) ERROR | {e} | " f"category={category} job={job_id}"
+            f"Level {level} ({level_name}) ERROR | {e} | category={category} job={job_id}"
         )
         DISSECT_CASCADE_ERRORS.labels(level=str(level), job_id=job_id).inc()
         return RoutingResult(level=level, should_continue=True, message=f"Error: {e}")
@@ -670,7 +664,7 @@ async def on_llm_success(
             if e.get("outcome") != "skipped"
         )
         logger.info(
-            f"[job={job_id}] LLM resolved after cascade path: {path_str} " f"category={category}"
+            f"[job={job_id}] LLM resolved after cascade path: {path_str} category={category}"
         )
 
     await cache_store(

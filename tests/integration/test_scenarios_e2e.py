@@ -15,7 +15,6 @@ import asyncio
 import json
 import os
 import shutil
-import subprocess
 import sys
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -215,7 +214,6 @@ async def test_scenario_2_script_bug_crash_resume():
         RESUME_TRAINING,
         TRAINING_COMPLETE,
         EVALUATION_PASS,
-        TRAINING_SCRIPT_READY,
         STREAM_FURNACE_CRASH,
         STREAM_DISSECT_OUTPUT,
         STREAM_FURNACE_OUTPUT,
@@ -421,10 +419,7 @@ async def test_scenario_4_metric_below_threshold_retry():
     from agents.forge.agent import ForgeAgent
     from agents.arbiter.agent import ArbiterAgent
     from bus.events import (
-        TRAINING_COMPLETE,
-        EVALUATION_PASS,
         EVALUATION_RETRY,
-        STREAM_FURNACE_OUTPUT,
         STREAM_ARBITER_OUTPUT,
     )
     from bus.consumer import ensure_consumer_group
@@ -611,7 +606,6 @@ async def test_scenario_6_repair_failures_escalate():
     """
     from agents.dissect.agent import DissectAgent
     from bus.events import (
-        CRASH_EVENT,
         ESCALATE,
         STREAM_DISSECT_OUTPUT,
     )

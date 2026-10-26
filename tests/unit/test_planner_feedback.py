@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from prometheus.planner.models import PlanningHints
 
 
 @pytest.fixture

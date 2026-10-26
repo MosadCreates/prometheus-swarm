@@ -16,16 +16,8 @@ are deterministic and never produce thinking tokens.
 
 from __future__ import annotations
 
-import math
 import time
 from collections import deque
-from io import StringIO
-
-from rich.console import Console
-from rich.style import Style
-from rich.text import Text
-
-from prometheus.ui.theme import Theme
 
 
 # Maximum visible width for the thinking text (excluding indent)
@@ -93,7 +85,6 @@ class ThinkingStream:
         # All lines except the last are complete
         complete = wrapped[:-1]
         # Calculate how many characters we finalized
-        finalized_text = "\n".join(complete)
         # Account for the characters consumed (including implicit newlines from wrapping)
         consumed = 0
         for line in complete:

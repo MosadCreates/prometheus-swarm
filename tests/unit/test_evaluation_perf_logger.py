@@ -1,6 +1,5 @@
 """Tests for evaluation/perf_logger.py — per-stage timing."""
 
-import json
 import os
 
 from evaluation.perf_logger import (

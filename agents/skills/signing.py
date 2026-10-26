@@ -61,7 +61,6 @@ def canonical_signature_payload(data: dict[str, Any]) -> bytes:
 
 def sign_manifest(manifest, private_pem: bytes) -> str:
     """Sign a manifest's author fields; return hex signature."""
-    from agents.skills.manifest import SkillManifest
 
     payload = _author_fields(manifest)
     priv = _parse_private(private_pem)

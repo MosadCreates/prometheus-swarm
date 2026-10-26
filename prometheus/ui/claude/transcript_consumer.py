@@ -8,7 +8,7 @@ from typing import Any
 import redis.asyncio as aioredis
 
 from bus.consumer import ensure_consumer_group
-from bus.events import GROUP_COCKPIT, STREAM_AGENT_EVENTS, STREAM_AGENT_THINKING
+from bus.events import GROUP_COCKPIT, STREAM_AGENT_EVENTS
 from prometheus.ui.claude import mission_ui as ui
 
 logger = logging.getLogger(__name__)

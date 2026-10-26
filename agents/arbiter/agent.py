@@ -6,11 +6,8 @@ metrics.csv, decision.json, and evaluation plots (confusion matrix, ROC, PR curv
 Always evaluates on held-out test set (y_test.npy), never training data.
 """
 
-import json
 import os
-from datetime import datetime, timezone
 
-import numpy as np
 
 from agents.arbiter.controller import build_constraints_from_brief
 from agents.arbiter.decision import make_decision
@@ -42,9 +39,7 @@ from shared.metrics import ARBITER_DECISIONS, record_heartbeat
 from prometheus.ui.detail_types import (
     ArbiterMetricsDetail,
     ArbiterDecisionDetail,
-    ArbiterThresholdDetail,
     ArbiterLeaderboardDetail,
-    ArbiterReportDetail,
 )
 
 

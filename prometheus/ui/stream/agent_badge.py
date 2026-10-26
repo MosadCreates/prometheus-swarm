@@ -14,7 +14,6 @@ ANSI strings for direct ``sys.stdout.write()`` output.
 
 from __future__ import annotations
 
-import time
 from io import StringIO
 
 from rich.console import Console

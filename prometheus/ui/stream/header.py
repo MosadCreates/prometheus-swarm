@@ -14,12 +14,9 @@ Same technique as ``docker compose up`` and ``kubectl``.
 
 from __future__ import annotations
 
-import os
 import sys
-from io import StringIO
 
 from rich.console import Console
-from rich.style import Style
 from rich.text import Text
 
 from prometheus.ui.claude.agent_colors import AGENT_COLORS
@@ -86,7 +83,7 @@ def _pipeline_ribbon(agent_states: dict[str, str], tick: float) -> Text:
             icon = _STATE_ICONS.get(state, "○")
         color = _STATE_COLORS.get(state, str(Theme.muted))
         agent_color = AGENT_COLORS.get(agent, "#8E8E93")
-        
+
         # When complete, dim the text slightly so it doesn't overpower the running agent
         text_style = f"bold {agent_color}" if state in ("running", "error") else str(Theme.muted)
 
@@ -105,7 +102,7 @@ def render_header(
     width: int,
 ) -> str:
     """Render the complete 3-line header as a Rich Text object.
-    
+
     This is passed directly to the `rich.Live` context to serve as
     the Sticky Footer.
     """
@@ -150,30 +147,33 @@ def render_header(
 
     top.append_text(line2)
     top.append_text(bottom)
-    
+
     console = Console(width=width, highlight=False)
     with console.capture() as capture:
         console.print(top)
     return capture.get()
 
+
 def supports_cursor_movement() -> bool:
     """Check if the terminal supports ANSI cursor movement."""
     return sys.stdout.isatty()
+
 
 def write_header_update(header: str, lines_since: int) -> None:
     """Write an in-place update to the header using ANSI cursor movement."""
     if not supports_cursor_movement():
         return
-        
+
     import shutil
+
     try:
         term_height = shutil.get_terminal_size().lines
     except (OSError, AttributeError):
         term_height = 40
-        
+
     up = lines_since + HEADER_LINE_COUNT
     if up >= term_height - 1:
         return
-        
+
     sys.stdout.write(f"\033[s\033[{up}A\r\033[K{header.rstrip(chr(10))}\033[u")
     sys.stdout.flush()

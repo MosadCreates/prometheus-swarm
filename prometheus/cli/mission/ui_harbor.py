@@ -9,7 +9,6 @@ from typing import Any
 
 import pandas as pd
 from rich.console import Console
-from rich.panel import Panel
 from rich.text import Text
 
 from prometheus.ui.theme import Theme
@@ -71,7 +70,7 @@ def format_test_command(endpoint_url: str, sample_payload: dict) -> str:
         lines.append("  If you have curl.exe installed:")
         escaped = payload_json.replace('"', '\\"')
         lines.append(
-            f"    curl.exe -X POST {url} " f'-H "Content-Type: application/json" -d "{escaped}"'
+            f'    curl.exe -X POST {url} -H "Content-Type: application/json" -d "{escaped}"'
         )
     else:
         lines.append(

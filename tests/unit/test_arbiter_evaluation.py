@@ -11,7 +11,7 @@ import pytest
 from runtime.paths import get_job_paths
 
 from agents.arbiter.decision import make_decision
-from agents.arbiter.evaluator import compute_metrics, evaluate, load_checkpoint_data
+from agents.arbiter.evaluator import compute_metrics, load_checkpoint_data
 from agents.arbiter.models import (
     DecisionResult,
     EvaluationResult,

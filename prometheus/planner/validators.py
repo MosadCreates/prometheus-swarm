@@ -6,7 +6,6 @@ Empty list = no errors in that category.
 
 from __future__ import annotations
 
-from typing import Any
 
 from prometheus.planner.models import ExecutionPlan
 

@@ -251,8 +251,7 @@ class TrainingJob:
         valid_imbalance = ("none", "class_weight", "smote", "focal_loss")
         if self.imbalance_strategy not in valid_imbalance:
             raise ValueError(
-                f"Unknown imbalance strategy '{self.imbalance_strategy}'. "
-                f"Valid: {valid_imbalance}"
+                f"Unknown imbalance strategy '{self.imbalance_strategy}'. Valid: {valid_imbalance}"
             )
         valid_fe = ("none", "basic", "interaction", "advanced")
         if self.feature_engineering_level not in valid_fe:
@@ -348,9 +347,7 @@ PHASE_TRANSITIONS: dict[str, list[str]] = {
 def validate_transition(from_phase: str, to_phase: str) -> None:
     allowed = PHASE_TRANSITIONS.get(from_phase, [])
     if to_phase not in allowed:
-        raise ValueError(
-            f"Invalid phase transition: {from_phase} → {to_phase}. " f"Allowed: {allowed}"
-        )
+        raise ValueError(f"Invalid phase transition: {from_phase} → {to_phase}. Allowed: {allowed}")
 
 
 @dataclass

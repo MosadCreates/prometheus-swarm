@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 from pathlib import Path
 
 import click
@@ -284,8 +283,7 @@ def evaluate_list(ctx):
                 len(e.get("runs", [])) for e in exp_set.get("experiments", {}).values()
             )
             renderer.print(
-                f"  [bold]{set_id}[/]  {name[:50]}"
-                f"  [dim]{', '.join(h_keys)}[/]  {total_runs} runs"
+                f"  [bold]{set_id}[/]  {name[:50]}  [dim]{', '.join(h_keys)}[/]  {total_runs} runs"
             )
         except Exception:
             renderer.print(f"  [dim]{fp.name}[/]")
@@ -389,7 +387,7 @@ def evaluate_calibration(ctx, experiment_set_id):
 
     renderer.print("  [bold]Calibration Data:[/]\n")
     renderer.print(f"  {'Run':<20} {'Predicted (min)':<20} {'Actual (min)':<20} {'Confidence':<15}")
-    renderer.print(f"  {'-'*20} {'-'*20} {'-'*20} {'-'*15}")
+    renderer.print(f"  {'-' * 20} {'-' * 20} {'-' * 20} {'-' * 15}")
 
     for h_val, exp in exp_set.experiments.items():
         for run in exp.runs:

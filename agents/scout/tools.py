@@ -203,7 +203,7 @@ def run_eda(file_path: str, target_column: str | None = None) -> dict[str, Any]:
                         removed_constant_cols.append(col)
             if removed_constant_cols:
                 logger.info(
-                    "Correlation preprocessing: removed_constant_columns=%d " "columns=%s",
+                    "Correlation preprocessing: removed_constant_columns=%d columns=%s",
                     len(removed_constant_cols),
                     removed_constant_cols,
                 )

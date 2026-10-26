@@ -199,7 +199,6 @@ def compile_plan(
     dataset = spec.get("dataset_analysis", {})
     pipeline = spec.get("recommended_pipeline", {})
     constraints = spec.get("constraints", {})
-    success_criteria = spec.get("success_criteria", {})
 
     num_rows = dataset.get("num_rows", 0)
     num_cols = dataset.get("num_columns", 0)

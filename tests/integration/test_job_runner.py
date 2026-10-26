@@ -3,7 +3,6 @@ Tests that job_runner.run_job() executes the complete agent pipeline.
 Requires: Docker, redis, ANTHROPIC_API_KEY, prometheus-training-base image.
 """
 
-import asyncio
 import os
 import subprocess
 

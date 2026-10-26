@@ -7,7 +7,6 @@ No dict access (`.get("key")`) on contracts — always `.key`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field as dc_field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any

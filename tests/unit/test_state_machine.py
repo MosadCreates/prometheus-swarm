@@ -17,7 +17,6 @@ from contracts.state import (
     MissionState,
     FailureReport,
     RetryAttemptRecord,
-    TimelineEntry,
     canonical_phase,
     validate_phase_transition,
     transition_and_save,

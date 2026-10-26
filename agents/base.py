@@ -123,8 +123,7 @@ class BaseAgent(ABC):
         )
 
         self.logger.info(
-            f"[job={self.job_id}] API cost ${cost:.6f} "
-            f"({input_tokens} in / {output_tokens} out)"
+            f"[job={self.job_id}] API cost ${cost:.6f} ({input_tokens} in / {output_tokens} out)"
         )
 
     async def get_total_api_cost(self) -> float:

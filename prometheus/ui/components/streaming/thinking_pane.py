@@ -54,7 +54,9 @@ class ThinkingPane:
         now = time.monotonic()
         glow = (math.sin((now - self._last_append) * math.pi * 2 / 2.0) + 1) / 2
         base_alpha = 0.5 + glow * 0.3
-        dim_style = f"italic rgb({int(142*base_alpha)},{int(142*base_alpha)},{int(147*base_alpha)})"
+        dim_style = (
+            f"italic rgb({int(142 * base_alpha)},{int(142 * base_alpha)},{int(147 * base_alpha)})"
+        )
 
         t = Text()
         t.append(f"{indent}\u25cc ", style=dim_style)

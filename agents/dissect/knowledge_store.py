@@ -18,7 +18,6 @@ orchestrator's knowledge writer (parallel to patch_log_writer).
 
 import json
 import logging
-import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -79,7 +78,7 @@ async def record_llm_interaction(
     try:
         await redis_client.rpush(REDIS_QUEUE_KEY, raw)
         logger.debug(
-            f"LLM knowledge recorded: job={job_id} category={category} " f"accepted={accepted}"
+            f"LLM knowledge recorded: job={job_id} category={category} accepted={accepted}"
         )
     except Exception as e:
         logger.warning(f"Failed to record LLM knowledge: {e}")

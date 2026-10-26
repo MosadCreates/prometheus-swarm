@@ -9,7 +9,7 @@ import tempfile
 
 import pytest
 
-from runtime.models import RetryAttemptRecord, RetryPlan, TrainingJob, check_architecture_supported
+from runtime.models import RetryAttemptRecord, RetryPlan, TrainingJob
 from runtime.retry_state import (
     MAX_RETRY_ATTEMPTS,
     RetryHistoryEntry,
@@ -18,9 +18,7 @@ from runtime.retry_state import (
     save_retry_state,
 )
 from runtime.retry_strategy import (
-    NextTrainingStrategy,
     build_next_strategy,
-    build_next_strategy_from_state,
 )
 from runtime.retry_log import (
     create_retry_log,

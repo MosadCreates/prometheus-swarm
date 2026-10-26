@@ -15,7 +15,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from research.engineering.data import load_patch_log
 from research.engineering.models import EngineeringSummary
 
 logger = logging.getLogger(__name__)

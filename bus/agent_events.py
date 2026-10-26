@@ -96,8 +96,7 @@ async def emit_agent_event(
         import logging
 
         logging.getLogger(__name__).warning(
-            f"Failed to publish agent event | agent={agent} state={state} "
-            f"mission_id={mission_id}",
+            f"Failed to publish agent event | agent={agent} state={state} mission_id={mission_id}",
             exc_info=True,
         )
     return event_id

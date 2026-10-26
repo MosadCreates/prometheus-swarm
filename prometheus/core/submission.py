@@ -1,6 +1,6 @@
 from typing import Any
 
-from prometheus.core.pipeline import run_pipeline, PipelineError
+from prometheus.core.pipeline import run_pipeline
 
 
 async def submit_and_run(

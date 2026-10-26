@@ -34,7 +34,7 @@ from agents.forge.agent import ForgeAgent
 from agents.furnace.agent import FurnaceAgent
 from agents.arbiter.agent import ArbiterAgent
 from agents.harbor.agent import HarborAgent
-from contracts.state import MissionState, transition_and_save, canonical_phase
+from contracts.state import transition_and_save
 from memory.redis_client import RedisClient
 
 logger = logging.getLogger(__name__)

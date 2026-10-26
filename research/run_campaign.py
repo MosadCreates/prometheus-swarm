@@ -19,12 +19,10 @@ import logging
 import os
 import shutil
 import sys
-import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from runtime.paths import get_job_paths
-from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from dotenv import load_dotenv
@@ -235,8 +233,6 @@ async def run_campaign_live(
         run_condition_c,
         make_job_id,
         ensure_dataset_available,
-        resolve_dataset_path,
-        make_result,
     )
 
     # Load existing patch_log to get baseline count

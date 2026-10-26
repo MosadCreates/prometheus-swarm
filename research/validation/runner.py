@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
-import sys
 import time
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from runtime.paths import get_job_paths
 from research.run_benchmark import ensure_dataset_available
@@ -22,7 +17,6 @@ from research.validation.models import (
     ResearchMetrics,
     SystemMetrics,
 )
-from research.validation.loader import runtime_run_from_dict
 from research.validation.tracker import save_experiment_set
 
 logger = logging.getLogger(__name__)
@@ -58,11 +52,9 @@ async def run_benchmark_batch(
         Populated ExperimentSet with ExperimentRun objects.
     """
     from research.run_benchmark import (
-        ensure_dataset_available,
         make_job_id as bench_make_job_id,
         print_problem_header,
         print_result,
-        resolve_dataset_path,
         run_condition_a,
         run_condition_b,
         run_condition_c,

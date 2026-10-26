@@ -10,7 +10,6 @@ from research.validation.failures import (
 from research.validation.models import (
     ExperimentRun,
     FailureCategory,
-    ResearchHypothesis,
 )
 
 

@@ -41,8 +41,7 @@ async def publish(
                 flat[k] = str(v)
     else:
         raise TypeError(
-            f"publish() payload must be a dict or EventPayload model, "
-            f"got {type(payload).__name__}"
+            f"publish() payload must be a dict or EventPayload model, got {type(payload).__name__}"
         )
 
     msg_id = await redis_client.xadd(stream_name, flat)

@@ -4,13 +4,9 @@ Used before the experimental campaign to verify that results are stable.
 If variance exceeds the threshold, investigation is required before proceeding.
 """
 
-import asyncio
-import json
 import logging
 import statistics
 import time
-import uuid
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -43,7 +39,6 @@ async def run_reproducibility_check(
         run_forge_phase,
         run_training_script,
         evaluate,
-        resolve_dataset_path,
     )
 
     all_problems = load_problems()
@@ -65,7 +60,6 @@ async def run_reproducibility_check(
             t0 = time.time()
 
             try:
-                dataset_path = resolve_dataset_path(problem)
                 brief = await run_scout_phase(job_id, problem)
                 if brief is None:
                     per_problem[pid].append(

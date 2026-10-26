@@ -21,7 +21,6 @@ Flow:
 All rules are AST-safe — they operate on text but preserve Python syntax.
 """
 
-import ast
 import logging
 import re
 from typing import Any

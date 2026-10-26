@@ -370,7 +370,6 @@ class TestReplayController:
     @pytest.mark.asyncio
     async def test_controller_toggle_pause(self, trace_deterministic):
         from prometheus.ui.cockpit.app import CockpitApp
-        from prometheus.ui.cockpit.widgets import ReplayController
 
         app = CockpitApp(
             redis=None,
@@ -550,9 +549,7 @@ class TestResetState:
         from prometheus.ui.cockpit.app import CockpitApp
         from prometheus.ui.cockpit.widgets import (
             MissionHeader,
-            PhaseTracker,
             ActiveAgentPane,
-            CascadeAttempt,
         )
 
         app = CockpitApp(redis=None, mission_id="phase7-cap-1fceabd5", problem_description="test")

@@ -5,7 +5,6 @@ import pytest
 
 from research.validation.models import (
     ExperimentRun,
-    ResearchHypothesis,
     ResearchMetrics,
     SystemMetrics,
 )

@@ -9,9 +9,7 @@ Faults are applied ephemerally — the original dataset is never modified.
 
 import csv
 import logging
-import os
 import random
-import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -169,7 +167,7 @@ def nan_explosion(source: Path, temp_dir: Path, nan_rate: float = 0.5) -> FaultR
         writer.writeheader()
         writer.writerows(rows)
 
-    return str(dest), f"NaN explosion ({nan_rate*100:.0f}% NaN in column '{target_col}')"
+    return str(dest), f"NaN explosion ({nan_rate * 100:.0f}% NaN in column '{target_col}')"
 
 
 def feature_type_mismatch(source: Path, temp_dir: Path, col: str = "age") -> FaultResult:

@@ -803,7 +803,7 @@ class LiveTreeRenderer:
                 probe_start = time.monotonic()
                 r = httpx.get(f"{endpoint}/health", timeout=3.0)
                 probe_elapsed = time.monotonic() - probe_start
-                health_latency = f"{probe_elapsed*1000:.0f}ms"
+                health_latency = f"{probe_elapsed * 1000:.0f}ms"
                 health_status = "Healthy" if r.status_code == 200 else f"HTTP {r.status_code}"
             except Exception:
                 health_status = "Unreachable"
@@ -843,12 +843,16 @@ class LiveTreeRenderer:
                 icon = (
                     _CHECK
                     if node.status == "done"
-                    else _CROSS if node.status == "error" else _TEARDROP
+                    else _CROSS
+                    if node.status == "error"
+                    else _TEARDROP
                 )
                 s = (
                     _COLOR_SUCCESS
                     if node.status == "done"
-                    else _COLOR_ERROR if node.status == "error" else _COLOR_DIM
+                    else _COLOR_ERROR
+                    if node.status == "error"
+                    else _COLOR_DIM
                 )
                 dur = (
                     f"  ·  {int(node.end_time - node.start_time)}s"
@@ -935,9 +939,9 @@ class LiveTreeRenderer:
                     if size < 1024:
                         size_str = f"{size}B"
                     elif size < 1024 * 1024:
-                        size_str = f"{size/1024:.0f}KB"
+                        size_str = f"{size / 1024:.0f}KB"
                     else:
-                        size_str = f"{size/1024/1024:.1f}MB"
+                        size_str = f"{size / 1024 / 1024:.1f}MB"
                     artifact_items.append(f"  {_WHITE_CIRCLE} {fname} ({size_str})")
         if artifact_items:
             result.append(Text(f"{_INDENT}  ", style=label_style))

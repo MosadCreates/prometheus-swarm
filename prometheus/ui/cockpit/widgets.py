@@ -19,9 +19,8 @@ import os
 from textual import events
 from textual.app import ComposeResult
 from textual.reactive import reactive
-from textual.screen import ModalScreen, Screen
+from textual.screen import ModalScreen
 from textual.widgets import Input, Static
-from textual.widget import Widget
 
 from prometheus.ui.styles import Token
 from prometheus.ui.theme import Theme
@@ -383,8 +382,7 @@ class CascadeAttempt(Static):
         msg_suffix = f"  {msg}" if msg else ""
         level_color = CASCADE_LEVEL_COLORS.get(level, str(Theme.secondary))
         return (
-            f"  [{color}]{icon} {level}[/] [{level_color}]{level_name}[/]"
-            f"  [{color}]{msg_suffix}[/]"
+            f"  [{color}]{icon} {level}[/] [{level_color}]{level_name}[/]  [{color}]{msg_suffix}[/]"
         )
 
     def render(self) -> str:
@@ -646,7 +644,6 @@ class EscalationModalScreen(ModalScreen[str]):
         self.dismiss("abort")
 
     async def _prompt_hint(self) -> str | None:
-        from textual.widgets import Input
 
         hint = await self.app.push_screen_wait(HintInputScreen())
         return hint
@@ -1219,7 +1216,7 @@ class ActiveAgentPane(Static):
                 empty_count = bar_width - fill_count
                 bar = "\u2588" * fill_count + "\u2591" * empty_count
                 result.append(
-                    f"      [{Theme.info}]{bar}[/]  [{Theme.muted}]{int(filled/max(total_epochs,1)*100)}%[/]"
+                    f"      [{Theme.info}]{bar}[/]  [{Theme.muted}]{int(filled / max(total_epochs, 1) * 100)}%[/]"
                 )
 
         elif agent == "Dissect" and detail:
@@ -1699,7 +1696,6 @@ class LogScreen(ModalScreen[None]):
             box.children[0].update(content)
 
     async def _prompt_search(self) -> None:
-        from textual.widgets import Input
 
         search = await self.app.push_screen_wait(_SearchInputScreen())
         if search is not None:
@@ -1741,7 +1737,9 @@ class LogScreen(ModalScreen[None]):
             state_color = (
                 "green"
                 if state in ("done", "complete", "success")
-                else "red" if state in ("error", "failed", "crashed") else "yellow"
+                else "red"
+                if state in ("error", "failed", "crashed")
+                else "yellow"
             )
 
             lines.append(
@@ -1763,13 +1761,7 @@ class LogScreen(ModalScreen[None]):
         if self._filter_state:
             parts.append(f"filter: {self._filter_state}")
         status = f"  [{','.join(parts)}]  " if parts else ""
-        return (
-            f"  [{Theme.muted}]"
-            f"{status}{shown}/{total} event(s)  "
-            f"[/][/][{Theme.muted}]"
-            f"[/][/]"
-            f"[/]"
-        )
+        return f"  [{Theme.muted}]{status}{shown}/{total} event(s)  [/][/][{Theme.muted}][/][/][/]"
 
     def key_g(self) -> None:
         """g — scroll to top of log."""

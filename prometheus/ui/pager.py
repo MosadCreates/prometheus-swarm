@@ -7,12 +7,10 @@ and q/Esc to dismiss.  Used by ``mission list --interactive``,
 
 from __future__ import annotations
 
-import os
 import sys
 from typing import Any
 
 from rich.table import Table
-from rich.text import Text
 
 from prometheus.ui.console import console
 from prometheus.ui.styles import Token
@@ -67,7 +65,6 @@ def interactive_table(
     search_buf: list[str] = []
     filtered_rows = list(rows)
     page_rows = max(_terminal_height() - 5, 5)
-    last_key_time = 0.0
 
     # Scroll acceleration
     _scroll_velocity = 1
@@ -137,7 +134,6 @@ def interactive_table(
 
     while True:
         ch = _m.getwch()
-        now = _t.monotonic()
 
         if ch in ("\x00", "\xe0"):
             ext = _m.getwch()

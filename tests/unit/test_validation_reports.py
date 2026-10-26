@@ -12,8 +12,6 @@ from research.validation.models import (
     ExperimentSet,
     FailureReport,
     ResearchHypothesis,
-    ResearchMetrics,
-    SystemMetrics,
 )
 from research.validation.reports import (
     generate_report,

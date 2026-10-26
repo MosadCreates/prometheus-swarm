@@ -133,7 +133,6 @@ def reason_data_quality(eda_result: dict[str, Any]) -> dict[str, Any]:
     missing_rate = eda_result.get("missing_value_rate", {})
     high_card = eda_result.get("high_cardinality_columns", [])
 
-    missing_values = [c for c, r in missing_rate.items() if r > 0]
     high_missing = [c for c, r in missing_rate.items() if r > 0.3]
 
     issues = []
@@ -174,7 +173,6 @@ def reason_leakage(
     df: "pd.DataFrame",
     target_column: str | None = None,
 ) -> dict[str, Any]:
-    import pandas as pd
 
     if not target_column or target_column not in df.columns:
         return {
@@ -308,7 +306,6 @@ def reason_imbalance(eda_result: dict[str, Any]) -> dict[str, Any] | None:
 
 def reason_architecture(mission_brief: dict[str, Any]) -> dict[str, Any]:
     modality = mission_brief.get("modality", "tabular")
-    task_type = mission_brief.get("task_type", "classification")
     num_rows = mission_brief.get("dataset", {}).get("num_rows", 0)
     imbalance_ratio = mission_brief.get("data_quality", {}).get("class_imbalance_ratio")
 
@@ -623,9 +620,6 @@ def adjust_with_experience(
 
     errors = [e["prediction_error"] for e in completed if e.get("prediction_error") is not None]
     avg_error = sum(errors) / len(errors) if errors else None
-
-    pass_outcomes = [e for e in completed if e.get("outcome") == "pass"]
-    fail_outcomes = [e for e in completed if e.get("outcome") in ("retry", "escalate")]
 
     for key, decision in decisions.items():
         if not isinstance(decision, dict) or "confidence" not in decision:

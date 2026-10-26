@@ -62,7 +62,6 @@ def test_mission_new_accepts_existing_dataset(tmp_path, monkeypatch):
     mocked so this stays hermetic; the point is that the guard does not
     false-positive on a real file.
     """
-    import uuid as _uuid
 
     runner = CliRunner()
     dataset = tmp_path / "data.csv"

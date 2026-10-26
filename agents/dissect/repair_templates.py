@@ -20,7 +20,6 @@ import json
 import logging
 import os
 import re
-from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -467,7 +466,9 @@ def generalize_diff_to_template(
         patched_script.splitlines(keepends=True),
     )
     diff_lines = list(diff)
-    added_lines = [l[1:] for l in diff_lines if l.startswith("+") and not l.startswith("+++")]
+    added_lines = [
+        line[1:] for line in diff_lines if line.startswith("+") and not line.startswith("+++")
+    ]
     if not added_lines:
         return None
 

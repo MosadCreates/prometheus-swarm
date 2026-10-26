@@ -310,7 +310,6 @@ class TestIntegrationHooks:
     """Test that tools.py integrates fingerprint calls correctly."""
 
     def test_compute_fingerprint_imported_from_tools(self):
-        from agents.forge.tools import write_training_script
         from agents.forge.script_fingerprint import compute_fingerprint
 
         # Verify the function is accessible and callable

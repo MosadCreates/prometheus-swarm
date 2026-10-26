@@ -737,7 +737,7 @@ class FurnaceAgent(BaseAgent):
             metric_value=metric_value,
         )
         await tracker.emit(
-            "acting", f"Training progress: {int(progress*100)}%", detail=bar.__dict__
+            "acting", f"Training progress: {int(progress * 100)}%", detail=bar.__dict__
         )
 
     def _track_metric(self, metric_name: str, metric_value: float) -> None:
@@ -1074,8 +1074,7 @@ class FurnaceAgent(BaseAgent):
             return None
 
         self.logger.info(
-            f"[job={self.job_id}] Entering WAIT state for Dissect on "
-            f"stream={STREAM_DISSECT_OUTPUT}"
+            f"[job={self.job_id}] Entering WAIT state for Dissect on stream={STREAM_DISSECT_OUTPUT}"
         )
 
         self.logger.debug(f"[job={self.job_id}] Waiting for Dissect (attempt {attempt_number})")

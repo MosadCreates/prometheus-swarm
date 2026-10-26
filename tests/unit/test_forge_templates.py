@@ -2,7 +2,6 @@
 
 import ast
 import os
-import sys
 
 from agents.forge.template_renderer import (
     select_and_render,

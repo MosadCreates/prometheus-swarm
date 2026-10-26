@@ -206,7 +206,7 @@ def sync_load_prevention_rules(
         r.close()
     except redis.ConnectionError as e:
         logger.debug(
-            "PreventionRules backend=Redis operation=sync_load " "error=%s — retrying once",
+            "PreventionRules backend=Redis operation=sync_load error=%s — retrying once",
             type(e).__name__,
         )
         try:
@@ -216,13 +216,13 @@ def sync_load_prevention_rules(
             r.close()
         except Exception as e2:
             logger.warning(
-                "PreventionRules backend=Redis operation=sync_load " "error=%s — loading 0 rules",
+                "PreventionRules backend=Redis operation=sync_load error=%s — loading 0 rules",
                 type(e2).__name__,
             )
             return []
     except Exception as e:
         logger.warning(
-            "PreventionRules backend=Redis operation=sync_load " "error=%s — loading 0 rules",
+            "PreventionRules backend=Redis operation=sync_load error=%s — loading 0 rules",
             type(e).__name__,
         )
         return []
@@ -387,8 +387,6 @@ def _insert_after_imports(script: str, code: str) -> str:
 
     if last_import_idx < 0:
         return script
-
-    indent = ""
 
     code_lines = code.rstrip().split("\n")
 

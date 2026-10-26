@@ -257,7 +257,7 @@ async def _report_error_stats(architecture: str, job_id: str) -> None:
             )
             if stats_str:
                 logger.warning(
-                    f"[job={job_id}] Known failure patterns for " f"{architecture}: {stats_str}"
+                    f"[job={job_id}] Known failure patterns for {architecture}: {stats_str}"
                 )
         r.close()
     except Exception:
@@ -280,8 +280,7 @@ def select_and_render(
 
     if template_name is None:
         logger.info(
-            f"No template for ({architecture}, {task_subtype}) — "
-            f"falling back to f-string generator"
+            f"No template for ({architecture}, {task_subtype}) — falling back to f-string generator"
         )
         return None
 

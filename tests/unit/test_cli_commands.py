@@ -1,8 +1,5 @@
 """Unit tests for prometheus swarm CLI commands (solve, explain, replay, report)."""
 
-import json
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from click.testing import CliRunner

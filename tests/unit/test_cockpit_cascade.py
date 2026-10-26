@@ -437,7 +437,7 @@ class TestParentEventIdChain:
             parent_event_id=e7,
         )
 
-        e9 = await emit_agent_event(
+        await emit_agent_event(
             redis,
             MISSION_ID,
             "Dissect",

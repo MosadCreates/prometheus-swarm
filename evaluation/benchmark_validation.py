@@ -12,7 +12,6 @@ Checks performed for each dataset:
 import hashlib
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -79,7 +78,6 @@ def validate_all() -> dict[str, Any]:
         ids_seen.add(pid)
 
         ds_path = resolve_dataset_path(problem)
-        ds_name = problem["dataset"]["name"]
 
         # File exists
         if not ds_path.exists():
@@ -181,7 +179,7 @@ def validate_all() -> dict[str, Any]:
                 if ratio > ROWS_TOLERANCE and actual > 10:
                     warnings.append(
                         f"Row count mismatch: expected ~{expected}, got ~{actual} "
-                        f"(off by {ratio*100:.0f}%)"
+                        f"(off by {ratio * 100:.0f}%)"
                     )
             except Exception:
                 warnings.append("Could not verify row count")

@@ -14,7 +14,6 @@ from prometheus.ui.cockpit.widgets import (
     ActiveAgentPane,
     MissionHeader,
     PhaseTracker,
-    _SPINNER_CHARS,
 )
 
 pytestmark = pytest.mark.asyncio

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -102,7 +101,6 @@ def model_list(
         if status and status.lower() != decision:
             continue
 
-        metrics = eval_data.get("metrics") or eval_data.get("all_metrics") or {}
         primary_metric = eval_data.get("primary_metric") or eval_data.get("metric") or ""
         primary_value = eval_data.get("primary_metric_value") or eval_data.get("metric_value") or ""
 
@@ -275,7 +273,7 @@ def model_export(
 def _export_onnx(renderer: Any, mission_id: str, ckpt_path: Path, out_path: Path) -> ExitCode:
     """Export checkpoint to ONNX using onnxmltools."""
     try:
-        import onnxmltools
+        import onnxmltools  # noqa: F401
     except ImportError:
         renderer.error("onnxmltools not installed.", hint="pip install onnxmltools")
         return ExitCode.ERROR

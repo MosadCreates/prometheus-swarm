@@ -22,7 +22,6 @@ import json
 import os
 import sys
 import tempfile
-from pathlib import Path
 
 import joblib
 import numpy as np
@@ -47,7 +46,6 @@ from agents.harbor.tools import (
     serialize_to_onnx,
     generate_fastapi_app,
     _extract_estimator_from_pipeline,
-    _generate_preprocessing_contract,
 )
 from contracts.domain import PreprocessingContract
 

@@ -43,7 +43,6 @@ from evaluation import config as eval_config
 from evaluation.perf_logger import record_stage
 from bus.agent_events import emit_agent_event
 from bus.events import (
-    MISSION_BRIEF_READY,
     CRASH_EVENT,
     EVALUATION_PASS,
     EVALUATION_RETRY,

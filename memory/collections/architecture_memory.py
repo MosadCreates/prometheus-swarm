@@ -1,7 +1,6 @@
 """architecture_memory collection: Forge stores and retrieves past architecture decisions."""
 
 import logging
-import os
 from typing import Any
 
 from memory.chroma_client import ChromaClient

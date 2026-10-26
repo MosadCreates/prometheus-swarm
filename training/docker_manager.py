@@ -63,9 +63,7 @@ class DockerManager:
         except docker.errors.DockerException as e:
             msg = str(e).lower()
             if "connection" in msg or "daemon" in msg:
-                return False, (
-                    "Docker daemon is not running.\n" "  Start Docker Desktop and retry."
-                )
+                return False, ("Docker daemon is not running.\n  Start Docker Desktop and retry.")
             return False, f"Docker error: {e}"
         except Exception as e:
             return False, f"Docker check failed: {e}"

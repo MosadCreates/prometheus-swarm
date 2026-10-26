@@ -70,5 +70,12 @@ line-length = 100
 select = ["E", "F"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+"orchestrator/runtime.py" = ["E402"]
+"prometheus/core/pipeline.py" = ["E402"]
+"research/run_stress_benchmark.py" = ["E402"]
+"tests/integration/*" = ["E402"]
+"tests/fixtures/injected_errors/*" = ["E402"]
+
 [tool.black]
 line-length = 100

@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
 
 from research.validation.models import ExperimentRun
 
@@ -16,7 +15,6 @@ from research.validation.loader import (
 )
 from research.validation.models import (
     Experiment,
-    ExperimentSet,
     FailureCategory,
     ResearchHypothesis,
 )

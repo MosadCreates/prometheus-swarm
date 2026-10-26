@@ -15,8 +15,6 @@ from typing import Any
 from runtime.paths import get_job_paths
 from runtime.models import (
     check_architecture_supported,
-    classify_exception,
-    load_mission_state,
     load_mission_state_from_redis,
     save_mission_state,
     save_mission_state_to_redis,
@@ -405,8 +403,7 @@ async def handle_evaluation_retry(
                     engine.best_architecture,
                 )
                 logger.info(
-                    f"[job={job_id}] Retry {attempt} achieved PASS — "
-                    f"{metric_name}={metric_val:.4f}"
+                    f"[job={job_id}] Retry {attempt} achieved PASS — {metric_name}={metric_val:.4f}"
                 )
                 return {
                     "decision": "PASS",
@@ -744,7 +741,7 @@ async def _run_furnace_with_retry(
                     except (asyncio.CancelledError, Exception):
                         pass
 
-                furnace_result = await furnace_task
+                await furnace_task
             finally:
                 if agent is not None:
                     agent.redis._client = None
@@ -807,7 +804,7 @@ async def _run_furnace_with_retry(
                 show_furnace_error(
                     renderer,
                     job_id,
-                    (f"Crash Category: {category}\n" f"Exception: {exc_type}: {exc_msg}"),
+                    (f"Crash Category: {category}\nException: {exc_type}: {exc_msg}"),
                     wait_for_dissect=True,
                 )
                 return False

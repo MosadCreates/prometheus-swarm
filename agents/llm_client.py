@@ -43,11 +43,7 @@ def _load_project_env() -> dict[str, str]:
     if env_file is None:
         return {}
     try:
-        return {
-            k: v
-            for k, v in dotenv_values(env_file).items()
-            if v is not None and v != ""
-        }
+        return {k: v for k, v in dotenv_values(env_file).items() if v is not None and v != ""}
     except Exception as e:  # malformed .env must not break imports
         logger.warning("Could not parse %s: %s", env_file, e)
         return {}
@@ -73,9 +69,7 @@ LLM_TIMEOUT = int(_resolve("LLM_TIMEOUT", "300") or "300")
 # Prometheus's traffic away from the API the ``ANTHROPIC_API_KEY`` in
 # ``.env`` actually belongs to.  The SDK only falls back to the env var
 # when ``base_url`` is left as ``None``, so this must never be ``None``.
-ANTHROPIC_BASE_URL = _resolve(
-    "PROMETHEUS_ANTHROPIC_BASE_URL", "https://api.anthropic.com"
-)
+ANTHROPIC_BASE_URL = _resolve("PROMETHEUS_ANTHROPIC_BASE_URL", "https://api.anthropic.com")
 
 
 async def get_llm_response(
@@ -122,7 +116,9 @@ async def get_llm_response(
             raise RuntimeError(f"CRITICAL: Model {ANTHROPIC_MODEL} not found") from e
         except Exception as e:
             wait = 2**attempt
-            logger.warning(f"[{agent_name}][job={job_id}] LLM call failed attempt {attempt+1}: {e}")
+            logger.warning(
+                f"[{agent_name}][job={job_id}] LLM call failed attempt {attempt + 1}: {e}"
+            )
             if attempt == max_retries - 1:
                 raise RuntimeError(f"LLM failed after {max_retries} attempts") from e
             await asyncio.sleep(wait)
@@ -215,7 +211,7 @@ async def get_llm_response_stream(
         except Exception as e:
             wait = 2**attempt
             logger.warning(
-                f"[{agent_name}][job={job_id}] LLM stream call failed attempt {attempt+1}: {e}"
+                f"[{agent_name}][job={job_id}] LLM stream call failed attempt {attempt + 1}: {e}"
             )
             if attempt == max_retries - 1:
                 raise RuntimeError(f"LLM stream failed after {max_retries} attempts") from e

@@ -8,23 +8,17 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
 import matplotlib
 import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.patches import FancyBboxPatch  # noqa: E402
 
 from research.validation.models import (
-    ComparisonResult,
-    Experiment,
     ExperimentRun,
-    ExperimentSet,
     LearningCurvePoint,
     ResearchHypothesis,
-    SystemMetrics,
 )
 
 logger = logging.getLogger(__name__)
@@ -473,7 +467,7 @@ def fig_failure_breakdown(
         zip(data_matrix, [COLORS["h1"], COLORS["h2"], COLORS["h3"]])
     ):
         offset = (i - 1) * width
-        bars = ax.bar(
+        ax.bar(
             x + offset,
             data_row,
             width,

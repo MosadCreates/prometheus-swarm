@@ -18,7 +18,9 @@ def SearchPanel(results: list[tuple[Command, float]], query: str) -> Panel:
         color = (
             str(Theme.command)
             if score >= 0.8
-            else str(Theme.body) if score >= 0.6 else str(Theme.secondary)
+            else str(Theme.body)
+            if score >= 0.6
+            else str(Theme.secondary)
         )
 
         name_text = Text()

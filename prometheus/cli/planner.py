@@ -9,7 +9,6 @@ import click
 
 from prometheus.ui.renderers import renderer_from_ctx
 from prometheus.ui.components import Spinner
-from prometheus.ui.styles import Token
 from prometheus.utils.commands import AliasedGroup
 from prometheus.utils.exit_codes import ExitCode
 

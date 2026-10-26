@@ -7,9 +7,8 @@ research campaign is launched.
 
 import json
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 
 from agents.dissect.fingerprint import FingerprintStore, compute_fingerprint, compute_script_hash
 from agents.dissect.governor import BudgetGovernor, FingerprintBudget

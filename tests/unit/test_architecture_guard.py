@@ -4,7 +4,6 @@ job_runner.py and not subprocess or direct tool calls.
 """
 
 import ast
-import os
 
 
 def test_run_benchmark_does_not_use_subprocess_for_training():

@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from research.validation.models import Experiment, ExperimentRun, ExperimentSet
+from research.validation.models import Experiment, ExperimentSet
 
 logger = logging.getLogger(__name__)
 

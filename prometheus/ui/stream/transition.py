@@ -9,9 +9,7 @@ These are permanent lines — printed once and never rewritten.
 
 from __future__ import annotations
 
-from io import StringIO
 
-from rich.console import Console
 from rich.text import Text
 
 from prometheus.ui.claude.agent_colors import AGENT_COLORS

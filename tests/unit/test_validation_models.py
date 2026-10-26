@@ -1,9 +1,6 @@
 """Tests for research/validation/models.py."""
 
-import uuid
-from datetime import datetime, timezone
 
-import pytest
 
 from research.validation.models import (
     ArchitectureSelectionAccuracy,

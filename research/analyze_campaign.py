@@ -19,7 +19,6 @@ Outputs:
 import argparse
 import json
 import logging
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -71,8 +70,6 @@ def generate_figures(campaign_data: dict[str, Any], output_dir: Path):
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    import matplotlib.ticker as mticker
-    import numpy as np
 
     metrics = campaign_data["run_metrics"]
     fig_dir = output_dir / "figures"

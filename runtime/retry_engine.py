@@ -271,7 +271,7 @@ class RetryEngine:
                 for a in attempts_data
             ]
             logger.info(
-                f"[job={self.job_id}] Retry history loaded: " f"{len(self._retry_history)} attempts"
+                f"[job={self.job_id}] Retry history loaded: {len(self._retry_history)} attempts"
             )
             return True
         except Exception as e:

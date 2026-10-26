@@ -4,8 +4,6 @@ Every function: (script_content: str, exception_message: str) -> str | None (Non
 
 import ast
 import re
-import subprocess
-import sys
 
 
 # ============================================================
@@ -80,9 +78,6 @@ def fix_dtype_mismatch(script: str, message: str) -> str | None:
         and "type" not in message.lower()
     ):
         return None
-
-    pattern = r"could not convert string to float:\s*'([^']+)'"
-    m = re.search(pattern, message)
 
     m2 = re.search(r"'([^']+)'.*dtype", message)
     column_hint = m2.group(1) if m2 else None

@@ -14,7 +14,6 @@ import importlib.util
 import sys
 import uuid
 from pathlib import Path
-from typing import Any
 
 from agents.skills.base import Skill
 from agents.skills.manifest import VALID_AGENTS, SkillManifest, load_manifest_from_dir

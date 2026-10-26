@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 import time
 from typing import Any
@@ -250,12 +249,12 @@ def show_scout_summary(console: Console, brief: dict[str, Any], job_id: str) -> 
     ]
 
     missing = dq.get("missing_value_rate", {})
-    missing_cols = [f"{k} ({float(v)*100:.0f}%)" for k, v in missing.items() if float(v) > 0]
+    missing_cols = [f"{k} ({float(v) * 100:.0f}%)" for k, v in missing.items() if float(v) > 0]
     health_lines.append(item("Missing", ", ".join(missing_cols) if missing_cols else "None"))
 
     if imb is not None and imb > 0:
-        maj_pct = f"{imb/(1+imb)*100:.0f}%"
-        min_pct = f"{1/(1+imb)*100:.0f}%"
+        maj_pct = f"{imb / (1 + imb) * 100:.0f}%"
+        min_pct = f"{1 / (1 + imb) * 100:.0f}%"
         health_lines.append(
             item("Balance", f"Majority {maj_pct} / Minority {min_pct} (1:{imb:.1f})")
         )
@@ -315,7 +314,6 @@ def show_forge_summary(
     job_id: str,
     result: dict[str, Any],
 ) -> None:
-    from rich.text import Text
 
     voice = _AGENT_VOICES["Forge"]
     brief = result.get("brief") or {}
@@ -372,7 +370,6 @@ def show_furnace_summary(
     job_id: str,
     result: dict[str, Any],
 ) -> None:
-    from rich.text import Text
 
     voice = _AGENT_VOICES["Furnace"]
 
@@ -450,7 +447,6 @@ def show_dissect_summary(
     job_id: str,
     patch_log_entry: dict[str, Any],
 ) -> None:
-    from rich.text import Text
 
     voice = _AGENT_VOICES["Dissect"]
 
@@ -474,7 +470,9 @@ def show_dissect_summary(
         color = (
             Theme.success
             if outcome == "success"
-            else Theme.error if outcome == "escalated" else Theme.warning
+            else Theme.error
+            if outcome == "escalated"
+            else Theme.warning
         )
         parts.append(line("Outcome", f"[{color}]{outcome}[/]"))
     if patch_log_entry.get("confidence_score") is not None:
@@ -518,7 +516,6 @@ def show_arbiter_summary(
     job_id: str,
     result: dict[str, Any],
 ) -> None:
-    from rich.text import Text
 
     voice = _AGENT_VOICES["Arbiter"]
 

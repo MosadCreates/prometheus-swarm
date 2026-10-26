@@ -35,8 +35,6 @@ CONFIG_MAP = {
 def main():
     with open(ANALYSIS_PATH) as f:
         analysis = json.load(f)
-    with open(ABLATION_PATH) as f:
-        raw = json.load(f)
 
     md = []
 

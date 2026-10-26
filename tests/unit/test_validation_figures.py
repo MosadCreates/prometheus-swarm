@@ -4,9 +4,7 @@ Note: These tests verify that figure generation runs without errors
 and returns valid Path objects. Visual correctness is not tested.
 """
 
-from pathlib import Path
 
-import pytest
 
 from research.validation.figures import (
     fig_crash_comparison,
@@ -18,7 +16,6 @@ from research.validation.figures import (
 )
 from research.validation.models import (
     ExperimentRun,
-    ResearchHypothesis,
     ResearchMetrics,
     SystemMetrics,
 )

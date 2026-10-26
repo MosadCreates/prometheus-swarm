@@ -8,10 +8,8 @@ Covers:
 - adjust_with_experience pure function
 """
 
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from memory.collections.experience_memory import (
     _safe_float,

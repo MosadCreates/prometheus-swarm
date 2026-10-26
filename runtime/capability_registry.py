@@ -59,7 +59,7 @@ def check_architecture_available(architecture: str) -> bool:
         return True
     except ImportError:
         logger.debug(
-            f"Architecture '{architecture}' not available — " f"missing module '{req['module']}'"
+            f"Architecture '{architecture}' not available — missing module '{req['module']}'"
         )
         return False
 

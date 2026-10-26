@@ -12,7 +12,6 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
 from runtime.paths import get_job_paths
 
 import redis.asyncio as aioredis
@@ -178,7 +177,6 @@ async def run_job(config: JobConfig, redis_client: aioredis.Redis) -> JobResult:
             from bus.consumer import ensure_consumer_group
             from bus.events import (
                 STREAM_FURNACE_CRASH,
-                STREAM_DISSECT_OUTPUT,
                 GROUP_DISSECT,
             )
 

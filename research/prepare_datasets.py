@@ -15,7 +15,6 @@ Usage:
 
 import argparse
 import logging
-import os
 from pathlib import Path
 
 logging.basicConfig(
@@ -336,7 +335,6 @@ def _load_and_relabel(df, path):
 
 def generate_image_dataset(pid: str, info: dict):
     """Generate a proper image dataset with image files + CSV."""
-    import numpy as np
 
     csv_name = info.get("csv_name", f"{pid.lower()}_{info['dataset'].lower()}.csv")
     csv_path = DATA_DIR / csv_name
@@ -395,9 +393,7 @@ def _generate_synthetic_images(pid: str, img_dir: Path, csv_path: Path, info: di
 def _generate_from_torchvision(pid: str, img_dir: Path, csv_path: Path, tv_name: str, info: dict):
     """Download a torchvision dataset, save images to disk, create CSV."""
     import pandas as pd
-    import torch
     import torchvision.transforms as T
-    from PIL import Image
 
     if tv_name == "GTSRB":
         try:
@@ -562,7 +558,6 @@ def verify_all():
 
 def prepare_all(problems_filter: str = "all"):
     """Prepare all datasets for the benchmark."""
-    import numpy as np
 
     logger.info("=" * 60)
     logger.info("Prometheus Swarm — Dataset Preparation")

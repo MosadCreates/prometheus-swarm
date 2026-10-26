@@ -52,7 +52,7 @@ def show_retry_limit_reached(
     console.print("  [bold red]Maximum retry attempts reached.[/]")
     console.print()
     console.print("  Mission failed to satisfy deployment requirements.")
-    console.print(f"  Best {metric_name}: {last_value:.4f} " f"(threshold: {threshold or 'N/A'})")
+    console.print(f"  Best {metric_name}: {last_value:.4f} (threshold: {threshold or 'N/A'})")
     console.print()
 
 
@@ -65,8 +65,7 @@ def show_retry_complete(
 ) -> None:
     console.print()
     console.print(
-        f"  [bold green]Retry {attempt} complete: "
-        f"{metric_name}={metric_value:.4f} → {decision}[/]"
+        f"  [bold green]Retry {attempt} complete: {metric_name}={metric_value:.4f} → {decision}[/]"
     )
     console.print()
 
@@ -108,8 +107,7 @@ def show_retry_history(
         )
         crash_info = f" ⚠ crash: {entry.failure_category}" if entry.failure_category else ""
         console.print(
-            f"  Attempt {entry.attempt}: [{arch_actual}] "
-            f"{metric_str} → {decision_tag}{crash_info}"
+            f"  Attempt {entry.attempt}: [{arch_actual}] {metric_str} → {decision_tag}{crash_info}"
         )
 
     console.print(f"  Best: {best_metric:.4f} with [{best_architecture}]")

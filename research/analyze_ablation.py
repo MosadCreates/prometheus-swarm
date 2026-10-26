@@ -18,7 +18,6 @@ import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyBboxPatch
 from scipy import stats as scipy_stats
 
 logging.basicConfig(

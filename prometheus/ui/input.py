@@ -27,7 +27,6 @@ import tempfile
 from typing import Callable
 
 from rich.console import Console
-from rich.text import Text
 
 from prometheus.ui.console import console as _default_console
 from prometheus.ui.styles import Token
@@ -86,7 +85,6 @@ def read_input(
     paste_window = 0.08
     tab_index: int = -1
     tab_candidates: list[str] = []
-    tab_prefix: str = ""
 
     # Vim mode state
     vim_mode = "insert"  # "insert" | "normal" | "visual"
@@ -278,13 +276,11 @@ def read_input(
             if candidates != tab_candidates:
                 tab_candidates = candidates
                 tab_index = 0
-                tab_prefix = line_text
             else:
                 tab_index = (tab_index + 1) % len(candidates)
 
             # Show candidates on a dedicated line below the prompt
             c = console or _default_console
-            pick = candidates[tab_index]
             shown = "  ".join(
                 f"[reverse]{opt}[/]" if i == tab_index else opt for i, opt in enumerate(candidates)
             )
@@ -516,8 +512,6 @@ def _reverse_search(
     Pressing Ctrl+R cycles through history entries that match the typed
     query.  Enter accepts the match; Esc / Ctrl+C cancels.
     """
-    import time as _t
-
     try:
         import msvcrt as _m
     except ImportError:
@@ -526,7 +520,6 @@ def _reverse_search(
     query: list[str] = []
     match_index = 0
     matches: list[str] = []
-    last_char_time = 0.0
 
     def _render() -> None:
         nonlocal matches, match_index
@@ -551,7 +544,6 @@ def _reverse_search(
 
     while True:
         ch = _m.getwch()
-        now = _t.monotonic()
 
         if ch in ("\x00", "\xe0"):
             _m.getwch()
@@ -591,8 +583,6 @@ def _reverse_search(
             query.append(ch)
             match_index = 0
             _render()
-
-        last_char_time = now
 
 
 # ── External editor launcher ──────────────────────────────────────────

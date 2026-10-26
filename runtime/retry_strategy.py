@@ -17,7 +17,6 @@ all inform the decision.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from contracts import RetryPlan, ScoutIntelligence
 from runtime.capability_registry import check_architecture_available
@@ -109,8 +108,7 @@ def _resolve_architecture(attempt: int, scout: ScoutIntelligence | None = None) 
         return arch
     fallback = _find_fallback_architecture(arch, attempt, scout)
     logger.warning(
-        f"Architecture '{arch}' not available for attempt {attempt}, "
-        f"falling back to '{fallback}'"
+        f"Architecture '{arch}' not available for attempt {attempt}, falling back to '{fallback}'"
     )
     return fallback
 

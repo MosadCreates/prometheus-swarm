@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 
 from prometheus.planner.compiler import compile_plan, _compute_confidence, _build_budget
 

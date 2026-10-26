@@ -59,9 +59,9 @@ class MissionSummaryCard:
         if size < 1024:
             size_str = f"{size}B"
         elif size < 1024 * 1024:
-            size_str = f"{size/1024:.0f}KB"
+            size_str = f"{size / 1024:.0f}KB"
         else:
-            size_str = f"{size/1024/1024:.1f}MB"
+            size_str = f"{size / 1024 / 1024:.1f}MB"
         size_part = f" ({size_str})"
         # Available for name: inner width w minus prefix (4) minus size_part minus interstice (1)
         max_name = max(1, w - len(size_part) - 4)

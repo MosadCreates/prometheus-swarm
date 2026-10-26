@@ -1,15 +1,13 @@
 """Unit tests for Forge Confidence Threshold Router (Missing Piece 5)."""
 
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch
 
-import pytest
 
 from agents.forge.confidence_router import (
     get_generation_strategy,
     strategy_label,
     TEMPLATE_THRESHOLD,
     CACHE_THRESHOLD,
-    Strategy,
 )
 
 

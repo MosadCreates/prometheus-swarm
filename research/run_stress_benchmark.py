@@ -54,7 +54,6 @@ from evaluation.stress_injector import inject_fault
 from orchestrator.job_runner import JobConfig, run_job
 from research.run_benchmark import (
     ensure_csv,
-    evaluate,
     resolve_dataset_path,
 )
 from runtime.paths import get_job_paths
@@ -86,7 +85,9 @@ def _select_columns(source_csv: str, problem: dict) -> tuple[str, str]:
     return (num[0] if num else ""), (obj[0] if obj else "")
 
 
-def _inject_data_fault(source_csv: str, fault: str, problem: dict, temp_dir: Path) -> tuple[str, str]:
+def _inject_data_fault(
+    source_csv: str, fault: str, problem: dict, temp_dir: Path
+) -> tuple[str, str]:
     kw: dict = {}
     if fault == "missing_column":
         kw["column"] = problem.get("target_column")
@@ -141,7 +142,9 @@ def _patch_summary(patches: list[dict]) -> dict:
     }
 
 
-async def run_data_fault_pair(problem: dict, fault: str, dataset_path: str, timeout: int, r) -> dict:
+async def run_data_fault_pair(
+    problem: dict, fault: str, dataset_path: str, timeout: int, r
+) -> dict:
     """B vs C of the FULL pipeline (job_runner) on a corrupted dataset copy."""
     row: dict = {
         "fault": fault,
@@ -262,10 +265,16 @@ async def run_code_fault_pair(fixtures_dir: Path, fixture: Path, timeout: int, r
 
             try:
                 await asyncio.wait_for(
-                    furnace.run(script_path=script_path, use_docker=True, wait_for_dissect=use_dissect),
+                    furnace.run(
+                        script_path=script_path, use_docker=True, wait_for_dissect=use_dissect
+                    ),
                     timeout=timeout,
                 )
-                status = "pass" if (Path(script_path).parent / "checkpoints" / "best.ckpt").exists() else "crash"
+                status = (
+                    "pass"
+                    if (Path(script_path).parent / "checkpoints" / "best.ckpt").exists()
+                    else "crash"
+                )
             except asyncio.TimeoutError:
                 status = "timeout"
                 err = f"TIMEOUT after {timeout}s"
@@ -379,7 +388,9 @@ async def main_async(args: argparse.Namespace) -> None:
         "both_pass": sum(1 for m in matrix if m["verdict"].startswith("both pass")),
         "both_fail": sum(1 for m in matrix if m["verdict"].startswith("both fail")),
         "negative": sum(1 for m in matrix if m["verdict"].startswith("NEGATIVE")),
-        "discriminating_faults": [m["fault"] for m in matrix if m["verdict"].startswith("DISCRIMINATING")],
+        "discriminating_faults": [
+            m["fault"] for m in matrix if m["verdict"].startswith("DISCRIMINATING")
+        ],
     }
     out = {
         "schema_version": "1.0",

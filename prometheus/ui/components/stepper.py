@@ -77,17 +77,15 @@ class Stepper:
         for i, label in enumerate(self.steps):
             s = self._status_at(i)
             if s == "done":
-                lines.append(
-                    f"  [{str(Theme.success)}]\u2713[/]  " f"[{str(Theme.success)}]{label}[/]"
-                )
+                lines.append(f"  [{str(Theme.success)}]\u2713[/]  [{str(Theme.success)}]{label}[/]")
             elif s == "active":
                 lines.append(
-                    f"  [{self.active_color}]\u25cf[/]  " f"[bold {self.active_color}]{label}[/]"
+                    f"  [{self.active_color}]\u25cf[/]  [bold {self.active_color}]{label}[/]"
                 )
             elif s == "failed":
-                lines.append(f"  [{str(Theme.error)}]\u2717[/]  " f"[{str(Theme.error)}]{label}[/]")
+                lines.append(f"  [{str(Theme.error)}]\u2717[/]  [{str(Theme.error)}]{label}[/]")
             else:
                 lines.append(
-                    f"  [{str(Theme.disabled)}]\u25cb[/]  " f"[{str(Theme.disabled)}]{label}[/]"
+                    f"  [{str(Theme.disabled)}]\u25cb[/]  [{str(Theme.disabled)}]{label}[/]"
                 )
         return "\n".join(lines)

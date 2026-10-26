@@ -8,8 +8,6 @@ timestamp) line for line across all 3 output modes and all 6 filters.
 from __future__ import annotations
 
 import json
-import os
-import shutil
 from pathlib import Path
 
 import pytest
@@ -52,7 +50,7 @@ def _invoke_logs(
         else:
             args.extend([flag, str(v)])
     result = runner.invoke(cli, args)
-    lines = [l for l in result.output.strip().split("\n") if l.strip()]
+    lines = [line for line in result.output.strip().split("\n") if line.strip()]
     return result.exit_code, lines
 
 
@@ -171,7 +169,6 @@ class TestMissionLogsTraceFidelity:
 
     @pytest.mark.parametrize("mission_id", TRACE_FILES)
     def test_lines_limit(self, runner, mission_id):
-        trace = _load_trace(mission_id)
         for n in [1, 3, 5]:
             code, lines = _invoke_logs(runner, mission_id, "plain", lines=n)
             assert code == 0, f"--lines {n}: exit {code}"

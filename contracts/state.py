@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from contracts.domain import SCHEMA_VERSION_V1
 
@@ -86,9 +86,7 @@ def validate_phase_transition(from_phase: str, to_phase: str) -> None:
     """Raise ValueError if the transition is not allowed."""
     allowed = MISSION_PHASE_TRANSITIONS.get(from_phase, [])
     if to_phase not in allowed:
-        raise ValueError(
-            f"Invalid phase transition: {from_phase} → {to_phase}. " f"Allowed: {allowed}"
-        )
+        raise ValueError(f"Invalid phase transition: {from_phase} → {to_phase}. Allowed: {allowed}")
 
 
 # ── Terminal / rollup helpers ──────────────────────────────────────────
@@ -322,7 +320,6 @@ class MissionState(BaseModel):
 
     async def save_to_redis(self, redis_client: Any) -> None:
         """Persist this state to Redis for cross-process access."""
-        import json as _json
 
         key = f"job:{self.job_id}:mission_state"
         raw = self.model_dump_json()
@@ -330,7 +327,7 @@ class MissionState(BaseModel):
         # Also write the backward-compat status key
         await redis_client.set(f"job:{self.job_id}:status", self.phase)
         logger.info(
-            f"[job={self.job_id}] State persisted: {self.phase} " f"(retry={self.retry_number})"
+            f"[job={self.job_id}] State persisted: {self.phase} (retry={self.retry_number})"
         )
 
     @classmethod

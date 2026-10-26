@@ -35,7 +35,7 @@ from research.engineering.models import (
     RootCauseReport,
     TemplateQuality,
 )
-from research.validation.models import ExperimentSet, ResearchHypothesis
+from research.validation.models import ExperimentSet
 from research.validation.tracker import load_experiment_set, list_experiment_sets
 
 logger = logging.getLogger(__name__)
@@ -304,8 +304,6 @@ def _build_dissect_effectiveness(
 
     category_dist: dict[str, int] = {}
     category_success: dict[str, tuple[int, int]] = {}
-    cascade_hits: dict[str, int] = {}
-    cascade_misses: dict[str, int] = {}
     class_methods: dict[str, int] = {}
     attempt_dist: dict[str, int] = {}
     confidences: list[float] = []

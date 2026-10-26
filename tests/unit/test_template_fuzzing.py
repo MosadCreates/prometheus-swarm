@@ -7,8 +7,6 @@ empty data, etc.) into the template rendering pipeline and verifies:
   3. Optional execution tests (@pytest.mark.training_exec) run the script end-to-end
 """
 
-import ast
-import json
 import os
 import subprocess
 import sys
@@ -21,7 +19,6 @@ from agents.forge.template_renderer import (
     select_and_render,
     has_template,
     validate_script,
-    _build_variables,
 )
 
 FUZZ_DIR = Path("tests/fixtures/fuzz")

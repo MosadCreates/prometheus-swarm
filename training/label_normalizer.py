@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import os
 import pickle
-from typing import Any
 
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
@@ -58,13 +57,13 @@ def normalize_target(
 
     if not fit:
         raise ValueError(
-            "No saved LabelEncoder found and fit=False. " "Cannot normalize labels without fitting."
+            "No saved LabelEncoder found and fit=False. Cannot normalize labels without fitting."
         )
 
     encoder = LabelEncoder()
     encoded = encoder.fit_transform(labels_arr)
     logger.info(
-        f"Fitted new LabelEncoder ({len(encoder.classes_)} classes: " f"{list(encoder.classes_)})"
+        f"Fitted new LabelEncoder ({len(encoder.classes_)} classes: {list(encoder.classes_)})"
     )
 
     # Save encoder for reuse across retries

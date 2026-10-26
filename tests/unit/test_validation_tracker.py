@@ -1,10 +1,8 @@
 """Tests for research/validation/tracker.py."""
 
 import json
-import uuid
 from pathlib import Path
 
-import pytest
 
 from research.validation.models import (
     Experiment,

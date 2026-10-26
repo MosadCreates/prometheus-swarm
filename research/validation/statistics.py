@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Any
 
 import numpy as np
 from scipy import stats as scipy_stats
@@ -77,7 +76,6 @@ def bootstrap_ci(
 
     rng = np.random.default_rng(random_seed)
     diffs = np.zeros(n_resamples)
-    mean_a, mean_b = np.mean(a), np.mean(b)
 
     for i in range(n_resamples):
         boot_a = rng.choice(a, size=len(a), replace=True)

@@ -1,7 +1,7 @@
 from typing import Any
 
 from memory.redis_client import RedisClient
-from contracts.state import MissionState, canonical_phase
+from contracts.state import MissionState
 
 
 class CliRedis:

@@ -1,6 +1,5 @@
 """Dissect Agent — The Debugger. Core scientific contribution: autonomous self-patching of ML training failures."""
 
-import asyncio
 import os
 import time
 from datetime import datetime, timezone
@@ -34,7 +33,6 @@ from agents.dissect.routing import (
     on_llm_success,
     CASCADE_LEVEL_NAMES,
 )
-from agents.dissect.repair_cache import cache_lookup
 from agents.dissect.knowledge_store import record_llm_interaction
 from agents.forge.quality_feedback import record_repair
 from bus.agent_events import emit_agent_event, emit_subaction_progress

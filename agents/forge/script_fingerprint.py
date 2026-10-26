@@ -110,8 +110,7 @@ async def record_fingerprint(
 
     await redis_client.setex(key, FP_TTL_SECONDS, json.dumps(entry))
     logger.info(
-        f"Fingerprint {outcome} | fp={fingerprint[:8]}... "
-        f"arch={architecture} usage={usage_count}"
+        f"Fingerprint {outcome} | fp={fingerprint[:8]}... arch={architecture} usage={usage_count}"
     )
 
 
@@ -137,9 +136,7 @@ async def record_fingerprint_pending(
     # Also store the fingerprint key for this job
     job_key = REDIS_JOB_FP_KEY.format(job_id=job_id)
     await redis_client.setex(job_key, FP_TTL_SECONDS, fingerprint)
-    logger.info(
-        f"Fingerprint pending | fp={fingerprint[:8]}... " f"job={job_id} arch={architecture}"
-    )
+    logger.info(f"Fingerprint pending | fp={fingerprint[:8]}... job={job_id} arch={architecture}")
 
 
 async def mark_fingerprint_success(

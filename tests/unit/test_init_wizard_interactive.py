@@ -1,6 +1,5 @@
 """Exit tests for the init wizard — CliRunner with isolated filesystem."""
 
-import os
 from pathlib import Path
 
 from click.testing import CliRunner

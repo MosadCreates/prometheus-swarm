@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 
 _ADJECTIVES = [
@@ -227,9 +228,6 @@ _NOUNS = [
 ]
 
 _SLUG_REDIS_KEY = "global:slug_index"
-
-
-import re
 
 _SLUG_PATTERN = re.compile(r"^[a-z]+-[a-z]+-([0-9a-f]{4})$")
 

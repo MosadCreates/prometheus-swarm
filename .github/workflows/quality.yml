@@ -15,25 +15,29 @@ jobs:
         python-version: ["3.11", "3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Create virtualenv
+        run: uv venv --python ${{ matrix.python-version }} .venv
 
       - name: Install dependencies
         # requirements.txt is the authoritative pinned set (pyproject has no dev extra)
         run: |
-          uv pip install --system -r requirements.txt
-          uv pip install --system -e . --no-deps
+          uv pip install --python .venv/bin/python -r requirements.txt
+          uv pip install --python .venv/bin/python ruff
+          uv pip install --python .venv/bin/python -e . --no-deps
 
       - name: Ruff lint
-        run: ruff check . --exclude .venv,scripts,claude-code-proxy
+        run: .venv/bin/ruff check . --exclude .venv,scripts,claude-code-proxy
 
       - name: Ruff format check
         # Scoped to pipeline code (repo-wide format debt predates this gate)
-        run: ruff format --check agents/ bus/ contracts/ orchestrator/ runtime/ memory/ training/ serving/ shared/ evaluation/ learning/ research/ prometheus/
+        run: .venv/bin/ruff format --check agents/ bus/ contracts/ orchestrator/ runtime/ memory/ training/ serving/ shared/ evaluation/ learning/ research/ prometheus/
 
       - name: Registry validation
-        run: pytest tests/validators/ -v
+        run: .venv/bin/python -m pytest tests/validators/ -v

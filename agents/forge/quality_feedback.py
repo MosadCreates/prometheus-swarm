@@ -392,8 +392,7 @@ async def _get_approx_total(
         return int(val) if val else 1
     except Exception as e:
         logger.debug(
-            "QualityFeedback job_id=%s arch=%s backend=Redis "
-            "operation=get_approx_total error=%s",
+            "QualityFeedback job_id=%s arch=%s backend=Redis operation=get_approx_total error=%s",
             job_id,
             architecture,
             type(e).__name__,

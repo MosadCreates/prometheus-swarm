@@ -31,6 +31,7 @@ __all__ = [
     "CockpitFooter",
     "DiffViewerScreen",
     "EscalationModalScreen",
+    "LogScreen",
     "MissionHeader",
     "PhaseTracker",
 ]

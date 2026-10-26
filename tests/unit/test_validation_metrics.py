@@ -1,6 +1,5 @@
 """Tests for research/validation/metrics.py."""
 
-import pytest
 
 from research.validation.metrics import (
     aggregate_research_metrics,

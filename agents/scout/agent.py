@@ -50,7 +50,6 @@ from prometheus.ui.detail_types import (
     ScoutModalityDetail,
     ScoutRecommendationDetail,
     ScoutConfidenceDetail,
-    DetailType,
 )
 
 
@@ -169,7 +168,6 @@ class ScoutAgent(BaseAgent):
             from memory.collections.experience_memory import (
                 query_best_pipeline,
                 query_by_dataset_profile,
-                query_similar_experiences,
             )
 
             modality = detect_modality(file_path, modality_override=modality_override)

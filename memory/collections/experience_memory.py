@@ -15,7 +15,6 @@ Stage 3 enrichment:
 
 import json
 import logging
-import os
 from typing import Any
 
 from memory.chroma_client import ChromaClient

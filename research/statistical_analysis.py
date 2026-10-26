@@ -329,7 +329,7 @@ def print_report(results: dict) -> None:
         )
 
     iv = results["interventions_analysis"]
-    print(f"\n--- Human interventions ---")
+    print("\n--- Human interventions ---")
     print(
         f"  B mean={iv['condition_b']['mean']}  C mean={iv['condition_c']['mean']}  "
         f"MWU p={iv['mann_whitney_u']['p_value']:.4f}  "
