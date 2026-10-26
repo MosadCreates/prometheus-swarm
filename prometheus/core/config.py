@@ -35,7 +35,7 @@ def check_prerequisites(project_root: Path) -> list[dict]:
     try:
         import docker
 
-        docker.from_env().ping()
+        docker.from_env(timeout=3).ping()
         results.append({"name": "docker", "ok": True, "detail": "daemon reachable"})
     except Exception as e:
         results.append({"name": "docker", "ok": False, "detail": str(e)})
@@ -45,7 +45,15 @@ def check_prerequisites(project_root: Path) -> list[dict]:
 
         host = env.get("REDIS_HOST", "localhost")
         port = int(env.get("REDIS_PORT", 6379))
-        r = sync_redis.Redis(host=host, port=port, socket_connect_timeout=3)
+        kwargs = {"socket_connect_timeout": 1.0, "socket_timeout": 1.0}
+        try:
+            from redis.backoff import NoBackoff
+            from redis.retry import Retry
+
+            kwargs["retry"] = Retry(NoBackoff(), 0)
+        except ImportError:
+            pass
+        r = sync_redis.Redis(host=host, port=port, **kwargs)
         r.ping()
         r.close()
         results.append({"name": "redis", "ok": True, "detail": f"reachable at {host}:{port}"})

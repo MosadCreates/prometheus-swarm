@@ -340,9 +340,12 @@ def _run_interactive(ctx: click.Context | None, renderer) -> ExitCode:
     renderer.print()
 
     # Drop into shell
-    from prometheus.repl import run_repl
+    import sys as _sys
 
-    run_repl()
+    if _sys.stdin.isatty():
+        from prometheus.repl import run_repl
+
+        run_repl()
     return ExitCode.SUCCESS
 
 
@@ -377,9 +380,16 @@ def _choose(renderer, options: list[str], default: int = 0) -> int:
 
 
 def _masked_input(renderer, prompt: str) -> str:
-    try:
-        from prometheus.ui.console import console
+    import sys as _sys
 
+    from prometheus.ui.console import console
+
+    if not _sys.stdin.isatty():
+        try:
+            return console.input(prompt)
+        except Exception:
+            return ""
+    try:
         import getpass
 
         return getpass.getpass(prompt)

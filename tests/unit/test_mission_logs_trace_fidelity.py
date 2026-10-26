@@ -27,6 +27,8 @@ def runner():
 def _load_trace(mission_id: str) -> list[dict]:
     trace = []
     path = Path("outputs") / mission_id / "trace.jsonl"
+    if not path.exists():
+        pytest.skip(f"fixture trace not available: {path}")
     with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -73,9 +75,9 @@ class TestMissionLogsTraceFidelity:
             assert len(lines) == len(trace), f"plain: {len(lines)} lines vs {len(trace)} events"
         elif fmt == "json":
             parsed = json.loads("\n".join(lines) if len(lines) > 1 else lines[0])
-            assert len(parsed["events"]) == len(
-                trace
-            ), f"json: {len(parsed['events'])} events vs {len(trace)}"
+            assert len(parsed["events"]) == len(trace), (
+                f"json: {len(parsed['events'])} events vs {len(trace)}"
+            )
 
     @pytest.mark.parametrize("mission_id", TRACE_FILES)
     def test_plain_agent_state_match_1to1(self, runner, mission_id):
@@ -88,12 +90,12 @@ class TestMissionLogsTraceFidelity:
             parts = line.split(" ", 3)
             assert len(parts) >= 3, f"line {i}: unexpected format: {line[:80]}"
             _, agent, state = parts[0], parts[1], parts[2]
-            assert (
-                agent == ev["agent"]
-            ), f"line {i}: agent mismatch: got '{agent}' expected '{ev['agent']}'"
-            assert (
-                state == ev["state"]
-            ), f"line {i}: state mismatch: got '{state}' expected '{ev['state']}'"
+            assert agent == ev["agent"], (
+                f"line {i}: agent mismatch: got '{agent}' expected '{ev['agent']}'"
+            )
+            assert state == ev["state"], (
+                f"line {i}: state mismatch: got '{state}' expected '{ev['state']}'"
+            )
 
     @pytest.mark.parametrize("mission_id", TRACE_FILES)
     def test_json_fields_match_1to1(self, runner, mission_id):
@@ -109,9 +111,9 @@ class TestMissionLogsTraceFidelity:
         for i, ev in enumerate(events):
             te = trace[i]
             for field in ("agent", "state", "summary", "timestamp"):
-                assert ev.get(field) == te.get(
-                    field
-                ), f"event {i} field '{field}': got '{ev.get(field)}' expected '{te.get(field)}'"
+                assert ev.get(field) == te.get(field), (
+                    f"event {i} field '{field}': got '{ev.get(field)}' expected '{te.get(field)}'"
+                )
 
     @pytest.mark.parametrize("mission_id", TRACE_FILES)
     def test_interactive_produces_output(self, runner, mission_id):
@@ -129,9 +131,9 @@ class TestMissionLogsTraceFidelity:
             expected = [e for e in trace if agent in e["agent"]]
             code, lines = _invoke_logs(runner, mission_id, "plain", agent=agent)
             assert code == 0, f"--agent {agent}: exit {code}"
-            assert len(lines) == len(
-                expected
-            ), f"--agent {agent}: got {len(lines)} lines, expected {len(expected)}"
+            assert len(lines) == len(expected), (
+                f"--agent {agent}: got {len(lines)} lines, expected {len(expected)}"
+            )
 
     # ── --level filter (maps to trace.state) ---------------------------
 
@@ -143,9 +145,9 @@ class TestMissionLogsTraceFidelity:
             expected = [e for e in trace if state.lower() in e["state"].lower()]
             code, lines = _invoke_logs(runner, mission_id, "plain", level=state)
             assert code == 0, f"--level {state}: exit {code}"
-            assert len(lines) == len(
-                expected
-            ), f"--level {state}: got {len(lines)} lines, expected {len(expected)}"
+            assert len(lines) == len(expected), (
+                f"--level {state}: got {len(lines)} lines, expected {len(expected)}"
+            )
 
     # ── --since filter -------------------------------------------------
 
@@ -161,9 +163,9 @@ class TestMissionLogsTraceFidelity:
 
         code, lines = _invoke_logs(runner, mission_id, "plain", since=since_ts)
         assert code == 0, f"--since: exit {code}"
-        assert len(lines) == len(
-            expected
-        ), f"--since {since_ts[:19]}: got {len(lines)} lines, expected {len(expected)}"
+        assert len(lines) == len(expected), (
+            f"--since {since_ts[:19]}: got {len(lines)} lines, expected {len(expected)}"
+        )
 
     # ── --lines limit --------------------------------------------------
 
@@ -199,6 +201,6 @@ class TestMissionLogsTraceFidelity:
         raw = "\n".join(lines) if len(lines) > 1 else lines[0]
         parsed = json.loads(raw)
         assert "schema" in parsed, "JSON output missing 'schema' field"
-        assert (
-            parsed["schema"] == "prometheus.mission_log.v1"
-        ), f"unexpected schema value: '{parsed.get('schema')}'"
+        assert parsed["schema"] == "prometheus.mission_log.v1", (
+            f"unexpected schema value: '{parsed.get('schema')}'"
+        )
