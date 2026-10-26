@@ -197,13 +197,13 @@ class TestDatasetFingerprint:
         from orchestrator.reproducibility import _dataset_fingerprint
 
         dataset = tmp_path / "large.csv"
-        content = "x,y\n" + "1,2\n" * 100_000  # ~600KB
-        dataset.write_text(content)
+        content = b"x,y\n" + b"1,2\n" * 100_000
+        dataset.write_bytes(content)
 
         fp = _dataset_fingerprint(str(dataset))
         assert fp["exists"] is True
         assert fp["content_hash"] != ""
-        assert fp["size_bytes"] > 500_000
+        assert fp["size_bytes"] == len(content)
 
 
 class TestConfigHash:

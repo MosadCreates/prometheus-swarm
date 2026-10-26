@@ -24,11 +24,16 @@ def runner():
     return CliRunner()
 
 
-def _load_trace(mission_id: str) -> list[dict]:
-    trace = []
+def _require_trace(mission_id: str) -> Path:
     path = Path("outputs") / mission_id / "trace.jsonl"
     if not path.exists():
         pytest.skip(f"fixture trace not available: {path}")
+    return path
+
+
+def _load_trace(mission_id: str) -> list[dict]:
+    trace = []
+    path = _require_trace(mission_id)
     with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -117,6 +122,7 @@ class TestMissionLogsTraceFidelity:
 
     @pytest.mark.parametrize("mission_id", TRACE_FILES)
     def test_interactive_produces_output(self, runner, mission_id):
+        _require_trace(mission_id)
         code, lines = _invoke_logs(runner, mission_id, "interactive")
         assert code == 0
         assert len(lines) > 0, "interactive mode produced no output"
@@ -196,6 +202,7 @@ class TestMissionLogsTraceFidelity:
 
     @pytest.mark.parametrize("mission_id", TRACE_FILES)
     def test_json_has_schema_field(self, runner, mission_id):
+        _require_trace(mission_id)
         code, lines = _invoke_logs(runner, mission_id, "json")
         assert code == 0
         raw = "\n".join(lines) if len(lines) > 1 else lines[0]
