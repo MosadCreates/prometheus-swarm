@@ -10,7 +10,12 @@ import time
 from typing import Any
 
 import redis.asyncio as aioredis
-from pynput import keyboard
+
+try:
+    from pynput import keyboard
+except ImportError:
+    keyboard = None
+
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
